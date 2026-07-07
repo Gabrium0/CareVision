@@ -82,6 +82,7 @@ class GreetingEngine:
             ("gait", "gait_asymmetry"): "Your walking looks uneven today — take care on your feet.",
             ("pain", "pain"): "You look uncomfortable — are you in any pain?",
             ("respiration", "breaths_per_min"): None,   # handled only if atypical
+            ("clothing_advice", "recommendation"): None,  # use module message directly
         }
         for (mod, key), text in recs.items():
             r = by.get((mod, key))
@@ -92,6 +93,10 @@ class GreetingEngine:
         if hr and hr.confidence >= 0.4 and hr.severity == Severity.WARNING:
             suggestions.append(f"Your heart rate looks around {hr.value:.0f} — "
                                "if you feel unwell, let's check with someone.")
+
+        clothing = by.get(("clothing_advice", "recommendation"))
+        if clothing and clothing.confidence >= _CONF_FLOOR and clothing.severity != Severity.INFO:
+            suggestions.append(str(clothing.value))
 
         # de-dupe while preserving order, cap length
         seen, deduped = set(), []

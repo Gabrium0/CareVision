@@ -84,7 +84,11 @@ def main():
                     help="seconds before repeating the same terminal alert")
     ap.add_argument("--no-deepface", action="store_true",
                     help="disable DeepFace subprocess backend for this run")
+    ap.add_argument("--debug-modules", default="",
+                    help="comma-separated debug logs: openrppg,clothing,deepface,drowsiness,weather or all")
     args = ap.parse_args()
+    if args.debug_modules:
+        os.environ["APP_DEBUG_MODULES"] = args.debug_modules
 
     camera_opts = {"lock": not args.no_lock, "exposure": args.exposure,
                    "request_fps": args.fps, "request_size": (args.width, args.height),

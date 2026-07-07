@@ -15,12 +15,37 @@ modules:
     openrppg_hrv_min_seconds: 30.0    # HRV/breathing need longer clean windows than HR
     openrppg_min_confidence: 0.35
     openrppg_smoothing_window: 5
-    openrppg_motion_threshold: 18.0
-    openrppg_face_jitter_threshold: 0.12
+    openrppg_motion_threshold: 35.0
+    openrppg_face_jitter_threshold: 0.25
     openrppg_async_inference: true     # keeps CPU-only Open-RPPG from freezing camera frames
   respiration:
     enabled: true
     window_seconds: 25
+
+  # --- Clothing / weather recommendations ---
+  weather:
+    enabled: true
+    latitude: 40.7128                  # or set WEATHER_LAT / WEATHER_LON env vars
+    longitude: -74.0060
+    refresh_seconds: 600
+  clothing:
+    enabled: true
+    backend: owlvit                 # optional: pip install -r requirements-clothing.txt
+    model: google/owlv2-base-patch16-ensemble   # OWLv2; falls back to owlvit-base-patch32
+    labels: [tank top, t-shirt, long sleeve shirt, hoodie,
+             sweater, jacket, coat, raincoat]
+    pipeline_threshold: 0.02        # low, so the detector returns candidates
+    min_confidence: 0.08            # post-filter gate
+    infer_every: 8.0
+  clothing_advice:
+    enabled: true
+    cold_c: 8.0
+    cool_c: 15.0
+    warm_c: 24.0
+    hot_c: 28.0
+    rain_mm_threshold: 0.1
+    wind_kph_threshold: 25.0
+    uv_high: 6.0
 
   # --- Skin & face ---
   skin_color:                 # pallor / flushing / jaundice / cyanosis
@@ -61,10 +86,23 @@ modules:
   # --- Fatigue & consciousness ---
   drowsiness:                 # PERCLOS + blink rate + microsleep
     enabled: true
+    perclos_window_seconds: 60.0
+    baseline_seconds: 3.0
+    closed_ear_ratio: 0.60
+    perclos_notice: 0.15
+    perclos_warning: 0.30
+    microsleep_seconds: 1.2
   yawn:
     enabled: true
+    mar_threshold: 0.60
+    sustained_seconds: 1.5
+    window_seconds: 180.0
   head_nod:
     enabled: true
+    window_seconds: 6.0
+    droop_threshold: 0.10
+    nod_drop_threshold: 0.06
+    nod_crossings: 3
 
   # --- Safety ---
   fall:

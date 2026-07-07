@@ -1,0 +1,6 @@
+# Optional: zero-shot clothing detection backend (OWL-ViT).
+# Install only if you want visual clothing detection; weather/advice status rows
+# still work without this file.
+transformers>=4.40
+torch>=2.2
+Pillow>=10

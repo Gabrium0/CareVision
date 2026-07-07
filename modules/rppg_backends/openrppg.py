@@ -33,6 +33,7 @@ from statistics import median
 import numpy as np
 
 from core.context import FrameContext
+from core.debug import log as debug_log
 from .base import RPPGBackend
 
 
@@ -43,8 +44,8 @@ class OpenRPPGBackend(RPPGBackend):
     def __init__(self, window_seconds: float = 12.0, model: str | None = None,
                  infer_every: float = 5.0, min_seconds: float = 10.0,
                  hrv_min_seconds: float = 30.0, min_confidence: float = 0.35,
-                 smoothing_window: int = 5, motion_threshold: float | None = 18.0,
-                 face_jitter_threshold: float | None = 0.12,
+                 smoothing_window: int = 5, motion_threshold: float | None = 35.0,
+                 face_jitter_threshold: float | None = 0.25,
                  async_inference: bool = True):
         self.window_seconds = window_seconds
         self.infer_every = infer_every
@@ -68,6 +69,11 @@ class OpenRPPGBackend(RPPGBackend):
         self._last_infer = 0.0
         self._cached: dict | None = None
         self._status = "starting"
+        self._accepted = 0
+        self._reject_motion = 0
+        self._reject_jitter = 0
+        self._reject_no_face = 0
+        self._last_latency_ms = 0.0
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="open-rppg")
         self._pending: Future | None = None
 
@@ -88,11 +94,18 @@ class OpenRPPGBackend(RPPGBackend):
                   "falling back to classical only")
 
     def update(self, ctx: FrameContext) -> None:
-        if not self.available or ctx.face is None:
+        if not self.available:
+            return
+        if ctx.face is None:
+            self._reject_no_face += 1
             return
         if self.motion_threshold is not None and ctx.motion_energy > self.motion_threshold:
+            self._reject_motion += 1
+            self._status = f"motion rejected ({ctx.motion_energy:.0f}>{self.motion_threshold:.0f})"
             return
         if not self._stable_face(ctx.face.bbox):
+            self._reject_jitter += 1
+            self._status = "face jitter rejected"
             return
         crop = ctx.face.crop
         if crop is None or crop.size == 0:
@@ -100,6 +113,7 @@ class OpenRPPGBackend(RPPGBackend):
         face128 = self._cv2.resize(crop, (128, 128))   # BGR uint8
         self.ts.append(ctx.timestamp)
         self.crops.append(face128)
+        self._accepted += 1
         while self.ts and ctx.timestamp - self.ts[0] > self.window_seconds:
             self.ts.popleft()
             self.crops.popleft()
@@ -138,6 +152,10 @@ class OpenRPPGBackend(RPPGBackend):
             return None
         now = time.time()
         span = (self.ts[-1] - self.ts[0]) if len(self.ts) > 1 else 0.0
+        debug_log("openrppg", f"buffered={len(self.crops)} span={span:.1f}s accepted={self._accepted} "
+                              f"reject_motion={self._reject_motion} reject_jitter={self._reject_jitter} "
+                              f"reject_no_face={self._reject_no_face} pending={self._pending is not None} "
+                              f"status={self._status} latency_ms={self._last_latency_ms:.0f}")
         if len(self.crops) < 16 or span < self.min_seconds:
             self._status = f"warming up {span:.0f}/{self.min_seconds:.0f}s"
             return self._cached
@@ -168,11 +186,13 @@ class OpenRPPGBackend(RPPGBackend):
         return self._cached
 
     def _compute_tensor(self, tensor_rgb: np.ndarray, fps: float, span: float) -> dict | None:
+        t0 = time.perf_counter()
         try:
             res, bvp, bts = self._infer(tensor_rgb, fps)
         except Exception as e:  # noqa: BLE001
             print(f"[open-rppg] inference failed: {e}")
             return self._cached
+        self._last_latency_ms = (time.perf_counter() - t0) * 1000.0
         if not res or res.get("hr") is None or not np.isfinite(res["hr"]):
             return self._cached
 

@@ -87,6 +87,10 @@ def main():
         close = getattr(ex, "close", None)
         if close:
             close()
+    for module in modules:
+        close = getattr(module, "close", None)
+        if close:
+            close()
     print("\n[smoke] OK — pipeline ran end-to-end without errors.")
 
 

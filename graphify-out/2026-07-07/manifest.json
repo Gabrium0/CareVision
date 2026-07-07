@@ -70,8 +70,8 @@
     "semantic_hash": "dc8ef7df56c875e0c58d66181415e175"
   },
   "main.py": {
-    "mtime": 1783415242.9543543,
-    "ast_hash": "df76f842144e151108f8188dea65ef4b",
+    "mtime": 1783419012.796463,
+    "ast_hash": "5e8e219229e01d1a8a9da07e6e3e3a57",
     "semantic_hash": ""
   },
   "modules/__init__.py": {
@@ -125,9 +125,9 @@
     "semantic_hash": "8c052dabf073033e37771eabc1a27d6f"
   },
   "modules/drowsiness.py": {
-    "mtime": 1783399845.8606646,
-    "ast_hash": "74285908ac9a8cb724dc70dbacedd113",
-    "semantic_hash": "74285908ac9a8cb724dc70dbacedd113"
+    "mtime": 1783419121.1390684,
+    "ast_hash": "f7692f2d17418011b58bd156b0ba366b",
+    "semantic_hash": ""
   },
   "modules/dry_lips.py": {
     "mtime": 1783399726.9498346,
@@ -175,9 +175,9 @@
     "semantic_hash": "ae9f5343d1b8b01fe7a1c969a8786135"
   },
   "modules/head_nod.py": {
-    "mtime": 1783399862.4090166,
-    "ast_hash": "cc2cdbba56bfe3cb9c6af4b299bd5813",
-    "semantic_hash": "cc2cdbba56bfe3cb9c6af4b299bd5813"
+    "mtime": 1783416635.195465,
+    "ast_hash": "6012cfffca54ff12731b57b6f5f10543",
+    "semantic_hash": ""
   },
   "modules/heart_rate.py": {
     "mtime": 1783414696.0238242,
@@ -235,9 +235,9 @@
     "semantic_hash": "5c142dbfa41bde6b3d440a103fab4e11"
   },
   "modules/yawn.py": {
-    "mtime": 1783399853.3553233,
-    "ast_hash": "e9b8bca77fe126675664ef166c533813",
-    "semantic_hash": "e9b8bca77fe126675664ef166c533813"
+    "mtime": 1783416606.6089697,
+    "ast_hash": "2b4a0c37d83dfecc9d3613feb651ec51",
+    "semantic_hash": ""
   },
   "output/__init__.py": {
     "mtime": 1783399996.9229295,
@@ -250,9 +250,9 @@
     "semantic_hash": ""
   },
   "output/greeting_engine.py": {
-    "mtime": 1783400025.4249244,
-    "ast_hash": "15788eb7b605bf88726604af1e985e2b",
-    "semantic_hash": "15788eb7b605bf88726604af1e985e2b"
+    "mtime": 1783418458.7514656,
+    "ast_hash": "10ee3679e366963804eed1be80317fae",
+    "semantic_hash": ""
   },
   "output/overlay.py": {
     "mtime": 1783404407.9742248,
@@ -280,13 +280,13 @@
     "semantic_hash": "e527a44e356932b9b01f5cf9d88600ee"
   },
   "tests/smoke_test.py": {
-    "mtime": 1783400395.7689474,
-    "ast_hash": "8d704776b2e386fa7ee754d6f7ad9a1b",
-    "semantic_hash": "8d704776b2e386fa7ee754d6f7ad9a1b"
+    "mtime": 1783416836.512125,
+    "ast_hash": "66938f1ebfc5ae131d917ea4c1957b09",
+    "semantic_hash": ""
   },
   "config/modules.yaml": {
-    "mtime": 1783414789.6221414,
-    "ast_hash": "244f536472c543d0238d7b1d18b883fd",
+    "mtime": 1783419078.30133,
+    "ast_hash": "bf465a5c3d90ee57e80a9cd69ffd5cfc",
     "semantic_hash": ""
   },
   "docs/RESEARCH.md": {
@@ -300,8 +300,8 @@
     "semantic_hash": "8a6643a420fdad6bfb583523bc6cef16"
   },
   "README.md": {
-    "mtime": 1783414803.7534,
-    "ast_hash": "16a19134ad091107f74d1ebbf4a782ff",
+    "mtime": 1783419200.1860857,
+    "ast_hash": "b429224fab0938f6074dd8fa074a66ca",
     "semantic_hash": ""
   },
   "detectionList.md": {
@@ -335,13 +335,13 @@
     "semantic_hash": ""
   },
   "modules/rppg_backends/openrppg.py": {
-    "mtime": 1783414684.0379326,
-    "ast_hash": "c36ca53125f3af65d82b89cc9481f5b0",
+    "mtime": 1783419035.6710582,
+    "ast_hash": "e41c71a72c99671bd819b896951092fb",
     "semantic_hash": ""
   },
   "output/dashboard.py": {
-    "mtime": 1783415079.2392132,
-    "ast_hash": "d9e9b9254f6f609b12a28248ce040101",
+    "mtime": 1783420394.0879102,
+    "ast_hash": "3ebf0ebe22003833e1cb5d71c8f35651",
     "semantic_hash": ""
   },
   "tests/hr_backends_test.py": {
@@ -390,8 +390,8 @@
     "semantic_hash": ""
   },
   "modules/emotion_backends/deepface_backend.py": {
-    "mtime": 1783415233.0263333,
-    "ast_hash": "2e30c0b03591f1ae88f652c5c3a9e24c",
+    "mtime": 1783419098.9795113,
+    "ast_hash": "7444de26763aaf8591341c717cea3515",
     "semantic_hash": ""
   },
   "modules/emotion_backends/ferplus.py": {
@@ -462,6 +462,31 @@
   "AGENTS.md": {
     "mtime": 1783407754.349005,
     "ast_hash": "21ceb6533048be51308e69e7b74a35cf",
+    "semantic_hash": ""
+  },
+  "modules/clothing.py": {
+    "mtime": 1783420287.7539768,
+    "ast_hash": "259da132887ceaa830858d843ab37c4a",
+    "semantic_hash": ""
+  },
+  "modules/clothing_advice.py": {
+    "mtime": 1783418422.5329063,
+    "ast_hash": "90d5b7bb2bfb05955ffc3802b72eac79",
+    "semantic_hash": ""
+  },
+  "modules/weather.py": {
+    "mtime": 1783419186.103865,
+    "ast_hash": "a50815e0fdb7753ce2c82f8aef7098aa",
+    "semantic_hash": ""
+  },
+  "requirements-clothing.txt": {
+    "mtime": 1783418515.097546,
+    "ast_hash": "e552c3de258a35a8c17d6a4cb242c0b7",
+    "semantic_hash": ""
+  },
+  "core/debug.py": {
+    "mtime": 1783419003.5858026,
+    "ast_hash": "90053f7b31ec0e90ea1728bc28b14cf0",
     "semantic_hash": ""
   }
 }

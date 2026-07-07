@@ -80,7 +80,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "core_camera",
-      "community": 17,
+      "community": 16,
       "norm_label": "camera.py"
     },
     {
@@ -170,7 +170,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "core_camera_rationale_1",
-      "community": 17,
+      "community": 16,
       "norm_label": "frame source abstraction: webcam index, video file, or rtsp url.  for a live web"
     },
     {
@@ -200,7 +200,7 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "core_context_facedata",
-      "community": 19,
+      "community": 18,
       "norm_label": "facedata"
     },
     {
@@ -210,7 +210,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "core_context_posedata",
-      "community": 8,
+      "community": 0,
       "norm_label": "posedata"
     },
     {
@@ -304,6 +304,46 @@
       "norm_label": "pose landmarks in pixel coordinates, shape (33, 2)."
     },
     {
+      "label": "debug.py",
+      "file_type": "code",
+      "source_file": "core/debug.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "core_debug",
+      "community": 1,
+      "norm_label": "debug.py"
+    },
+    {
+      "label": "enabled()",
+      "file_type": "code",
+      "source_file": "core/debug.py",
+      "source_location": "L10",
+      "_origin": "ast",
+      "id": "core_debug_enabled",
+      "community": 1,
+      "norm_label": "enabled()"
+    },
+    {
+      "label": "log()",
+      "file_type": "code",
+      "source_file": "core/debug.py",
+      "source_location": "L16",
+      "_origin": "ast",
+      "id": "core_debug_log",
+      "community": 1,
+      "norm_label": "log()"
+    },
+    {
+      "label": "Small opt-in debug logger for noisy live modules.",
+      "file_type": "rationale",
+      "source_file": "core/debug.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "core_debug_rationale_1",
+      "community": 1,
+      "norm_label": "small opt-in debug logger for noisy live modules."
+    },
+    {
       "label": "events.py",
       "file_type": "code",
       "source_file": "core/events.py",
@@ -340,7 +380,7 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "core_events_result",
-      "community": 12,
+      "community": 0,
       "norm_label": "result"
     },
     {
@@ -350,7 +390,7 @@
       "source_location": "L39",
       "_origin": "ast",
       "id": "core_events_result_expired",
-      "community": 12,
+      "community": 0,
       "norm_label": ".expired()"
     },
     {
@@ -370,7 +410,7 @@
       "source_location": "L19",
       "_origin": "ast",
       "id": "core_events_rationale_19",
-      "community": 12,
+      "community": 0,
       "norm_label": "a single detection outcome.      module:     registered module name (e.g. \"heart"
     },
     {
@@ -470,7 +510,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "core_registry_discover",
-      "community": 17,
+      "community": 0,
       "norm_label": "discover()"
     },
     {
@@ -520,7 +560,7 @@
       "source_location": "L24",
       "_origin": "ast",
       "id": "core_registry_rationale_24",
-      "community": 17,
+      "community": 0,
       "norm_label": "import every submodule of `modules/` so @register decorators run."
     },
     {
@@ -540,7 +580,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "core_scheduler",
-      "community": 8,
+      "community": 17,
       "norm_label": "scheduler.py"
     },
     {
@@ -550,7 +590,7 @@
       "source_location": "L19",
       "_origin": "ast",
       "id": "core_scheduler_scheduler",
-      "community": 5,
+      "community": 17,
       "norm_label": "scheduler"
     },
     {
@@ -560,7 +600,7 @@
       "source_location": "L20",
       "_origin": "ast",
       "id": "core_scheduler_scheduler_init",
-      "community": 5,
+      "community": 17,
       "norm_label": ".__init__()"
     },
     {
@@ -570,7 +610,7 @@
       "source_location": "L25",
       "_origin": "ast",
       "id": "core_scheduler_scheduler_requirements_met",
-      "community": 5,
+      "community": 17,
       "norm_label": "._requirements_met()"
     },
     {
@@ -580,7 +620,7 @@
       "source_location": "L35",
       "_origin": "ast",
       "id": "core_scheduler_scheduler_tick",
-      "community": 5,
+      "community": 17,
       "norm_label": ".tick()"
     },
     {
@@ -590,7 +630,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "core_scheduler_rationale_1",
-      "community": 8,
+      "community": 17,
       "norm_label": "cadence-aware scheduler.  each module declares:   interval: minimum seconds betw"
     },
     {
@@ -610,7 +650,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "extractors_face",
-      "community": 19,
+      "community": 18,
       "norm_label": "face.py"
     },
     {
@@ -620,7 +660,7 @@
       "source_location": "L24",
       "_origin": "ast",
       "id": "extractors_face_faceextractor",
-      "community": 19,
+      "community": 18,
       "norm_label": "faceextractor"
     },
     {
@@ -640,7 +680,7 @@
       "source_location": "L43",
       "_origin": "ast",
       "id": "extractors_face_faceextractor_extract",
-      "community": 19,
+      "community": 18,
       "norm_label": ".extract()"
     },
     {
@@ -650,7 +690,7 @@
       "source_location": "L69",
       "_origin": "ast",
       "id": "extractors_face_faceextractor_close",
-      "community": 19,
+      "community": 18,
       "norm_label": ".close()"
     },
     {
@@ -660,7 +700,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "extractors_face_rationale_1",
-      "community": 19,
+      "community": 18,
       "norm_label": "shared face extractor: mediapipe tasks facelandmarker (478 landmarks including i"
     },
     {
@@ -750,7 +790,7 @@
       "source_location": "L29",
       "_origin": "ast",
       "id": "extractors_pose_poseextractor",
-      "community": 8,
+      "community": 0,
       "norm_label": "poseextractor"
     },
     {
@@ -760,7 +800,7 @@
       "source_location": "L30",
       "_origin": "ast",
       "id": "extractors_pose_poseextractor_init",
-      "community": 8,
+      "community": 0,
       "norm_label": ".__init__()"
     },
     {
@@ -770,7 +810,7 @@
       "source_location": "L45",
       "_origin": "ast",
       "id": "extractors_pose_poseextractor_extract",
-      "community": 8,
+      "community": 0,
       "norm_label": ".extract()"
     },
     {
@@ -780,7 +820,7 @@
       "source_location": "L65",
       "_origin": "ast",
       "id": "extractors_pose_poseextractor_close",
-      "community": 8,
+      "community": 0,
       "norm_label": ".close()"
     },
     {
@@ -900,7 +940,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "main",
-      "community": 17,
+      "community": 0,
       "norm_label": "main.py"
     },
     {
@@ -910,7 +950,7 @@
       "source_location": "L44",
       "_origin": "ast",
       "id": "main_load_config",
-      "community": 17,
+      "community": 0,
       "norm_label": "load_config()"
     },
     {
@@ -920,7 +960,7 @@
       "source_location": "L49",
       "_origin": "ast",
       "id": "main_build_pipeline",
-      "community": 17,
+      "community": 0,
       "norm_label": "build_pipeline()"
     },
     {
@@ -930,7 +970,7 @@
       "source_location": "L61",
       "_origin": "ast",
       "id": "main_main",
-      "community": 17,
+      "community": 0,
       "norm_label": "main()"
     },
     {
@@ -940,7 +980,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "main_rationale_1",
-      "community": 17,
+      "community": 0,
       "norm_label": "live humanoid-camera detection pipeline.  usage:   python main.py"
     },
     {
@@ -970,7 +1010,7 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "modules_util_timedbuffer",
-      "community": 15,
+      "community": 2,
       "norm_label": "timedbuffer"
     },
     {
@@ -980,7 +1020,7 @@
       "source_location": "L17",
       "_origin": "ast",
       "id": "modules_util_timedbuffer_init",
-      "community": 15,
+      "community": 2,
       "norm_label": ".__init__()"
     },
     {
@@ -990,7 +1030,7 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "modules_util_timedbuffer_push",
-      "community": 15,
+      "community": 2,
       "norm_label": ".push()"
     },
     {
@@ -1000,7 +1040,7 @@
       "source_location": "L29",
       "_origin": "ast",
       "id": "modules_util_timedbuffer_len",
-      "community": 15,
+      "community": 2,
       "norm_label": ".__len__()"
     },
     {
@@ -1010,7 +1050,7 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "modules_util_timedbuffer_span",
-      "community": 21,
+      "community": 2,
       "norm_label": ".span()"
     },
     {
@@ -1020,7 +1060,7 @@
       "source_location": "L35",
       "_origin": "ast",
       "id": "modules_util_timedbuffer_arrays",
-      "community": 21,
+      "community": 2,
       "norm_label": ".arrays()"
     },
     {
@@ -1030,7 +1070,7 @@
       "source_location": "",
       "_origin": "ast",
       "id": "modules_util_py_ndarray",
-      "community": 21,
+      "community": 6,
       "norm_label": "ndarray"
     },
     {
@@ -1040,7 +1080,7 @@
       "source_location": "L38",
       "_origin": "ast",
       "id": "modules_util_timedbuffer_resampled",
-      "community": 21,
+      "community": 2,
       "norm_label": ".resampled()"
     },
     {
@@ -1050,7 +1090,7 @@
       "source_location": "L49",
       "_origin": "ast",
       "id": "modules_util_dominant_frequency",
-      "community": 2,
+      "community": 6,
       "norm_label": "dominant_frequency()"
     },
     {
@@ -1060,7 +1100,7 @@
       "source_location": "L72",
       "_origin": "ast",
       "id": "modules_util_bandpass",
-      "community": 2,
+      "community": 6,
       "norm_label": "bandpass()"
     },
     {
@@ -1070,7 +1110,7 @@
       "source_location": "L81",
       "_origin": "ast",
       "id": "modules_util_peak_intervals",
-      "community": 2,
+      "community": 6,
       "norm_label": "peak_intervals()"
     },
     {
@@ -1120,7 +1160,7 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "modules_util_rationale_15",
-      "community": 15,
+      "community": 2,
       "norm_label": "rolling (timestamp, value) buffer with a fixed time horizon."
     },
     {
@@ -1130,7 +1170,7 @@
       "source_location": "L39",
       "_origin": "ast",
       "id": "modules_util_rationale_39",
-      "community": 21,
+      "community": 2,
       "norm_label": "uniformly resample values at fs hz; returns (signal, fs) or none."
     },
     {
@@ -1140,7 +1180,7 @@
       "source_location": "L51",
       "_origin": "ast",
       "id": "modules_util_rationale_51",
-      "community": 2,
+      "community": 6,
       "norm_label": "strongest frequency in [fmin, fmax] hz.      returns (frequency_hz, prominence 0"
     },
     {
@@ -1150,7 +1190,7 @@
       "source_location": "L83",
       "_origin": "ast",
       "id": "modules_util_rationale_83",
-      "community": 2,
+      "community": 6,
       "norm_label": "inter-peak intervals in seconds (for hrv from a pulse waveform)."
     },
     {
@@ -1200,7 +1240,7 @@
       "source_location": "L20",
       "_origin": "ast",
       "id": "modules_activity_level_activitylevel",
-      "community": 4,
+      "community": 19,
       "norm_label": "activitylevel"
     },
     {
@@ -1210,7 +1250,7 @@
       "source_location": "L24",
       "_origin": "ast",
       "id": "modules_activity_level_activitylevel_init",
-      "community": 4,
+      "community": 19,
       "norm_label": ".__init__()"
     },
     {
@@ -1220,7 +1260,7 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "modules_activity_level_activitylevel_process",
-      "community": 4,
+      "community": 19,
       "norm_label": ".process()"
     },
     {
@@ -1300,7 +1340,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "modules_agitation_agitation",
-      "community": 15,
+      "community": 2,
       "norm_label": "agitation"
     },
     {
@@ -1310,7 +1350,7 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "modules_agitation_agitation_init",
-      "community": 15,
+      "community": 2,
       "norm_label": ".__init__()"
     },
     {
@@ -1320,7 +1360,7 @@
       "source_location": "L33",
       "_origin": "ast",
       "id": "modules_agitation_agitation_process",
-      "community": 15,
+      "community": 2,
       "norm_label": ".process()"
     },
     {
@@ -1520,7 +1560,7 @@
       "source_location": "L33",
       "_origin": "ast",
       "id": "modules_base_detectionmodule_init",
-      "community": 12,
+      "community": 0,
       "norm_label": ".__init__()"
     },
     {
@@ -1530,7 +1570,7 @@
       "source_location": "",
       "_origin": "ast",
       "id": "any",
-      "community": 12,
+      "community": 0,
       "norm_label": "any"
     },
     {
@@ -1540,7 +1580,7 @@
       "source_location": "L39",
       "_origin": "ast",
       "id": "modules_base_detectionmodule_process",
-      "community": 12,
+      "community": 0,
       "norm_label": ".process()"
     },
     {
@@ -1550,7 +1590,7 @@
       "source_location": "L42",
       "_origin": "ast",
       "id": "modules_base_detectionmodule_result",
-      "community": 12,
+      "community": 0,
       "norm_label": ".result()"
     },
     {
@@ -1580,7 +1620,7 @@
       "source_location": "L24",
       "_origin": "ast",
       "id": "modules_body_estimate_bodyestimate",
-      "community": 96,
+      "community": 2,
       "norm_label": "bodyestimate"
     },
     {
@@ -1590,7 +1630,7 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "modules_body_estimate_bodyestimate_init",
-      "community": 96,
+      "community": 2,
       "norm_label": ".__init__()"
     },
     {
@@ -1600,7 +1640,7 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "modules_body_estimate_bodyestimate_process",
-      "community": 96,
+      "community": 2,
       "norm_label": ".process()"
     },
     {
@@ -1630,7 +1670,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "modules_bradykinesia_bradykinesia",
-      "community": 15,
+      "community": 2,
       "norm_label": "bradykinesia"
     },
     {
@@ -1640,7 +1680,7 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "modules_bradykinesia_bradykinesia_init",
-      "community": 15,
+      "community": 2,
       "norm_label": ".__init__()"
     },
     {
@@ -1650,7 +1690,7 @@
       "source_location": "L33",
       "_origin": "ast",
       "id": "modules_bradykinesia_bradykinesia_process",
-      "community": 15,
+      "community": 2,
       "norm_label": ".process()"
     },
     {
@@ -1704,6 +1744,176 @@
       "norm_label": "bruise / discoloration screening on facial skin.  method: bruises are bluish-pur"
     },
     {
+      "label": "clothing.py",
+      "file_type": "code",
+      "source_file": "modules/clothing.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "modules_clothing",
+      "community": 1,
+      "norm_label": "clothing.py"
+    },
+    {
+      "label": "Clothing",
+      "file_type": "code",
+      "source_file": "modules/clothing.py",
+      "source_location": "L57",
+      "_origin": "ast",
+      "id": "modules_clothing_clothing",
+      "community": 23,
+      "norm_label": "clothing"
+    },
+    {
+      "label": ".__init__()",
+      "file_type": "code",
+      "source_file": "modules/clothing.py",
+      "source_location": "L67",
+      "_origin": "ast",
+      "id": "modules_clothing_clothing_init",
+      "community": 23,
+      "norm_label": ".__init__()"
+    },
+    {
+      "label": "._load()",
+      "file_type": "code",
+      "source_file": "modules/clothing.py",
+      "source_location": "L81",
+      "_origin": "ast",
+      "id": "modules_clothing_clothing_load",
+      "community": 23,
+      "norm_label": "._load()"
+    },
+    {
+      "label": "._label_of()",
+      "file_type": "code",
+      "source_file": "modules/clothing.py",
+      "source_location": "L97",
+      "_origin": "ast",
+      "id": "modules_clothing_clothing_label_of",
+      "community": 23,
+      "norm_label": "._label_of()"
+    },
+    {
+      "label": "._person_region()",
+      "file_type": "code",
+      "source_file": "modules/clothing.py",
+      "source_location": "L108",
+      "_origin": "ast",
+      "id": "modules_clothing_clothing_person_region",
+      "community": 23,
+      "norm_label": "._person_region()"
+    },
+    {
+      "label": "ndarray",
+      "file_type": "code",
+      "source_file": "",
+      "source_location": "",
+      "_origin": "ast",
+      "id": "modules_clothing_py_ndarray",
+      "community": 23,
+      "norm_label": "ndarray"
+    },
+    {
+      "label": "._detect()",
+      "file_type": "code",
+      "source_file": "modules/clothing.py",
+      "source_location": "L146",
+      "_origin": "ast",
+      "id": "modules_clothing_clothing_detect",
+      "community": 23,
+      "norm_label": "._detect()"
+    },
+    {
+      "label": ".process()",
+      "file_type": "code",
+      "source_file": "modules/clothing.py",
+      "source_location": "L183",
+      "_origin": "ast",
+      "id": "modules_clothing_clothing_process",
+      "community": 23,
+      "norm_label": ".process()"
+    },
+    {
+      "label": ".close()",
+      "file_type": "code",
+      "source_file": "modules/clothing.py",
+      "source_location": "L228",
+      "_origin": "ast",
+      "id": "modules_clothing_clothing_close",
+      "community": 23,
+      "norm_label": ".close()"
+    },
+    {
+      "label": "Upper-body clothing detection for weather-aware recommendations.  Uses OWL-ViT /",
+      "file_type": "rationale",
+      "source_file": "modules/clothing.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "modules_clothing_rationale_1",
+      "community": 1,
+      "norm_label": "upper-body clothing detection for weather-aware recommendations.  uses owl-vit /"
+    },
+    {
+      "label": "Map a returned prompt (or raw label) back to a base clothing label.",
+      "file_type": "rationale",
+      "source_file": "modules/clothing.py",
+      "source_location": "L98",
+      "_origin": "ast",
+      "id": "modules_clothing_rationale_98",
+      "community": 23,
+      "norm_label": "map a returned prompt (or raw label) back to a base clothing label."
+    },
+    {
+      "label": "Torso/person region for detection. Prefer the pose box (covers         shoulders",
+      "file_type": "rationale",
+      "source_file": "modules/clothing.py",
+      "source_location": "L109",
+      "_origin": "ast",
+      "id": "modules_clothing_rationale_109",
+      "community": 23,
+      "norm_label": "torso/person region for detection. prefer the pose box (covers         shoulders"
+    },
+    {
+      "label": "clothing_advice.py",
+      "file_type": "code",
+      "source_file": "modules/clothing_advice.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "modules_clothing_advice",
+      "community": 1,
+      "norm_label": "clothing_advice.py"
+    },
+    {
+      "label": "ClothingAdvice",
+      "file_type": "code",
+      "source_file": "modules/clothing_advice.py",
+      "source_location": "L16",
+      "_origin": "ast",
+      "id": "modules_clothing_advice_clothingadvice",
+      "community": 5,
+      "norm_label": "clothingadvice"
+    },
+    {
+      "label": ".process()",
+      "file_type": "code",
+      "source_file": "modules/clothing_advice.py",
+      "source_location": "L26",
+      "_origin": "ast",
+      "id": "modules_clothing_advice_clothingadvice_process",
+      "community": 5,
+      "norm_label": ".process()"
+    },
+    {
+      "label": "Weather-aware clothing recommendations.",
+      "file_type": "rationale",
+      "source_file": "modules/clothing_advice.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "modules_clothing_advice_rationale_1",
+      "community": 1,
+      "norm_label": "weather-aware clothing recommendations."
+    },
+    {
       "label": "drowsiness.py",
       "file_type": "code",
       "source_file": "modules/drowsiness.py",
@@ -1717,40 +1927,40 @@
       "label": "_ear()",
       "file_type": "code",
       "source_file": "modules/drowsiness.py",
-      "source_location": "L23",
+      "source_location": "L24",
       "_origin": "ast",
       "id": "modules_drowsiness_ear",
-      "community": 23,
+      "community": 2,
       "norm_label": "_ear()"
     },
     {
       "label": "Drowsiness",
       "file_type": "code",
       "source_file": "modules/drowsiness.py",
-      "source_location": "L31",
+      "source_location": "L32",
       "_origin": "ast",
       "id": "modules_drowsiness_drowsiness",
-      "community": 23,
+      "community": 2,
       "norm_label": "drowsiness"
     },
     {
       "label": ".__init__()",
       "file_type": "code",
       "source_file": "modules/drowsiness.py",
-      "source_location": "L35",
+      "source_location": "L42",
       "_origin": "ast",
       "id": "modules_drowsiness_drowsiness_init",
-      "community": 23,
+      "community": 2,
       "norm_label": ".__init__()"
     },
     {
       "label": ".process()",
       "file_type": "code",
       "source_file": "modules/drowsiness.py",
-      "source_location": "L44",
+      "source_location": "L51",
       "_origin": "ast",
       "id": "modules_drowsiness_drowsiness_process",
-      "community": 23,
+      "community": 2,
       "norm_label": ".process()"
     },
     {
@@ -1810,7 +2020,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "modules_emotion",
-      "community": 11,
+      "community": 12,
       "norm_label": "emotion.py"
     },
     {
@@ -1820,7 +2030,7 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "modules_emotion_emotion",
-      "community": 11,
+      "community": 8,
       "norm_label": "emotion"
     },
     {
@@ -1830,7 +2040,7 @@
       "source_location": "L39",
       "_origin": "ast",
       "id": "modules_emotion_emotion_init",
-      "community": 11,
+      "community": 8,
       "norm_label": ".__init__()"
     },
     {
@@ -1840,7 +2050,7 @@
       "source_location": "L53",
       "_origin": "ast",
       "id": "modules_emotion_emotion_placeholder",
-      "community": 11,
+      "community": 8,
       "norm_label": "._placeholder()"
     },
     {
@@ -1850,7 +2060,7 @@
       "source_location": "L56",
       "_origin": "ast",
       "id": "modules_emotion_emotion_status_result",
-      "community": 11,
+      "community": 8,
       "norm_label": "._status_result()"
     },
     {
@@ -1860,7 +2070,7 @@
       "source_location": "L59",
       "_origin": "ast",
       "id": "modules_emotion_emotion_process",
-      "community": 11,
+      "community": 8,
       "norm_label": ".process()"
     },
     {
@@ -1870,7 +2080,7 @@
       "source_location": "L87",
       "_origin": "ast",
       "id": "modules_emotion_emotion_close",
-      "community": 11,
+      "community": 8,
       "norm_label": ".close()"
     },
     {
@@ -1880,7 +2090,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "modules_emotion_rationale_1",
-      "community": 11,
+      "community": 12,
       "norm_label": "emotion / mood recognition \u2014 multi-backend.  runs several emotion backends toget"
     },
     {
@@ -1910,87 +2120,87 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "modules_emotion_backends_deepface_backend",
-      "community": 11,
+      "community": 4,
       "norm_label": "deepface_backend.py"
     },
     {
       "label": "_worker()",
       "file_type": "code",
       "source_file": "modules/emotion_backends/deepface_backend.py",
-      "source_location": "L24",
+      "source_location": "L25",
       "_origin": "ast",
       "id": "modules_emotion_backends_deepface_backend_worker",
-      "community": 11,
+      "community": 4,
       "norm_label": "_worker()"
     },
     {
       "label": "DeepFaceBackend",
       "file_type": "code",
       "source_file": "modules/emotion_backends/deepface_backend.py",
-      "source_location": "L65",
+      "source_location": "L71",
       "_origin": "ast",
       "id": "modules_emotion_backends_deepface_backend_deepfacebackend",
-      "community": 11,
+      "community": 4,
       "norm_label": "deepfacebackend"
     },
     {
       "label": ".__init__()",
       "file_type": "code",
       "source_file": "modules/emotion_backends/deepface_backend.py",
-      "source_location": "L68",
+      "source_location": "L74",
       "_origin": "ast",
       "id": "modules_emotion_backends_deepface_backend_deepfacebackend_init",
-      "community": 11,
+      "community": 4,
       "norm_label": ".__init__()"
     },
     {
       "label": "._ensure_worker()",
       "file_type": "code",
       "source_file": "modules/emotion_backends/deepface_backend.py",
-      "source_location": "L84",
+      "source_location": "L91",
       "_origin": "ast",
       "id": "modules_emotion_backends_deepface_backend_deepfacebackend_ensure_worker",
-      "community": 11,
+      "community": 4,
       "norm_label": "._ensure_worker()"
     },
     {
       "label": ".update()",
       "file_type": "code",
       "source_file": "modules/emotion_backends/deepface_backend.py",
-      "source_location": "L119",
+      "source_location": "L126",
       "_origin": "ast",
       "id": "modules_emotion_backends_deepface_backend_deepfacebackend_update",
-      "community": 11,
+      "community": 4,
       "norm_label": ".update()"
     },
     {
       "label": ".compute()",
       "file_type": "code",
       "source_file": "modules/emotion_backends/deepface_backend.py",
-      "source_location": "L126",
+      "source_location": "L135",
       "_origin": "ast",
       "id": "modules_emotion_backends_deepface_backend_deepfacebackend_compute",
-      "community": 11,
+      "community": 4,
       "norm_label": ".compute()"
     },
     {
       "label": "._drain()",
       "file_type": "code",
       "source_file": "modules/emotion_backends/deepface_backend.py",
-      "source_location": "L142",
+      "source_location": "L151",
       "_origin": "ast",
       "id": "modules_emotion_backends_deepface_backend_deepfacebackend_drain",
-      "community": 11,
+      "community": 4,
       "norm_label": "._drain()"
     },
     {
       "label": ".close()",
       "file_type": "code",
       "source_file": "modules/emotion_backends/deepface_backend.py",
-      "source_location": "L166",
+      "source_location": "L176",
       "_origin": "ast",
       "id": "modules_emotion_backends_deepface_backend_deepfacebackend_close",
-      "community": 11,
+      "community": 4,
       "norm_label": ".close()"
     },
     {
@@ -2000,7 +2210,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "modules_emotion_backends_deepface_backend_rationale_1",
-      "community": 11,
+      "community": 4,
       "norm_label": "deepface emotion (+age/gender) backend (tested; from research.md).  uses the `de"
     },
     {
@@ -2020,7 +2230,7 @@
       "source_location": "L20",
       "_origin": "ast",
       "id": "modules_emotion_backends_ferplus_ferplusbackend",
-      "community": 11,
+      "community": 15,
       "norm_label": "ferplusbackend"
     },
     {
@@ -2030,7 +2240,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "modules_emotion_backends_ferplus_ferplusbackend_init",
-      "community": 11,
+      "community": 15,
       "norm_label": ".__init__()"
     },
     {
@@ -2040,7 +2250,7 @@
       "source_location": "L38",
       "_origin": "ast",
       "id": "modules_emotion_backends_ferplus_ferplusbackend_update",
-      "community": 11,
+      "community": 15,
       "norm_label": ".update()"
     },
     {
@@ -2050,7 +2260,7 @@
       "source_location": "L43",
       "_origin": "ast",
       "id": "modules_emotion_backends_ferplus_ferplusbackend_compute",
-      "community": 11,
+      "community": 15,
       "norm_label": ".compute()"
     },
     {
@@ -2080,7 +2290,7 @@
       "source_location": "L16",
       "_origin": "ast",
       "id": "modules_emotion_backends_heuristic_heuristicemotionbackend",
-      "community": 11,
+      "community": 8,
       "norm_label": "heuristicemotionbackend"
     },
     {
@@ -2090,7 +2300,7 @@
       "source_location": "L20",
       "_origin": "ast",
       "id": "modules_emotion_backends_heuristic_heuristicemotionbackend_init",
-      "community": 11,
+      "community": 8,
       "norm_label": ".__init__()"
     },
     {
@@ -2100,7 +2310,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "modules_emotion_backends_heuristic_heuristicemotionbackend_update",
-      "community": 11,
+      "community": 8,
       "norm_label": ".update()"
     },
     {
@@ -2110,7 +2320,7 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "modules_emotion_backends_heuristic_heuristicemotionbackend_compute",
-      "community": 11,
+      "community": 8,
       "norm_label": ".compute()"
     },
     {
@@ -2130,7 +2340,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "modules_emotion_backends_hsemotion",
-      "community": 11,
+      "community": 12,
       "norm_label": "hsemotion.py"
     },
     {
@@ -2140,7 +2350,7 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "modules_emotion_backends_hsemotion_hsemotionbackend",
-      "community": 11,
+      "community": 12,
       "norm_label": "hsemotionbackend"
     },
     {
@@ -2150,7 +2360,7 @@
       "source_location": "L30",
       "_origin": "ast",
       "id": "modules_emotion_backends_hsemotion_hsemotionbackend_init",
-      "community": 11,
+      "community": 12,
       "norm_label": ".__init__()"
     },
     {
@@ -2160,7 +2370,7 @@
       "source_location": "L51",
       "_origin": "ast",
       "id": "modules_emotion_backends_hsemotion_hsemotionbackend_update",
-      "community": 11,
+      "community": 12,
       "norm_label": ".update()"
     },
     {
@@ -2170,7 +2380,7 @@
       "source_location": "L57",
       "_origin": "ast",
       "id": "modules_emotion_backends_hsemotion_hsemotionbackend_compute",
-      "community": 11,
+      "community": 12,
       "norm_label": ".compute()"
     },
     {
@@ -2180,7 +2390,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "modules_emotion_backends_hsemotion_rationale_1",
-      "community": 11,
+      "community": 12,
       "norm_label": "hsemotion emotion+mood backend (tested; affectnet-trained, onnx).  uses the `hse"
     },
     {
@@ -2200,7 +2410,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "modules_eye_movement_eyemovement",
-      "community": 32,
+      "community": 2,
       "norm_label": "eyemovement"
     },
     {
@@ -2210,7 +2420,7 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "modules_eye_movement_eyemovement_init",
-      "community": 32,
+      "community": 2,
       "norm_label": ".__init__()"
     },
     {
@@ -2220,7 +2430,7 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "modules_eye_movement_eyemovement_gaze_offset",
-      "community": 32,
+      "community": 2,
       "norm_label": "._gaze_offset()"
     },
     {
@@ -2230,7 +2440,7 @@
       "source_location": "L37",
       "_origin": "ast",
       "id": "modules_eye_movement_eyemovement_process",
-      "community": 32,
+      "community": 2,
       "norm_label": ".process()"
     },
     {
@@ -2260,7 +2470,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "modules_eye_redness_eyeredness",
-      "community": 1,
+      "community": 5,
       "norm_label": "eyeredness"
     },
     {
@@ -2270,7 +2480,7 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "modules_eye_redness_eyeredness_sclera_redness",
-      "community": 1,
+      "community": 5,
       "norm_label": "._sclera_redness()"
     },
     {
@@ -2280,7 +2490,7 @@
       "source_location": "L40",
       "_origin": "ast",
       "id": "modules_eye_redness_eyeredness_process",
-      "community": 1,
+      "community": 5,
       "norm_label": ".process()"
     },
     {
@@ -2310,7 +2520,7 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "modules_facial_asymmetry_facialasymmetry",
-      "community": 5,
+      "community": 22,
       "norm_label": "facialasymmetry"
     },
     {
@@ -2320,7 +2530,7 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "modules_facial_asymmetry_facialasymmetry_init",
-      "community": 5,
+      "community": 22,
       "norm_label": ".__init__()"
     },
     {
@@ -2330,7 +2540,7 @@
       "source_location": "L40",
       "_origin": "ast",
       "id": "modules_facial_asymmetry_facialasymmetry_process",
-      "community": 5,
+      "community": 22,
       "norm_label": ".process()"
     },
     {
@@ -2360,7 +2570,7 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "modules_facial_swelling_facialswelling",
-      "community": 83,
+      "community": 21,
       "norm_label": "facialswelling"
     },
     {
@@ -2370,7 +2580,7 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "modules_facial_swelling_facialswelling_init",
-      "community": 83,
+      "community": 21,
       "norm_label": ".__init__()"
     },
     {
@@ -2380,7 +2590,7 @@
       "source_location": "L31",
       "_origin": "ast",
       "id": "modules_facial_swelling_facialswelling_features",
-      "community": 83,
+      "community": 21,
       "norm_label": "._features()"
     },
     {
@@ -2390,7 +2600,7 @@
       "source_location": "L39",
       "_origin": "ast",
       "id": "modules_facial_swelling_facialswelling_process",
-      "community": 83,
+      "community": 21,
       "norm_label": ".process()"
     },
     {
@@ -2420,7 +2630,7 @@
       "source_location": "L25",
       "_origin": "ast",
       "id": "modules_fall_fall",
-      "community": 82,
+      "community": 2,
       "norm_label": "fall"
     },
     {
@@ -2430,7 +2640,7 @@
       "source_location": "L29",
       "_origin": "ast",
       "id": "modules_fall_fall_init",
-      "community": 82,
+      "community": 2,
       "norm_label": ".__init__()"
     },
     {
@@ -2440,7 +2650,7 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "modules_fall_fall_torso_angle",
-      "community": 82,
+      "community": 2,
       "norm_label": "._torso_angle()"
     },
     {
@@ -2450,7 +2660,7 @@
       "source_location": "L41",
       "_origin": "ast",
       "id": "modules_fall_fall_process",
-      "community": 82,
+      "community": 2,
       "norm_label": ".process()"
     },
     {
@@ -2500,7 +2710,7 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "modules_gait_gait_process",
-      "community": 2,
+      "community": 6,
       "norm_label": ".process()"
     },
     {
@@ -2580,27 +2790,27 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "modules_head_nod_headnod",
-      "community": 15,
+      "community": 2,
       "norm_label": "headnod"
     },
     {
       "label": ".__init__()",
       "file_type": "code",
       "source_file": "modules/head_nod.py",
-      "source_location": "L26",
+      "source_location": "L30",
       "_origin": "ast",
       "id": "modules_head_nod_headnod_init",
-      "community": 15,
+      "community": 2,
       "norm_label": ".__init__()"
     },
     {
       "label": ".process()",
       "file_type": "code",
       "source_file": "modules/head_nod.py",
-      "source_location": "L31",
+      "source_location": "L37",
       "_origin": "ast",
       "id": "modules_head_nod_headnod_process",
-      "community": 15,
+      "community": 2,
       "norm_label": ".process()"
     },
     {
@@ -2630,7 +2840,7 @@
       "source_location": "L37",
       "_origin": "ast",
       "id": "modules_heart_rate_heartrate",
-      "community": 6,
+      "community": 18,
       "norm_label": "heartrate"
     },
     {
@@ -2640,7 +2850,7 @@
       "source_location": "L52",
       "_origin": "ast",
       "id": "modules_heart_rate_heartrate_init",
-      "community": 6,
+      "community": 18,
       "norm_label": ".__init__()"
     },
     {
@@ -2650,7 +2860,7 @@
       "source_location": "L82",
       "_origin": "ast",
       "id": "modules_heart_rate_heartrate_key",
-      "community": 6,
+      "community": 18,
       "norm_label": "._key()"
     },
     {
@@ -2660,7 +2870,7 @@
       "source_location": "L85",
       "_origin": "ast",
       "id": "modules_heart_rate_heartrate_placeholder",
-      "community": 6,
+      "community": 18,
       "norm_label": "._placeholder()"
     },
     {
@@ -2670,7 +2880,7 @@
       "source_location": "L88",
       "_origin": "ast",
       "id": "modules_heart_rate_heartrate_status_result",
-      "community": 6,
+      "community": 18,
       "norm_label": "._status_result()"
     },
     {
@@ -2680,7 +2890,7 @@
       "source_location": "L91",
       "_origin": "ast",
       "id": "modules_heart_rate_heartrate_process",
-      "community": 6,
+      "community": 18,
       "norm_label": ".process()"
     },
     {
@@ -2690,7 +2900,7 @@
       "source_location": "L141",
       "_origin": "ast",
       "id": "modules_heart_rate_heartrate_close",
-      "community": 6,
+      "community": 18,
       "norm_label": ".close()"
     },
     {
@@ -2720,7 +2930,7 @@
       "source_location": "L24",
       "_origin": "ast",
       "id": "modules_masked_face_maskedface",
-      "community": 97,
+      "community": 2,
       "norm_label": "maskedface"
     },
     {
@@ -2730,7 +2940,7 @@
       "source_location": "L29",
       "_origin": "ast",
       "id": "modules_masked_face_maskedface_init",
-      "community": 97,
+      "community": 2,
       "norm_label": ".__init__()"
     },
     {
@@ -2740,7 +2950,7 @@
       "source_location": "L33",
       "_origin": "ast",
       "id": "modules_masked_face_maskedface_process",
-      "community": 97,
+      "community": 2,
       "norm_label": ".process()"
     },
     {
@@ -2770,7 +2980,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "modules_pain_pain",
-      "community": 84,
+      "community": 97,
       "norm_label": "pain"
     },
     {
@@ -2780,7 +2990,7 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "modules_pain_pain_init",
-      "community": 84,
+      "community": 97,
       "norm_label": ".__init__()"
     },
     {
@@ -2790,7 +3000,7 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "modules_pain_pain_aus",
-      "community": 84,
+      "community": 97,
       "norm_label": "._aus()"
     },
     {
@@ -2800,7 +3010,7 @@
       "source_location": "L42",
       "_origin": "ast",
       "id": "modules_pain_pain_process",
-      "community": 84,
+      "community": 97,
       "norm_label": ".process()"
     },
     {
@@ -2830,7 +3040,7 @@
       "source_location": "L20",
       "_origin": "ast",
       "id": "modules_presence_presence",
-      "community": 4,
+      "community": 19,
       "norm_label": "presence"
     },
     {
@@ -2840,7 +3050,7 @@
       "source_location": "L24",
       "_origin": "ast",
       "id": "modules_presence_presence_init",
-      "community": 4,
+      "community": 19,
       "norm_label": ".__init__()"
     },
     {
@@ -2850,7 +3060,7 @@
       "source_location": "L30",
       "_origin": "ast",
       "id": "modules_presence_presence_process",
-      "community": 4,
+      "community": 19,
       "norm_label": ".process()"
     },
     {
@@ -2940,7 +3150,7 @@
       "source_location": "L29",
       "_origin": "ast",
       "id": "modules_respiration_respiration_process",
-      "community": 2,
+      "community": 6,
       "norm_label": ".process()"
     },
     {
@@ -3020,7 +3230,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "modules_rppg_backends_classical",
-      "community": 11,
+      "community": 6,
       "norm_label": "classical.py"
     },
     {
@@ -3040,7 +3250,7 @@
       "source_location": "L25",
       "_origin": "ast",
       "id": "modules_rppg_backends_classical_classicalbackend_init",
-      "community": 6,
+      "community": 2,
       "norm_label": ".__init__()"
     },
     {
@@ -3060,7 +3270,7 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "modules_rppg_backends_classical_classicalbackend_compute",
-      "community": 2,
+      "community": 6,
       "norm_label": ".compute()"
     },
     {
@@ -3070,7 +3280,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "modules_rppg_backends_classical_rationale_1",
-      "community": 11,
+      "community": 6,
       "norm_label": "classical rppg backend: forehead green-channel bandpass + fft.  this is the orig"
     },
     {
@@ -3080,57 +3290,57 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "modules_rppg_backends_openrppg",
-      "community": 22,
+      "community": 6,
       "norm_label": "openrppg.py"
     },
     {
       "label": "OpenRPPGBackend",
       "file_type": "code",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L39",
+      "source_location": "L40",
       "_origin": "ast",
       "id": "modules_rppg_backends_openrppg_openrppgbackend",
-      "community": 22,
+      "community": 18,
       "norm_label": "openrppgbackend"
     },
     {
       "label": ".__init__()",
       "file_type": "code",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L43",
+      "source_location": "L44",
       "_origin": "ast",
       "id": "modules_rppg_backends_openrppg_openrppgbackend_init",
-      "community": 22,
+      "community": 18,
       "norm_label": ".__init__()"
     },
     {
       "label": ".update()",
       "file_type": "code",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L90",
+      "source_location": "L96",
       "_origin": "ast",
       "id": "modules_rppg_backends_openrppg_openrppgbackend_update",
-      "community": 22,
+      "community": 18,
       "norm_label": ".update()"
     },
     {
       "label": "._stable_face()",
       "file_type": "code",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L107",
+      "source_location": "L121",
       "_origin": "ast",
       "id": "modules_rppg_backends_openrppg_openrppgbackend_stable_face",
-      "community": 22,
+      "community": 18,
       "norm_label": "._stable_face()"
     },
     {
       "label": "._infer()",
       "file_type": "code",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L124",
+      "source_location": "L138",
       "_origin": "ast",
       "id": "modules_rppg_backends_openrppg_openrppgbackend_infer",
-      "community": 22,
+      "community": 18,
       "norm_label": "._infer()"
     },
     {
@@ -3140,77 +3350,77 @@
       "source_location": "",
       "_origin": "ast",
       "id": "modules_rppg_backends_openrppg_py_ndarray",
-      "community": 22,
+      "community": 18,
       "norm_label": "ndarray"
     },
     {
       "label": ".compute()",
       "file_type": "code",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L136",
+      "source_location": "L150",
       "_origin": "ast",
       "id": "modules_rppg_backends_openrppg_openrppgbackend_compute",
-      "community": 22,
+      "community": 18,
       "norm_label": ".compute()"
     },
     {
       "label": "._compute_tensor()",
       "file_type": "code",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L170",
+      "source_location": "L188",
       "_origin": "ast",
       "id": "modules_rppg_backends_openrppg_openrppgbackend_compute_tensor",
-      "community": 22,
+      "community": 18,
       "norm_label": "._compute_tensor()"
     },
     {
       "label": "._prepare_runtime()",
       "file_type": "code",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L229",
+      "source_location": "L249",
       "_origin": "ast",
       "id": "modules_rppg_backends_openrppg_openrppgbackend_prepare_runtime",
-      "community": 22,
+      "community": 18,
       "norm_label": "._prepare_runtime()"
     },
     {
       "label": "._log_runtime()",
       "file_type": "code",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L243",
+      "source_location": "L263",
       "_origin": "ast",
       "id": "modules_rppg_backends_openrppg_openrppgbackend_log_runtime",
-      "community": 22,
+      "community": 18,
       "norm_label": "._log_runtime()"
     },
     {
       "label": ".close()",
       "file_type": "code",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L269",
+      "source_location": "L289",
       "_origin": "ast",
       "id": "modules_rppg_backends_openrppg_openrppgbackend_close",
-      "community": 22,
+      "community": 18,
       "norm_label": ".close()"
     },
     {
       "label": "_finite()",
       "file_type": "code",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L285",
+      "source_location": "L305",
       "_origin": "ast",
       "id": "modules_rppg_backends_openrppg_finite",
-      "community": 22,
+      "community": 18,
       "norm_label": "_finite()"
     },
     {
       "label": "_hrv_from_bvp()",
       "file_type": "code",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L293",
+      "source_location": "L313",
       "_origin": "ast",
       "id": "modules_rppg_backends_openrppg_hrv_from_bvp",
-      "community": 22,
+      "community": 6,
       "norm_label": "_hrv_from_bvp()"
     },
     {
@@ -3220,27 +3430,27 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "modules_rppg_backends_openrppg_rationale_1",
-      "community": 22,
+      "community": 6,
       "norm_label": "neural rppg backend using the open-rppg toolbox (kegangwangccnu/open-rppg).  rep"
     },
     {
       "label": "One inference pass -> (hr_dict, bvp_array, bvp_ts). Mirrors         process_face",
       "file_type": "rationale",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L125",
+      "source_location": "L139",
       "_origin": "ast",
-      "id": "modules_rppg_backends_openrppg_rationale_125",
-      "community": 22,
+      "id": "modules_rppg_backends_openrppg_rationale_139",
+      "community": 18,
       "norm_label": "one inference pass -> (hr_dict, bvp_array, bvp_ts). mirrors         process_face"
     },
     {
       "label": "Derive RMSSD/SDNN (ms) and breathing rate (/min) straight from the     open-rppg",
       "file_type": "rationale",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L294",
+      "source_location": "L314",
       "_origin": "ast",
-      "id": "modules_rppg_backends_openrppg_rationale_294",
-      "community": 22,
+      "id": "modules_rppg_backends_openrppg_rationale_314",
+      "community": 6,
       "norm_label": "derive rmssd/sdnn (ms) and breathing rate (/min) straight from the     open-rppg"
     },
     {
@@ -3260,7 +3470,7 @@
       "source_location": "L30",
       "_origin": "ast",
       "id": "modules_skin_color_norm_chroma",
-      "community": 6,
+      "community": 104,
       "norm_label": "_norm_chroma()"
     },
     {
@@ -3270,7 +3480,7 @@
       "source_location": "",
       "_origin": "ast",
       "id": "modules_skin_color_py_ndarray",
-      "community": 6,
+      "community": 104,
       "norm_label": "ndarray"
     },
     {
@@ -3280,7 +3490,7 @@
       "source_location": "L38",
       "_origin": "ast",
       "id": "modules_skin_color_baseline",
-      "community": 6,
+      "community": 104,
       "norm_label": "_baseline"
     },
     {
@@ -3290,7 +3500,7 @@
       "source_location": "L39",
       "_origin": "ast",
       "id": "modules_skin_color_baseline_init",
-      "community": 6,
+      "community": 104,
       "norm_label": ".__init__()"
     },
     {
@@ -3300,7 +3510,7 @@
       "source_location": "L45",
       "_origin": "ast",
       "id": "modules_skin_color_baseline_update",
-      "community": 6,
+      "community": 104,
       "norm_label": ".update()"
     },
     {
@@ -3310,7 +3520,7 @@
       "source_location": "L56",
       "_origin": "ast",
       "id": "modules_skin_color_skincolor",
-      "community": 6,
+      "community": 104,
       "norm_label": "skincolor"
     },
     {
@@ -3320,7 +3530,7 @@
       "source_location": "L60",
       "_origin": "ast",
       "id": "modules_skin_color_skincolor_init",
-      "community": 6,
+      "community": 104,
       "norm_label": ".__init__()"
     },
     {
@@ -3330,7 +3540,7 @@
       "source_location": "L64",
       "_origin": "ast",
       "id": "modules_skin_color_skincolor_process",
-      "community": 6,
+      "community": 104,
       "norm_label": ".process()"
     },
     {
@@ -3350,7 +3560,7 @@
       "source_location": "L31",
       "_origin": "ast",
       "id": "modules_skin_color_rationale_31",
-      "community": 6,
+      "community": 104,
       "norm_label": "mean normalized (r,g,b) chromaticity of a set of bgr pixels."
     },
     {
@@ -3370,7 +3580,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "modules_sweating_sweating",
-      "community": 6,
+      "community": 82,
       "norm_label": "sweating"
     },
     {
@@ -3380,7 +3590,7 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "modules_sweating_sweating_init",
-      "community": 6,
+      "community": 82,
       "norm_label": ".__init__()"
     },
     {
@@ -3390,7 +3600,7 @@
       "source_location": "L31",
       "_origin": "ast",
       "id": "modules_sweating_sweating_process",
-      "community": 6,
+      "community": 82,
       "norm_label": ".process()"
     },
     {
@@ -3440,7 +3650,7 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "modules_tremor_tremor_process",
-      "community": 2,
+      "community": 6,
       "norm_label": ".process()"
     },
     {
@@ -3520,7 +3730,7 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "modules_wandering_wandering",
-      "community": 15,
+      "community": 2,
       "norm_label": "wandering"
     },
     {
@@ -3530,7 +3740,7 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "modules_wandering_wandering_init",
-      "community": 15,
+      "community": 2,
       "norm_label": ".__init__()"
     },
     {
@@ -3540,7 +3750,7 @@
       "source_location": "L30",
       "_origin": "ast",
       "id": "modules_wandering_wandering_process",
-      "community": 15,
+      "community": 2,
       "norm_label": ".process()"
     },
     {
@@ -3552,6 +3762,76 @@
       "id": "modules_wandering_rationale_1",
       "community": 1,
       "norm_label": "wandering / pacing detection (disorientation, agitation).  method: track the per"
+    },
+    {
+      "label": "weather.py",
+      "file_type": "code",
+      "source_file": "modules/weather.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "modules_weather",
+      "community": 1,
+      "norm_label": "weather.py"
+    },
+    {
+      "label": "Weather",
+      "file_type": "code",
+      "source_file": "modules/weather.py",
+      "source_location": "L22",
+      "_origin": "ast",
+      "id": "modules_weather_weather",
+      "community": 32,
+      "norm_label": "weather"
+    },
+    {
+      "label": ".__init__()",
+      "file_type": "code",
+      "source_file": "modules/weather.py",
+      "source_location": "L29",
+      "_origin": "ast",
+      "id": "modules_weather_weather_init",
+      "community": 32,
+      "norm_label": ".__init__()"
+    },
+    {
+      "label": "._coords()",
+      "file_type": "code",
+      "source_file": "modules/weather.py",
+      "source_location": "L35",
+      "_origin": "ast",
+      "id": "modules_weather_weather_coords",
+      "community": 32,
+      "norm_label": "._coords()"
+    },
+    {
+      "label": "._fetch()",
+      "file_type": "code",
+      "source_file": "modules/weather.py",
+      "source_location": "L43",
+      "_origin": "ast",
+      "id": "modules_weather_weather_fetch",
+      "community": 32,
+      "norm_label": "._fetch()"
+    },
+    {
+      "label": ".process()",
+      "file_type": "code",
+      "source_file": "modules/weather.py",
+      "source_location": "L80",
+      "_origin": "ast",
+      "id": "modules_weather_weather_process",
+      "community": 32,
+      "norm_label": ".process()"
+    },
+    {
+      "label": "Current weather from Open-Meteo for clothing recommendations.  No API key is req",
+      "file_type": "rationale",
+      "source_file": "modules/weather.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "modules_weather_rationale_1",
+      "community": 1,
+      "norm_label": "current weather from open-meteo for clothing recommendations.  no api key is req"
     },
     {
       "label": "yawn.py",
@@ -3570,27 +3850,27 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "modules_yawn_yawn",
-      "community": 98,
+      "community": 2,
       "norm_label": "yawn"
     },
     {
       "label": ".__init__()",
       "file_type": "code",
       "source_file": "modules/yawn.py",
-      "source_location": "L27",
+      "source_location": "L30",
       "_origin": "ast",
       "id": "modules_yawn_yawn_init",
-      "community": 98,
+      "community": 2,
       "norm_label": ".__init__()"
     },
     {
       "label": ".process()",
       "file_type": "code",
       "source_file": "modules/yawn.py",
-      "source_location": "L32",
+      "source_location": "L35",
       "_origin": "ast",
       "id": "modules_yawn_yawn_process",
-      "community": 98,
+      "community": 2,
       "norm_label": ".process()"
     },
     {
@@ -3620,7 +3900,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "output_aggregator",
-      "community": 12,
+      "community": 0,
       "norm_label": "aggregator.py"
     },
     {
@@ -3630,7 +3910,7 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "output_aggregator_aggregator",
-      "community": 12,
+      "community": 0,
       "norm_label": "aggregator"
     },
     {
@@ -3640,7 +3920,7 @@
       "source_location": "L19",
       "_origin": "ast",
       "id": "output_aggregator_aggregator_init",
-      "community": 12,
+      "community": 0,
       "norm_label": ".__init__()"
     },
     {
@@ -3650,7 +3930,7 @@
       "source_location": "L24",
       "_origin": "ast",
       "id": "output_aggregator_aggregator_smooth",
-      "community": 12,
+      "community": 0,
       "norm_label": "._smooth()"
     },
     {
@@ -3660,7 +3940,7 @@
       "source_location": "L35",
       "_origin": "ast",
       "id": "output_aggregator_aggregator_ingest",
-      "community": 12,
+      "community": 0,
       "norm_label": ".ingest()"
     },
     {
@@ -3670,7 +3950,7 @@
       "source_location": "L44",
       "_origin": "ast",
       "id": "output_aggregator_aggregator_snapshot",
-      "community": 12,
+      "community": 0,
       "norm_label": ".snapshot()"
     },
     {
@@ -3680,7 +3960,7 @@
       "source_location": "L47",
       "_origin": "ast",
       "id": "output_aggregator_aggregator_by_severity",
-      "community": 12,
+      "community": 0,
       "norm_label": ".by_severity()"
     },
     {
@@ -3690,7 +3970,7 @@
       "source_location": "L54",
       "_origin": "ast",
       "id": "output_aggregator_aggregator_get",
-      "community": 12,
+      "community": 0,
       "norm_label": ".get()"
     },
     {
@@ -3700,7 +3980,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "output_aggregator_rationale_1",
-      "community": 12,
+      "community": 0,
       "norm_label": "aggregator: keeps the latest non-expired result per (module, key).  provides a s"
     },
     {
@@ -3717,7 +3997,7 @@
       "label": "_text()",
       "file_type": "code",
       "source_file": "output/dashboard.py",
-      "source_location": "L52",
+      "source_location": "L86",
       "_origin": "ast",
       "id": "output_dashboard_text",
       "community": 14,
@@ -3727,7 +4007,7 @@
       "label": "_split_backend()",
       "file_type": "code",
       "source_file": "output/dashboard.py",
-      "source_location": "L56",
+      "source_location": "L90",
       "_origin": "ast",
       "id": "output_dashboard_split_backend",
       "community": 14,
@@ -3737,7 +4017,7 @@
       "label": "_parse_comparisons()",
       "file_type": "code",
       "source_file": "output/dashboard.py",
-      "source_location": "L67",
+      "source_location": "L101",
       "_origin": "ast",
       "id": "output_dashboard_parse_comparisons",
       "community": 14,
@@ -3747,17 +4027,37 @@
       "label": "_fmt()",
       "file_type": "code",
       "source_file": "output/dashboard.py",
-      "source_location": "L78",
+      "source_location": "L112",
       "_origin": "ast",
       "id": "output_dashboard_fmt",
       "community": 14,
       "norm_label": "_fmt()"
     },
     {
+      "label": "_render_fatigue_stats()",
+      "file_type": "code",
+      "source_file": "output/dashboard.py",
+      "source_location": "L120",
+      "_origin": "ast",
+      "id": "output_dashboard_render_fatigue_stats",
+      "community": 14,
+      "norm_label": "_render_fatigue_stats()"
+    },
+    {
+      "label": "_render_clothing_weather()",
+      "file_type": "code",
+      "source_file": "output/dashboard.py",
+      "source_location": "L142",
+      "_origin": "ast",
+      "id": "output_dashboard_render_clothing_weather",
+      "community": 14,
+      "norm_label": "_render_clothing_weather()"
+    },
+    {
       "label": "render()",
       "file_type": "code",
       "source_file": "output/dashboard.py",
-      "source_location": "L84",
+      "source_location": "L170",
       "_origin": "ast",
       "id": "output_dashboard_render",
       "community": 14,
@@ -3777,9 +4077,9 @@
       "label": "-> {(module, metric): {backend: Result}} for multi-backend keys.",
       "file_type": "rationale",
       "source_file": "output/dashboard.py",
-      "source_location": "L68",
+      "source_location": "L102",
       "_origin": "ast",
-      "id": "output_dashboard_rationale_68",
+      "id": "output_dashboard_rationale_102",
       "community": 14,
       "norm_label": "-> {(module, metric): {backend: result}} for multi-backend keys."
     },
@@ -3790,7 +4090,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "output_greeting_engine",
-      "community": 12,
+      "community": 0,
       "norm_label": "greeting_engine.py"
     },
     {
@@ -3800,7 +4100,7 @@
       "source_location": "L21",
       "_origin": "ast",
       "id": "output_greeting_engine_greetingengine",
-      "community": 12,
+      "community": 0,
       "norm_label": "greetingengine"
     },
     {
@@ -3810,7 +4110,7 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "output_greeting_engine_greetingengine_init",
-      "community": 12,
+      "community": 0,
       "norm_label": ".__init__()"
     },
     {
@@ -3820,7 +4120,7 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "output_greeting_engine_greetingengine_time_of_day",
-      "community": 12,
+      "community": 0,
       "norm_label": "._time_of_day()"
     },
     {
@@ -3830,7 +4130,7 @@
       "source_location": "L35",
       "_origin": "ast",
       "id": "output_greeting_engine_greetingengine_alerts",
-      "community": 12,
+      "community": 0,
       "norm_label": ".alerts()"
     },
     {
@@ -3840,7 +4140,7 @@
       "source_location": "L39",
       "_origin": "ast",
       "id": "output_greeting_engine_greetingengine_maybe_greet",
-      "community": 12,
+      "community": 0,
       "norm_label": ".maybe_greet()"
     },
     {
@@ -3850,7 +4150,7 @@
       "source_location": "L51",
       "_origin": "ast",
       "id": "output_greeting_engine_greetingengine_compose",
-      "community": 12,
+      "community": 0,
       "norm_label": ".compose()"
     },
     {
@@ -3860,7 +4160,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "output_greeting_engine_rationale_1",
-      "community": 12,
+      "community": 0,
       "norm_label": "rule-based greeting + recommendation engine.  consumes the aggregator snapshot a"
     },
     {
@@ -3870,7 +4170,7 @@
       "source_location": "L40",
       "_origin": "ast",
       "id": "output_greeting_engine_rationale_40",
-      "community": 12,
+      "community": 0,
       "norm_label": "return a greeting string if a person just arrived (or forced)."
     },
     {
@@ -3940,7 +4240,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "storage_history_store",
-      "community": 4,
+      "community": 19,
       "norm_label": "history_store.py"
     },
     {
@@ -3950,7 +4250,7 @@
       "source_location": "L17",
       "_origin": "ast",
       "id": "storage_history_store_historystore",
-      "community": 4,
+      "community": 19,
       "norm_label": "historystore"
     },
     {
@@ -3960,7 +4260,7 @@
       "source_location": "L20",
       "_origin": "ast",
       "id": "storage_history_store_historystore_init",
-      "community": 8,
+      "community": 0,
       "norm_label": ".__init__()"
     },
     {
@@ -3970,7 +4270,7 @@
       "source_location": "",
       "_origin": "ast",
       "id": "path",
-      "community": 8,
+      "community": 0,
       "norm_label": "path"
     },
     {
@@ -3980,7 +4280,7 @@
       "source_location": "L31",
       "_origin": "ast",
       "id": "storage_history_store_historystore_instance",
-      "community": 4,
+      "community": 19,
       "norm_label": ".instance()"
     },
     {
@@ -3990,7 +4290,7 @@
       "source_location": "L36",
       "_origin": "ast",
       "id": "storage_history_store_historystore_add",
-      "community": 4,
+      "community": 19,
       "norm_label": ".add()"
     },
     {
@@ -4000,7 +4300,7 @@
       "source_location": "L41",
       "_origin": "ast",
       "id": "storage_history_store_historystore_recent",
-      "community": 4,
+      "community": 19,
       "norm_label": ".recent()"
     },
     {
@@ -4010,7 +4310,7 @@
       "source_location": "L48",
       "_origin": "ast",
       "id": "storage_history_store_historystore_mean_since",
-      "community": 4,
+      "community": 19,
       "norm_label": ".mean_since()"
     },
     {
@@ -4020,7 +4320,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "storage_history_store_rationale_1",
-      "community": 4,
+      "community": 19,
       "norm_label": "persistent longitudinal store (sqlite).  longitudinal modules (activity trends,"
     },
     {
@@ -4030,7 +4330,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_benchmark_rppg_models",
-      "community": 22,
+      "community": 18,
       "norm_label": "benchmark_rppg_models.py"
     },
     {
@@ -4040,7 +4340,7 @@
       "source_location": "L31",
       "_origin": "ast",
       "id": "tests_benchmark_rppg_models_mean",
-      "community": 22,
+      "community": 18,
       "norm_label": "_mean()"
     },
     {
@@ -4050,7 +4350,7 @@
       "source_location": "L35",
       "_origin": "ast",
       "id": "tests_benchmark_rppg_models_median",
-      "community": 22,
+      "community": 18,
       "norm_label": "_median()"
     },
     {
@@ -4060,7 +4360,7 @@
       "source_location": "L39",
       "_origin": "ast",
       "id": "tests_benchmark_rppg_models_pct",
-      "community": 22,
+      "community": 18,
       "norm_label": "_pct()"
     },
     {
@@ -4070,7 +4370,7 @@
       "source_location": "L43",
       "_origin": "ast",
       "id": "tests_benchmark_rppg_models_load_reference",
-      "community": 22,
+      "community": 18,
       "norm_label": "_load_reference()"
     },
     {
@@ -4080,7 +4380,7 @@
       "source_location": "L58",
       "_origin": "ast",
       "id": "tests_benchmark_rppg_models_run_model",
-      "community": 22,
+      "community": 18,
       "norm_label": "_run_model()"
     },
     {
@@ -4090,7 +4390,7 @@
       "source_location": "L143",
       "_origin": "ast",
       "id": "tests_benchmark_rppg_models_write_csv",
-      "community": 22,
+      "community": 18,
       "norm_label": "_write_csv()"
     },
     {
@@ -4100,7 +4400,7 @@
       "source_location": "L151",
       "_origin": "ast",
       "id": "tests_benchmark_rppg_models_main",
-      "community": 22,
+      "community": 18,
       "norm_label": "main()"
     },
     {
@@ -4110,7 +4410,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_benchmark_rppg_models_rationale_1",
-      "community": 22,
+      "community": 18,
       "norm_label": "benchmark open-rppg models on the same clip against a reference bpm.  examples:"
     },
     {
@@ -4120,7 +4420,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_hr_backends_test",
-      "community": 19,
+      "community": 18,
       "norm_label": "hr_backends_test.py"
     },
     {
@@ -4130,7 +4430,7 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "tests_hr_backends_test_main",
-      "community": 19,
+      "community": 18,
       "norm_label": "main()"
     },
     {
@@ -4140,7 +4440,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_hr_backends_test_rationale_1",
-      "community": 19,
+      "community": 18,
       "norm_label": "integration test for the heart_rate module with both backends.  feeds synthetic"
     },
     {
@@ -4170,7 +4470,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_pose_modules_test",
-      "community": 8,
+      "community": 0,
       "norm_label": "pose_modules_test.py"
     },
     {
@@ -4180,7 +4480,7 @@
       "source_location": "L24",
       "_origin": "ast",
       "id": "tests_pose_modules_test_synth_pose",
-      "community": 8,
+      "community": 0,
       "norm_label": "synth_pose()"
     },
     {
@@ -4190,7 +4490,7 @@
       "source_location": "L52",
       "_origin": "ast",
       "id": "tests_pose_modules_test_main",
-      "community": 8,
+      "community": 0,
       "norm_label": "main()"
     },
     {
@@ -4200,7 +4500,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_pose_modules_test_rationale_1",
-      "community": 8,
+      "community": 0,
       "norm_label": "exercise pose-dependent modules by injecting synthetic pose landmarks.  the synt"
     },
     {
@@ -4210,7 +4510,7 @@
       "source_location": "L25",
       "_origin": "ast",
       "id": "tests_pose_modules_test_rationale_25",
-      "community": 8,
+      "community": 0,
       "norm_label": "33x4 pose landmarks; add a fast wrist tremor + walking ankle motion."
     },
     {
@@ -4937,17 +5237,27 @@
       "label": "Heart rate: two backends, compared live",
       "file_type": "document",
       "source_file": "README.md",
-      "source_location": "L32",
+      "source_location": "L33",
       "_origin": "ast",
       "id": "readme_heart_rate_two_backends_compared_live",
       "community": 7,
       "norm_label": "heart rate: two backends, compared live"
     },
     {
+      "label": "Clothing + weather recommendations",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": "L76",
+      "_origin": "ast",
+      "id": "readme_clothing_weather_recommendations",
+      "community": 7,
+      "norm_label": "clothing + weather recommendations"
+    },
+    {
       "label": "Architecture",
       "file_type": "document",
       "source_file": "README.md",
-      "source_location": "L73",
+      "source_location": "L87",
       "_origin": "ast",
       "id": "readme_architecture",
       "community": 7,
@@ -4957,7 +5267,7 @@
       "label": "Add or change a module",
       "file_type": "document",
       "source_file": "README.md",
-      "source_location": "L90",
+      "source_location": "L104",
       "_origin": "ast",
       "id": "readme_add_or_change_a_module",
       "community": 7,
@@ -4967,27 +5277,27 @@
       "label": "Test without a webcam",
       "file_type": "document",
       "source_file": "README.md",
-      "source_location": "L109",
+      "source_location": "L123",
       "_origin": "ast",
       "id": "readme_test_without_a_webcam",
       "community": 7,
       "norm_label": "test without a webcam"
     },
     {
-      "label": "Module catalogue (30)",
+      "label": "Module catalogue (33)",
       "file_type": "document",
       "source_file": "README.md",
-      "source_location": "L116",
+      "source_location": "L130",
       "_origin": "ast",
-      "id": "readme_module_catalogue_30",
+      "id": "readme_module_catalogue_33",
       "community": 7,
-      "norm_label": "module catalogue (30)"
+      "norm_label": "module catalogue (33)"
     },
     {
       "label": "Privacy note",
       "file_type": "document",
       "source_file": "README.md",
-      "source_location": "L128",
+      "source_location": "L143",
       "_origin": "ast",
       "id": "readme_privacy_note",
       "community": 7,
@@ -6404,6 +6714,28 @@
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
+      "source_file": "modules/clothing.py",
+      "source_location": "L27",
+      "weight": 1.0,
+      "source": "modules_clothing",
+      "target": "core_context",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/clothing_advice.py",
+      "source_location": "L4",
+      "weight": 1.0,
+      "source": "modules_clothing_advice",
+      "target": "core_context",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
       "source_file": "modules/drowsiness.py",
       "source_location": "L15",
       "weight": 1.0,
@@ -6705,6 +7037,17 @@
       "source_location": "L13",
       "weight": 1.0,
       "source": "modules_wandering",
+      "target": "core_context",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/weather.py",
+      "source_location": "L14",
+      "weight": 1.0,
+      "source": "modules_weather",
       "target": "core_context",
       "confidence_score": 1.0
     },
@@ -7352,6 +7695,81 @@
       "relation": "imports",
       "context": "import",
       "confidence": "EXTRACTED",
+      "source_file": "modules/clothing.py",
+      "source_location": "L27",
+      "weight": 1.0,
+      "source": "modules_clothing",
+      "target": "core_context_framecontext",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/clothing_advice.py",
+      "source_location": "L4",
+      "weight": 1.0,
+      "source": "modules_clothing_advice",
+      "target": "core_context_framecontext",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "modules/clothing_advice.py",
+      "source_location": "L4",
+      "weight": 0.8,
+      "source": "modules_clothing_advice_clothingadvice",
+      "target": "core_context_framecontext",
+      "confidence_score": 0.5
+    },
+    {
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/clothing_advice.py",
+      "source_location": "L26",
+      "weight": 1.0,
+      "source": "modules_clothing_advice_clothingadvice_process",
+      "target": "core_context_framecontext",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "modules/clothing.py",
+      "source_location": "L27",
+      "weight": 0.8,
+      "source": "modules_clothing_clothing",
+      "target": "core_context_framecontext",
+      "confidence_score": 0.5
+    },
+    {
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/clothing.py",
+      "source_location": "L108",
+      "weight": 1.0,
+      "source": "modules_clothing_clothing_person_region",
+      "target": "core_context_framecontext",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/clothing.py",
+      "source_location": "L183",
+      "weight": 1.0,
+      "source": "modules_clothing_clothing_process",
+      "target": "core_context_framecontext",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
       "source_file": "modules/drowsiness.py",
       "source_location": "L15",
       "weight": 1.0,
@@ -7374,7 +7792,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "modules/drowsiness.py",
-      "source_location": "L44",
+      "source_location": "L51",
       "weight": 1.0,
       "source": "modules_drowsiness_drowsiness_process",
       "target": "core_context_framecontext",
@@ -7449,7 +7867,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "modules/emotion_backends/deepface_backend.py",
-      "source_location": "L119",
+      "source_location": "L126",
       "weight": 1.0,
       "source": "modules_emotion_backends_deepface_backend_deepfacebackend_update",
       "target": "core_context_framecontext",
@@ -7822,7 +8240,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "modules/head_nod.py",
-      "source_location": "L31",
+      "source_location": "L37",
       "weight": 1.0,
       "source": "modules_head_nod_headnod_process",
       "target": "core_context_framecontext",
@@ -8078,7 +8496,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L90",
+      "source_location": "L96",
       "weight": 1.0,
       "source": "modules_rppg_backends_openrppg_openrppgbackend_update",
       "target": "core_context_framecontext",
@@ -8258,6 +8676,38 @@
       "relation": "imports",
       "context": "import",
       "confidence": "EXTRACTED",
+      "source_file": "modules/weather.py",
+      "source_location": "L14",
+      "weight": 1.0,
+      "source": "modules_weather",
+      "target": "core_context_framecontext",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "modules/weather.py",
+      "source_location": "L14",
+      "weight": 0.8,
+      "source": "modules_weather_weather",
+      "target": "core_context_framecontext",
+      "confidence_score": 0.5
+    },
+    {
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/weather.py",
+      "source_location": "L80",
+      "weight": 1.0,
+      "source": "modules_weather_weather_process",
+      "target": "core_context_framecontext",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
       "source_file": "modules/yawn.py",
       "source_location": "L14",
       "weight": 1.0,
@@ -8280,7 +8730,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "modules/yawn.py",
-      "source_location": "L32",
+      "source_location": "L35",
       "weight": 1.0,
       "source": "modules_yawn_yawn_process",
       "target": "core_context_framecontext",
@@ -8414,6 +8864,157 @@
       "weight": 1.0,
       "source": "core_context_rationale_55",
       "target": "core_context_framecontext_pose_px",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "core/debug.py",
+      "source_location": "L10",
+      "weight": 1.0,
+      "source": "core_debug",
+      "target": "core_debug_enabled",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "core/debug.py",
+      "source_location": "L16",
+      "weight": 1.0,
+      "source": "core_debug",
+      "target": "core_debug_log",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "core/debug.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "core_debug_rationale_1",
+      "target": "core_debug",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/clothing.py",
+      "source_location": "L28",
+      "weight": 1.0,
+      "source": "modules_clothing",
+      "target": "core_debug",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/drowsiness.py",
+      "source_location": "L16",
+      "weight": 1.0,
+      "source": "modules_drowsiness",
+      "target": "core_debug",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/emotion_backends/deepface_backend.py",
+      "source_location": "L21",
+      "weight": 1.0,
+      "source": "modules_emotion_backends_deepface_backend",
+      "target": "core_debug",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/rppg_backends/openrppg.py",
+      "source_location": "L36",
+      "weight": 1.0,
+      "source": "modules_rppg_backends_openrppg",
+      "target": "core_debug",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/weather.py",
+      "source_location": "L15",
+      "weight": 1.0,
+      "source": "modules_weather",
+      "target": "core_debug",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "core/debug.py",
+      "source_location": "L17",
+      "weight": 1.0,
+      "source": "core_debug_log",
+      "target": "core_debug_enabled",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/clothing.py",
+      "source_location": "L28",
+      "weight": 1.0,
+      "source": "modules_clothing",
+      "target": "core_debug_log",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/drowsiness.py",
+      "source_location": "L16",
+      "weight": 1.0,
+      "source": "modules_drowsiness",
+      "target": "core_debug_log",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/emotion_backends/deepface_backend.py",
+      "source_location": "L21",
+      "weight": 1.0,
+      "source": "modules_emotion_backends_deepface_backend",
+      "target": "core_debug_log",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/rppg_backends/openrppg.py",
+      "source_location": "L36",
+      "weight": 1.0,
+      "source": "modules_rppg_backends_openrppg",
+      "target": "core_debug_log",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/weather.py",
+      "source_location": "L15",
+      "weight": 1.0,
+      "source": "modules_weather",
+      "target": "core_debug_log",
       "confidence_score": 1.0
     },
     {
@@ -8571,8 +9172,30 @@
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
+      "source_file": "modules/clothing.py",
+      "source_location": "L29",
+      "weight": 1.0,
+      "source": "modules_clothing",
+      "target": "core_events",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/clothing_advice.py",
+      "source_location": "L5",
+      "weight": 1.0,
+      "source": "modules_clothing_advice",
+      "target": "core_events",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
       "source_file": "modules/drowsiness.py",
-      "source_location": "L16",
+      "source_location": "L17",
       "weight": 1.0,
       "source": "modules_drowsiness",
       "target": "core_events",
@@ -8806,6 +9429,17 @@
       "source_location": "L14",
       "weight": 1.0,
       "source": "modules_wandering",
+      "target": "core_events",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/weather.py",
+      "source_location": "L16",
+      "weight": 1.0,
+      "source": "modules_weather",
       "target": "core_events",
       "confidence_score": 1.0
     },
@@ -9057,8 +9691,50 @@
       "relation": "imports",
       "context": "import",
       "confidence": "EXTRACTED",
+      "source_file": "modules/clothing.py",
+      "source_location": "L29",
+      "weight": 1.0,
+      "source": "modules_clothing",
+      "target": "core_events_severity",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/clothing_advice.py",
+      "source_location": "L5",
+      "weight": 1.0,
+      "source": "modules_clothing_advice",
+      "target": "core_events_severity",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "modules/clothing_advice.py",
+      "source_location": "L5",
+      "weight": 0.8,
+      "source": "modules_clothing_advice_clothingadvice",
+      "target": "core_events_severity",
+      "confidence_score": 0.5
+    },
+    {
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "modules/clothing.py",
+      "source_location": "L29",
+      "weight": 0.8,
+      "source": "modules_clothing_clothing",
+      "target": "core_events_severity",
+      "confidence_score": 0.5
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
       "source_file": "modules/drowsiness.py",
-      "source_location": "L16",
+      "source_location": "L17",
       "weight": 1.0,
       "source": "modules_drowsiness",
       "target": "core_events_severity",
@@ -9068,7 +9744,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "modules/drowsiness.py",
-      "source_location": "L16",
+      "source_location": "L17",
       "weight": 0.8,
       "source": "modules_drowsiness_drowsiness",
       "target": "core_events_severity",
@@ -9522,6 +10198,27 @@
       "source_location": "L14",
       "weight": 0.8,
       "source": "modules_wandering_wandering",
+      "target": "core_events_severity",
+      "confidence_score": 0.5
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/weather.py",
+      "source_location": "L16",
+      "weight": 1.0,
+      "source": "modules_weather",
+      "target": "core_events_severity",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "modules/weather.py",
+      "source_location": "L16",
+      "weight": 0.8,
+      "source": "modules_weather_weather",
       "target": "core_events_severity",
       "confidence_score": 0.5
     },
@@ -10156,8 +10853,30 @@
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
+      "source_file": "modules/clothing.py",
+      "source_location": "L30",
+      "weight": 1.0,
+      "source": "modules_clothing",
+      "target": "core_registry",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/clothing_advice.py",
+      "source_location": "L6",
+      "weight": 1.0,
+      "source": "modules_clothing_advice",
+      "target": "core_registry",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
       "source_file": "modules/drowsiness.py",
-      "source_location": "L17",
+      "source_location": "L18",
       "weight": 1.0,
       "source": "modules_drowsiness",
       "target": "core_registry",
@@ -10391,6 +11110,17 @@
       "source_location": "L15",
       "weight": 1.0,
       "source": "modules_wandering",
+      "target": "core_registry",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/weather.py",
+      "source_location": "L17",
+      "weight": 1.0,
+      "source": "modules_weather",
       "target": "core_registry",
       "confidence_score": 1.0
     },
@@ -10518,8 +11248,30 @@
       "relation": "imports",
       "context": "import",
       "confidence": "EXTRACTED",
+      "source_file": "modules/clothing.py",
+      "source_location": "L30",
+      "weight": 1.0,
+      "source": "modules_clothing",
+      "target": "core_registry_register",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/clothing_advice.py",
+      "source_location": "L6",
+      "weight": 1.0,
+      "source": "modules_clothing_advice",
+      "target": "core_registry_register",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
       "source_file": "modules/drowsiness.py",
-      "source_location": "L17",
+      "source_location": "L18",
       "weight": 1.0,
       "source": "modules_drowsiness",
       "target": "core_registry_register",
@@ -10753,6 +11505,17 @@
       "source_location": "L15",
       "weight": 1.0,
       "source": "modules_wandering",
+      "target": "core_registry_register",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/weather.py",
+      "source_location": "L17",
+      "weight": 1.0,
+      "source": "modules_weather",
       "target": "core_registry_register",
       "confidence_score": 1.0
     },
@@ -11341,7 +12104,7 @@
       "context": "submodule_import",
       "confidence": "EXTRACTED",
       "source_file": "modules/drowsiness.py",
-      "source_location": "L20",
+      "source_location": "L21",
       "weight": 1.0,
       "source": "modules_drowsiness",
       "target": "extractors_face_landmarks",
@@ -11679,6 +12442,17 @@
       "source_location": "L19",
       "weight": 1.0,
       "source": "modules_bradykinesia",
+      "target": "extractors_pose",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "submodule_import",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/clothing.py",
+      "source_location": "L32",
+      "weight": 1.0,
+      "source": "modules_clothing",
       "target": "extractors_pose",
       "confidence_score": 1.0
     },
@@ -12025,7 +12799,7 @@
       "context": "submodule_import",
       "confidence": "EXTRACTED",
       "source_file": "main.py",
-      "source_location": "L105",
+      "source_location": "L109",
       "weight": 1.0,
       "source": "main",
       "target": "output_dashboard",
@@ -12058,7 +12832,7 @@
       "context": "submodule_import",
       "confidence": "EXTRACTED",
       "source_file": "main.py",
-      "source_location": "L105",
+      "source_location": "L109",
       "weight": 1.0,
       "source": "main",
       "target": "output_overlay",
@@ -12079,7 +12853,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "main.py",
-      "source_location": "L93",
+      "source_location": "L97",
       "weight": 1.0,
       "source": "main_main",
       "target": "main_load_config",
@@ -12101,7 +12875,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "main.py",
-      "source_location": "L97",
+      "source_location": "L101",
       "weight": 1.0,
       "source": "main_main",
       "target": "main_build_pipeline",
@@ -12112,7 +12886,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "main.py",
-      "source_location": "L98",
+      "source_location": "L102",
       "weight": 1.0,
       "source": "main_main",
       "target": "output_greeting_engine_greetingengine",
@@ -12178,7 +12952,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "modules/drowsiness.py",
-      "source_location": "L19",
+      "source_location": "L20",
       "weight": 1.0,
       "source": "modules_drowsiness",
       "target": "modules_util",
@@ -12562,7 +13336,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "modules/drowsiness.py",
-      "source_location": "L19",
+      "source_location": "L20",
       "weight": 1.0,
       "source": "modules_drowsiness",
       "target": "modules_util_timedbuffer",
@@ -12572,7 +13346,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "modules/drowsiness.py",
-      "source_location": "L19",
+      "source_location": "L20",
       "weight": 0.8,
       "source": "modules_drowsiness_drowsiness",
       "target": "modules_util_timedbuffer",
@@ -12584,7 +13358,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "modules/drowsiness.py",
-      "source_location": "L37",
+      "source_location": "L44",
       "weight": 1.0,
       "source": "modules_drowsiness_drowsiness_init",
       "target": "modules_util_timedbuffer"
@@ -12712,7 +13486,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "modules/head_nod.py",
-      "source_location": "L28",
+      "source_location": "L32",
       "weight": 1.0,
       "source": "modules_head_nod_headnod_init",
       "target": "modules_util_timedbuffer"
@@ -12974,7 +13748,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "modules/yawn.py",
-      "source_location": "L29",
+      "source_location": "L32",
       "weight": 1.0,
       "source": "modules_yawn_yawn_init",
       "target": "modules_util_timedbuffer"
@@ -13192,7 +13966,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L298",
+      "source_location": "L318",
       "weight": 1.0,
       "source": "modules_rppg_backends_openrppg",
       "target": "modules_util_dominant_frequency",
@@ -13203,7 +13977,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L309",
+      "source_location": "L329",
       "weight": 1.0,
       "source": "modules_rppg_backends_openrppg_hrv_from_bvp",
       "target": "modules_util_dominant_frequency",
@@ -13356,7 +14130,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L298",
+      "source_location": "L318",
       "weight": 1.0,
       "source": "modules_rppg_backends_openrppg",
       "target": "modules_util_bandpass",
@@ -13367,7 +14141,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L307",
+      "source_location": "L327",
       "weight": 1.0,
       "source": "modules_rppg_backends_openrppg_hrv_from_bvp",
       "target": "modules_util_bandpass",
@@ -13422,7 +14196,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L298",
+      "source_location": "L318",
       "weight": 1.0,
       "source": "modules_rppg_backends_openrppg",
       "target": "modules_util_peak_intervals",
@@ -13433,7 +14207,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L302",
+      "source_location": "L322",
       "weight": 1.0,
       "source": "modules_rppg_backends_openrppg_hrv_from_bvp",
       "target": "modules_util_peak_intervals",
@@ -13971,7 +14745,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "modules/emotion_backends/deepface_backend.py",
-      "source_location": "L21",
+      "source_location": "L22",
       "weight": 1.0,
       "source": "modules_emotion_backends_deepface_backend",
       "target": "modules_backends_base",
@@ -14066,7 +14840,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "modules/emotion_backends/deepface_backend.py",
-      "source_location": "L21",
+      "source_location": "L22",
       "weight": 1.0,
       "source": "modules_emotion_backends_deepface_backend",
       "target": "modules_backends_base_backend",
@@ -14076,7 +14850,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "modules/emotion_backends/deepface_backend.py",
-      "source_location": "L21",
+      "source_location": "L22",
       "weight": 0.8,
       "source": "modules_emotion_backends_deepface_backend_deepfacebackend",
       "target": "modules_backends_base_backend",
@@ -14336,8 +15110,30 @@
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
+      "source_file": "modules/clothing.py",
+      "source_location": "L31",
+      "weight": 1.0,
+      "source": "modules_clothing",
+      "target": "modules_base",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/clothing_advice.py",
+      "source_location": "L7",
+      "weight": 1.0,
+      "source": "modules_clothing_advice",
+      "target": "modules_base",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
       "source_file": "modules/drowsiness.py",
-      "source_location": "L18",
+      "source_location": "L19",
       "weight": 1.0,
       "source": "modules_drowsiness",
       "target": "modules_base",
@@ -14578,6 +15374,17 @@
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
+      "source_file": "modules/weather.py",
+      "source_location": "L18",
+      "weight": 1.0,
+      "source": "modules_weather",
+      "target": "modules_base",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
       "source_file": "modules/yawn.py",
       "source_location": "L17",
       "weight": 1.0,
@@ -14682,8 +15489,50 @@
       "relation": "imports",
       "context": "import",
       "confidence": "EXTRACTED",
+      "source_file": "modules/clothing.py",
+      "source_location": "L31",
+      "weight": 1.0,
+      "source": "modules_clothing",
+      "target": "modules_base_detectionmodule",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/clothing_advice.py",
+      "source_location": "L7",
+      "weight": 1.0,
+      "source": "modules_clothing_advice",
+      "target": "modules_base_detectionmodule",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "inherits",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/clothing_advice.py",
+      "source_location": "L16",
+      "weight": 1.0,
+      "source": "modules_clothing_advice_clothingadvice",
+      "target": "modules_base_detectionmodule",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "inherits",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/clothing.py",
+      "source_location": "L57",
+      "weight": 1.0,
+      "source": "modules_clothing_clothing",
+      "target": "modules_base_detectionmodule",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
       "source_file": "modules/drowsiness.py",
-      "source_location": "L18",
+      "source_location": "L19",
       "weight": 1.0,
       "source": "modules_drowsiness",
       "target": "modules_base_detectionmodule",
@@ -14693,7 +15542,7 @@
       "relation": "inherits",
       "confidence": "EXTRACTED",
       "source_file": "modules/drowsiness.py",
-      "source_location": "L31",
+      "source_location": "L32",
       "weight": 1.0,
       "source": "modules_drowsiness_drowsiness",
       "target": "modules_base_detectionmodule",
@@ -15144,6 +15993,27 @@
       "relation": "imports",
       "context": "import",
       "confidence": "EXTRACTED",
+      "source_file": "modules/weather.py",
+      "source_location": "L18",
+      "weight": 1.0,
+      "source": "modules_weather",
+      "target": "modules_base_detectionmodule",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "inherits",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/weather.py",
+      "source_location": "L22",
+      "weight": 1.0,
+      "source": "modules_weather_weather",
+      "target": "modules_base_detectionmodule",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
       "source_file": "modules/yawn.py",
       "source_location": "L17",
       "weight": 1.0,
@@ -15296,8 +16166,203 @@
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
+      "source_file": "modules/clothing.py",
+      "source_location": "L57",
+      "weight": 1.0,
+      "source": "modules_clothing",
+      "target": "modules_clothing_clothing",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/clothing.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "modules_clothing_rationale_1",
+      "target": "modules_clothing",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/clothing.py",
+      "source_location": "L228",
+      "weight": 1.0,
+      "source": "modules_clothing_clothing",
+      "target": "modules_clothing_clothing_close",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/clothing.py",
+      "source_location": "L146",
+      "weight": 1.0,
+      "source": "modules_clothing_clothing",
+      "target": "modules_clothing_clothing_detect",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/clothing.py",
+      "source_location": "L67",
+      "weight": 1.0,
+      "source": "modules_clothing_clothing",
+      "target": "modules_clothing_clothing_init",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/clothing.py",
+      "source_location": "L97",
+      "weight": 1.0,
+      "source": "modules_clothing_clothing",
+      "target": "modules_clothing_clothing_label_of",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/clothing.py",
+      "source_location": "L81",
+      "weight": 1.0,
+      "source": "modules_clothing_clothing",
+      "target": "modules_clothing_clothing_load",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/clothing.py",
+      "source_location": "L108",
+      "weight": 1.0,
+      "source": "modules_clothing_clothing",
+      "target": "modules_clothing_clothing_person_region",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/clothing.py",
+      "source_location": "L183",
+      "weight": 1.0,
+      "source": "modules_clothing_clothing",
+      "target": "modules_clothing_clothing_process",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/clothing.py",
+      "source_location": "L147",
+      "weight": 1.0,
+      "source": "modules_clothing_clothing_detect",
+      "target": "modules_clothing_clothing_load",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/clothing.py",
+      "source_location": "L168",
+      "weight": 1.0,
+      "source": "modules_clothing_clothing_detect",
+      "target": "modules_clothing_clothing_label_of",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/clothing.py",
+      "source_location": "L98",
+      "weight": 1.0,
+      "source": "modules_clothing_rationale_98",
+      "target": "modules_clothing_clothing_label_of",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "return_type",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/clothing.py",
+      "source_location": "L108",
+      "weight": 1.0,
+      "source": "modules_clothing_clothing_person_region",
+      "target": "modules_clothing_py_ndarray",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/clothing.py",
+      "source_location": "L184",
+      "weight": 1.0,
+      "source": "modules_clothing_clothing_process",
+      "target": "modules_clothing_clothing_person_region",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/clothing.py",
+      "source_location": "L109",
+      "weight": 1.0,
+      "source": "modules_clothing_rationale_109",
+      "target": "modules_clothing_clothing_person_region",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/clothing.py",
+      "source_location": "L146",
+      "weight": 1.0,
+      "source": "modules_clothing_clothing_detect",
+      "target": "modules_clothing_py_ndarray",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/clothing_advice.py",
+      "source_location": "L16",
+      "weight": 1.0,
+      "source": "modules_clothing_advice",
+      "target": "modules_clothing_advice_clothingadvice",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/clothing_advice.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "modules_clothing_advice_rationale_1",
+      "target": "modules_clothing_advice",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/clothing_advice.py",
+      "source_location": "L26",
+      "weight": 1.0,
+      "source": "modules_clothing_advice_clothingadvice",
+      "target": "modules_clothing_advice_clothingadvice_process",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
       "source_file": "modules/drowsiness.py",
-      "source_location": "L31",
+      "source_location": "L32",
       "weight": 1.0,
       "source": "modules_drowsiness",
       "target": "modules_drowsiness_drowsiness",
@@ -15307,7 +16372,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "modules/drowsiness.py",
-      "source_location": "L23",
+      "source_location": "L24",
       "weight": 1.0,
       "source": "modules_drowsiness",
       "target": "modules_drowsiness_ear",
@@ -15328,7 +16393,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "modules/drowsiness.py",
-      "source_location": "L46",
+      "source_location": "L53",
       "weight": 1.0,
       "source": "modules_drowsiness_drowsiness_process",
       "target": "modules_drowsiness_ear",
@@ -15338,7 +16403,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "modules/drowsiness.py",
-      "source_location": "L35",
+      "source_location": "L42",
       "weight": 1.0,
       "source": "modules_drowsiness_drowsiness",
       "target": "modules_drowsiness_drowsiness_init",
@@ -15348,7 +16413,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "modules/drowsiness.py",
-      "source_location": "L44",
+      "source_location": "L51",
       "weight": 1.0,
       "source": "modules_drowsiness_drowsiness",
       "target": "modules_drowsiness_drowsiness_process",
@@ -15629,7 +16694,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "modules/emotion_backends/deepface_backend.py",
-      "source_location": "L65",
+      "source_location": "L71",
       "weight": 1.0,
       "source": "modules_emotion_backends_deepface_backend",
       "target": "modules_emotion_backends_deepface_backend_deepfacebackend",
@@ -15639,7 +16704,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "modules/emotion_backends/deepface_backend.py",
-      "source_location": "L24",
+      "source_location": "L25",
       "weight": 1.0,
       "source": "modules_emotion_backends_deepface_backend",
       "target": "modules_emotion_backends_deepface_backend_worker",
@@ -15660,7 +16725,7 @@
       "context": "argument",
       "confidence": "INFERRED",
       "source_file": "modules/emotion_backends/deepface_backend.py",
-      "source_location": "L94",
+      "source_location": "L101",
       "weight": 1.0,
       "source": "modules_emotion_backends_deepface_backend_deepfacebackend_ensure_worker",
       "target": "modules_emotion_backends_deepface_backend_worker",
@@ -15670,7 +16735,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "modules/emotion_backends/deepface_backend.py",
-      "source_location": "L166",
+      "source_location": "L176",
       "weight": 1.0,
       "source": "modules_emotion_backends_deepface_backend_deepfacebackend",
       "target": "modules_emotion_backends_deepface_backend_deepfacebackend_close",
@@ -15680,7 +16745,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "modules/emotion_backends/deepface_backend.py",
-      "source_location": "L126",
+      "source_location": "L135",
       "weight": 1.0,
       "source": "modules_emotion_backends_deepface_backend_deepfacebackend",
       "target": "modules_emotion_backends_deepface_backend_deepfacebackend_compute",
@@ -15690,7 +16755,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "modules/emotion_backends/deepface_backend.py",
-      "source_location": "L142",
+      "source_location": "L151",
       "weight": 1.0,
       "source": "modules_emotion_backends_deepface_backend_deepfacebackend",
       "target": "modules_emotion_backends_deepface_backend_deepfacebackend_drain",
@@ -15700,7 +16765,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "modules/emotion_backends/deepface_backend.py",
-      "source_location": "L84",
+      "source_location": "L91",
       "weight": 1.0,
       "source": "modules_emotion_backends_deepface_backend_deepfacebackend",
       "target": "modules_emotion_backends_deepface_backend_deepfacebackend_ensure_worker",
@@ -15710,7 +16775,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "modules/emotion_backends/deepface_backend.py",
-      "source_location": "L68",
+      "source_location": "L74",
       "weight": 1.0,
       "source": "modules_emotion_backends_deepface_backend_deepfacebackend",
       "target": "modules_emotion_backends_deepface_backend_deepfacebackend_init",
@@ -15720,7 +16785,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "modules/emotion_backends/deepface_backend.py",
-      "source_location": "L119",
+      "source_location": "L126",
       "weight": 1.0,
       "source": "modules_emotion_backends_deepface_backend_deepfacebackend",
       "target": "modules_emotion_backends_deepface_backend_deepfacebackend_update",
@@ -15731,7 +16796,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "modules/emotion_backends/deepface_backend.py",
-      "source_location": "L124",
+      "source_location": "L131",
       "weight": 1.0,
       "source": "modules_emotion_backends_deepface_backend_deepfacebackend_update",
       "target": "modules_emotion_backends_deepface_backend_deepfacebackend_ensure_worker",
@@ -15742,7 +16807,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "modules/emotion_backends/deepface_backend.py",
-      "source_location": "L129",
+      "source_location": "L138",
       "weight": 1.0,
       "source": "modules_emotion_backends_deepface_backend_deepfacebackend_compute",
       "target": "modules_emotion_backends_deepface_backend_deepfacebackend_drain",
@@ -16276,7 +17341,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "modules/head_nod.py",
-      "source_location": "L26",
+      "source_location": "L30",
       "weight": 1.0,
       "source": "modules_head_nod_headnod",
       "target": "modules_head_nod_headnod_init",
@@ -16286,7 +17351,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "modules/head_nod.py",
-      "source_location": "L31",
+      "source_location": "L37",
       "weight": 1.0,
       "source": "modules_head_nod_headnod",
       "target": "modules_head_nod_headnod_process",
@@ -16835,7 +17900,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L36",
+      "source_location": "L37",
       "weight": 1.0,
       "source": "modules_rppg_backends_openrppg",
       "target": "modules_rppg_backends_base",
@@ -16877,7 +17942,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L36",
+      "source_location": "L37",
       "weight": 1.0,
       "source": "modules_rppg_backends_openrppg",
       "target": "modules_rppg_backends_base_rppgbackend",
@@ -16887,7 +17952,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L36",
+      "source_location": "L37",
       "weight": 0.8,
       "source": "modules_rppg_backends_openrppg_openrppgbackend",
       "target": "modules_rppg_backends_base_rppgbackend",
@@ -16947,7 +18012,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L285",
+      "source_location": "L305",
       "weight": 1.0,
       "source": "modules_rppg_backends_openrppg",
       "target": "modules_rppg_backends_openrppg_finite",
@@ -16957,7 +18022,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L293",
+      "source_location": "L313",
       "weight": 1.0,
       "source": "modules_rppg_backends_openrppg",
       "target": "modules_rppg_backends_openrppg_hrv_from_bvp",
@@ -16967,7 +18032,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L39",
+      "source_location": "L40",
       "weight": 1.0,
       "source": "modules_rppg_backends_openrppg",
       "target": "modules_rppg_backends_openrppg_openrppgbackend",
@@ -16998,7 +18063,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L269",
+      "source_location": "L289",
       "weight": 1.0,
       "source": "modules_rppg_backends_openrppg_openrppgbackend",
       "target": "modules_rppg_backends_openrppg_openrppgbackend_close",
@@ -17008,7 +18073,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L136",
+      "source_location": "L150",
       "weight": 1.0,
       "source": "modules_rppg_backends_openrppg_openrppgbackend",
       "target": "modules_rppg_backends_openrppg_openrppgbackend_compute",
@@ -17018,7 +18083,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L170",
+      "source_location": "L188",
       "weight": 1.0,
       "source": "modules_rppg_backends_openrppg_openrppgbackend",
       "target": "modules_rppg_backends_openrppg_openrppgbackend_compute_tensor",
@@ -17028,7 +18093,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L124",
+      "source_location": "L138",
       "weight": 1.0,
       "source": "modules_rppg_backends_openrppg_openrppgbackend",
       "target": "modules_rppg_backends_openrppg_openrppgbackend_infer",
@@ -17038,7 +18103,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L43",
+      "source_location": "L44",
       "weight": 1.0,
       "source": "modules_rppg_backends_openrppg_openrppgbackend",
       "target": "modules_rppg_backends_openrppg_openrppgbackend_init",
@@ -17048,7 +18113,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L243",
+      "source_location": "L263",
       "weight": 1.0,
       "source": "modules_rppg_backends_openrppg_openrppgbackend",
       "target": "modules_rppg_backends_openrppg_openrppgbackend_log_runtime",
@@ -17058,7 +18123,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L229",
+      "source_location": "L249",
       "weight": 1.0,
       "source": "modules_rppg_backends_openrppg_openrppgbackend",
       "target": "modules_rppg_backends_openrppg_openrppgbackend_prepare_runtime",
@@ -17068,7 +18133,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L107",
+      "source_location": "L121",
       "weight": 1.0,
       "source": "modules_rppg_backends_openrppg_openrppgbackend",
       "target": "modules_rppg_backends_openrppg_openrppgbackend_stable_face",
@@ -17078,7 +18143,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L90",
+      "source_location": "L96",
       "weight": 1.0,
       "source": "modules_rppg_backends_openrppg_openrppgbackend",
       "target": "modules_rppg_backends_openrppg_openrppgbackend_update",
@@ -17111,7 +18176,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L81",
+      "source_location": "L87",
       "weight": 1.0,
       "source": "modules_rppg_backends_openrppg_openrppgbackend_init",
       "target": "modules_rppg_backends_openrppg_openrppgbackend_log_runtime",
@@ -17122,7 +18187,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L75",
+      "source_location": "L81",
       "weight": 1.0,
       "source": "modules_rppg_backends_openrppg_openrppgbackend_init",
       "target": "modules_rppg_backends_openrppg_openrppgbackend_prepare_runtime",
@@ -17133,7 +18198,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L95",
+      "source_location": "L106",
       "weight": 1.0,
       "source": "modules_rppg_backends_openrppg_openrppgbackend_update",
       "target": "modules_rppg_backends_openrppg_openrppgbackend_stable_face",
@@ -17144,7 +18209,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L172",
+      "source_location": "L191",
       "weight": 1.0,
       "source": "modules_rppg_backends_openrppg_openrppgbackend_compute_tensor",
       "target": "modules_rppg_backends_openrppg_openrppgbackend_infer",
@@ -17155,7 +18220,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L124",
+      "source_location": "L138",
       "weight": 1.0,
       "source": "modules_rppg_backends_openrppg_openrppgbackend_infer",
       "target": "modules_rppg_backends_openrppg_py_ndarray",
@@ -17165,9 +18230,9 @@
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L125",
+      "source_location": "L139",
       "weight": 1.0,
-      "source": "modules_rppg_backends_openrppg_rationale_125",
+      "source": "modules_rppg_backends_openrppg_rationale_139",
       "target": "modules_rppg_backends_openrppg_openrppgbackend_infer",
       "confidence_score": 1.0
     },
@@ -17176,7 +18241,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L293",
+      "source_location": "L313",
       "weight": 1.0,
       "source": "modules_rppg_backends_openrppg_hrv_from_bvp",
       "target": "modules_rppg_backends_openrppg_py_ndarray",
@@ -17187,7 +18252,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L170",
+      "source_location": "L188",
       "weight": 1.0,
       "source": "modules_rppg_backends_openrppg_openrppgbackend_compute_tensor",
       "target": "modules_rppg_backends_openrppg_py_ndarray",
@@ -17198,7 +18263,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L165",
+      "source_location": "L183",
       "weight": 1.0,
       "source": "modules_rppg_backends_openrppg_openrppgbackend_compute",
       "target": "modules_rppg_backends_openrppg_openrppgbackend_compute_tensor",
@@ -17209,7 +18274,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L204",
+      "source_location": "L224",
       "weight": 1.0,
       "source": "modules_rppg_backends_openrppg_openrppgbackend_compute_tensor",
       "target": "modules_rppg_backends_openrppg_finite",
@@ -17220,7 +18285,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L214",
+      "source_location": "L234",
       "weight": 1.0,
       "source": "modules_rppg_backends_openrppg_openrppgbackend_compute_tensor",
       "target": "modules_rppg_backends_openrppg_hrv_from_bvp",
@@ -17230,9 +18295,9 @@
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "modules/rppg_backends/openrppg.py",
-      "source_location": "L294",
+      "source_location": "L314",
       "weight": 1.0,
-      "source": "modules_rppg_backends_openrppg_rationale_294",
+      "source": "modules_rppg_backends_openrppg_rationale_314",
       "target": "modules_rppg_backends_openrppg_hrv_from_bvp",
       "confidence_score": 1.0
     },
@@ -17533,6 +18598,88 @@
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
+      "source_file": "modules/weather.py",
+      "source_location": "L22",
+      "weight": 1.0,
+      "source": "modules_weather",
+      "target": "modules_weather_weather",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/weather.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "modules_weather_rationale_1",
+      "target": "modules_weather",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/weather.py",
+      "source_location": "L35",
+      "weight": 1.0,
+      "source": "modules_weather_weather",
+      "target": "modules_weather_weather_coords",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/weather.py",
+      "source_location": "L43",
+      "weight": 1.0,
+      "source": "modules_weather_weather",
+      "target": "modules_weather_weather_fetch",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/weather.py",
+      "source_location": "L29",
+      "weight": 1.0,
+      "source": "modules_weather_weather",
+      "target": "modules_weather_weather_init",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/weather.py",
+      "source_location": "L80",
+      "weight": 1.0,
+      "source": "modules_weather_weather",
+      "target": "modules_weather_weather_process",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/weather.py",
+      "source_location": "L44",
+      "weight": 1.0,
+      "source": "modules_weather_weather_fetch",
+      "target": "modules_weather_weather_coords",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/weather.py",
+      "source_location": "L84",
+      "weight": 1.0,
+      "source": "modules_weather_weather_process",
+      "target": "modules_weather_weather_fetch",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
       "source_file": "modules/yawn.py",
       "source_location": "L23",
       "weight": 1.0,
@@ -17554,7 +18701,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "modules/yawn.py",
-      "source_location": "L27",
+      "source_location": "L30",
       "weight": 1.0,
       "source": "modules_yawn_yawn",
       "target": "modules_yawn_yawn_init",
@@ -17564,7 +18711,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "modules/yawn.py",
-      "source_location": "L32",
+      "source_location": "L35",
       "weight": 1.0,
       "source": "modules_yawn_yawn",
       "target": "modules_yawn_yawn_process",
@@ -17731,7 +18878,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "output/dashboard.py",
-      "source_location": "L78",
+      "source_location": "L112",
       "weight": 1.0,
       "source": "output_dashboard",
       "target": "output_dashboard_fmt",
@@ -17741,7 +18888,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "output/dashboard.py",
-      "source_location": "L67",
+      "source_location": "L101",
       "weight": 1.0,
       "source": "output_dashboard",
       "target": "output_dashboard_parse_comparisons",
@@ -17751,7 +18898,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "output/dashboard.py",
-      "source_location": "L84",
+      "source_location": "L170",
       "weight": 1.0,
       "source": "output_dashboard",
       "target": "output_dashboard_render",
@@ -17761,7 +18908,27 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "output/dashboard.py",
-      "source_location": "L56",
+      "source_location": "L142",
+      "weight": 1.0,
+      "source": "output_dashboard",
+      "target": "output_dashboard_render_clothing_weather",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "output/dashboard.py",
+      "source_location": "L120",
+      "weight": 1.0,
+      "source": "output_dashboard",
+      "target": "output_dashboard_render_fatigue_stats",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "output/dashboard.py",
+      "source_location": "L90",
       "weight": 1.0,
       "source": "output_dashboard",
       "target": "output_dashboard_split_backend",
@@ -17771,7 +18938,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "output/dashboard.py",
-      "source_location": "L52",
+      "source_location": "L86",
       "weight": 1.0,
       "source": "output_dashboard",
       "target": "output_dashboard_text",
@@ -17792,7 +18959,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "output/dashboard.py",
-      "source_location": "L86",
+      "source_location": "L173",
       "weight": 1.0,
       "source": "output_dashboard_render",
       "target": "output_dashboard_text",
@@ -17803,7 +18970,29 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "output/dashboard.py",
-      "source_location": "L71",
+      "source_location": "L144",
+      "weight": 1.0,
+      "source": "output_dashboard_render_clothing_weather",
+      "target": "output_dashboard_text",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "output/dashboard.py",
+      "source_location": "L122",
+      "weight": 1.0,
+      "source": "output_dashboard_render_fatigue_stats",
+      "target": "output_dashboard_text",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "output/dashboard.py",
+      "source_location": "L105",
       "weight": 1.0,
       "source": "output_dashboard_parse_comparisons",
       "target": "output_dashboard_split_backend",
@@ -17813,9 +19002,9 @@
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "output/dashboard.py",
-      "source_location": "L68",
+      "source_location": "L102",
       "weight": 1.0,
-      "source": "output_dashboard_rationale_68",
+      "source": "output_dashboard_rationale_102",
       "target": "output_dashboard_parse_comparisons",
       "confidence_score": 1.0
     },
@@ -17824,7 +19013,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "output/dashboard.py",
-      "source_location": "L90",
+      "source_location": "L177",
       "weight": 1.0,
       "source": "output_dashboard_render",
       "target": "output_dashboard_parse_comparisons",
@@ -17835,10 +19024,54 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "output/dashboard.py",
-      "source_location": "L116",
+      "source_location": "L202",
       "weight": 1.0,
       "source": "output_dashboard_render",
       "target": "output_dashboard_fmt",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "output/dashboard.py",
+      "source_location": "L157",
+      "weight": 1.0,
+      "source": "output_dashboard_render_clothing_weather",
+      "target": "output_dashboard_fmt",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "output/dashboard.py",
+      "source_location": "L135",
+      "weight": 1.0,
+      "source": "output_dashboard_render_fatigue_stats",
+      "target": "output_dashboard_fmt",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "output/dashboard.py",
+      "source_location": "L215",
+      "weight": 1.0,
+      "source": "output_dashboard_render",
+      "target": "output_dashboard_render_fatigue_stats",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "output/dashboard.py",
+      "source_location": "L211",
+      "weight": 1.0,
+      "source": "output_dashboard_render",
+      "target": "output_dashboard_render_clothing_weather",
       "confidence_score": 1.0
     },
     {
@@ -17960,7 +19193,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "output/greeting_engine.py",
-      "source_location": "L105",
+      "source_location": "L110",
       "weight": 1.0,
       "source": "output_greeting_engine_greetingengine_compose",
       "target": "output_greeting_engine_greetingengine_alerts",
@@ -19016,7 +20249,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L90",
+      "source_location": "L104",
       "weight": 1.0,
       "source": "readme_humanoid_camera_elderly_care_detection_pipeline",
       "target": "readme_add_or_change_a_module",
@@ -19026,7 +20259,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L73",
+      "source_location": "L87",
       "weight": 1.0,
       "source": "readme_humanoid_camera_elderly_care_detection_pipeline",
       "target": "readme_architecture",
@@ -19036,17 +20269,17 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L116",
+      "source_location": "L130",
       "weight": 1.0,
       "source": "readme_humanoid_camera_elderly_care_detection_pipeline",
-      "target": "readme_module_catalogue_30",
+      "target": "readme_module_catalogue_33",
       "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L128",
+      "source_location": "L143",
       "weight": 1.0,
       "source": "readme_humanoid_camera_elderly_care_detection_pipeline",
       "target": "readme_privacy_note",
@@ -19066,7 +20299,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L109",
+      "source_location": "L123",
       "weight": 1.0,
       "source": "readme_humanoid_camera_elderly_care_detection_pipeline",
       "target": "readme_test_without_a_webcam",
@@ -19076,7 +20309,17 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L32",
+      "source_location": "L76",
+      "weight": 1.0,
+      "source": "readme_quick_start",
+      "target": "readme_clothing_weather_recommendations",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "README.md",
+      "source_location": "L33",
       "weight": 1.0,
       "source": "readme_quick_start",
       "target": "readme_heart_rate_two_backends_compared_live",
@@ -19324,5 +20567,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "ad7365994b3eba780d5e6e814600be8ab9c73dad"
+  "built_at_commit": "fa67a81e205bda669823c5c6b412587051d685b2"
 }

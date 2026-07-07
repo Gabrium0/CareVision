@@ -15,6 +15,7 @@ the method and feasibility rating behind each one.
 ```bash
 pip install -r requirements.txt
 pip install -r requirements-openrppg.txt   # optional: neural rPPG backend
+pip install -r requirements-clothing.txt   # optional: OWL-ViT clothing detection
 # MediaPipe .task models are downloaded into models/ (see docs/RESEARCH.md)
 python main.py                       # default webcam; Camera + Data windows
 python main.py --source clip.mp4     # run on a video file
@@ -55,6 +56,8 @@ The dashboard always shows Open-RPPG rows for HR, RMSSD, SDNN, respiration, and
 status; unavailable metrics display `...` until enough clean signal is available.
 The terminal also prints periodic vitals summaries; tune with
 `--vitals-log-every` or disable with `--vitals-log-every 0`.
+For focused diagnostics, use throttled module debug logs, e.g.
+`python main.py --debug-modules openrppg,clothing,drowsiness,deepface,weather`.
 
 For accuracy testing, record the same clean clip while wearing a pulse oximeter,
 watch, or chest strap, then benchmark candidate models:
@@ -69,6 +72,17 @@ from webcam video.
 
 DeepFace emotion runs in a separate TensorFlow subprocess so it can coexist with
 Open-RPPG's required JAX backend in the main process.
+
+### Clothing + weather recommendations
+The `weather`, `clothing`, and `clothing_advice` modules combine Open-Meteo
+weather data with visible upper-body clothing detection. Weather uses Open-Meteo
+and needs no API key; set `latitude`/`longitude` in `config/modules.yaml` or set
+`WEATHER_LAT` / `WEATHER_LON`. Clothing detection uses optional OWL-ViT
+zero-shot detection (`requirements-clothing.txt`) with labels such as `hoodie`,
+`t-shirt`, `tank top`, `jacket`, and `coat`. Without those optional packages,
+the dashboard shows a clear install/status message instead of guessing. OWL-ViT
+loads and runs in a background worker so first-time model download/inference does
+not freeze the camera loop.
 
 ## Architecture
 ```
@@ -113,8 +127,9 @@ python tests/make_clip.py           # write a synthetic video
 python main.py --source tests/synthetic_clip.mp4 --headless --max-frames 80
 ```
 
-## Module catalogue (30)
+## Module catalogue (33)
 Vitals: `heart_rate` (+HRV), `respiration`.
+Clothing/weather: `weather`, `clothing`, `clothing_advice`.
 Skin/face: `skin_color` (pallor/flushing/cyanosis/jaundice), `rash`, `bruise`,
 `eye_redness`, `sweating`, `dry_lips`, `facial_asymmetry`, `facial_swelling`.
 Motor/neuro: `tremor`, `gait`, `balance`, `bradykinesia`, `masked_face`,

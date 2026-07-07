@@ -18,6 +18,7 @@ import time
 from multiprocessing import get_context
 
 from core.context import FrameContext
+from core.debug import log as debug_log
 from modules.backends.base import Backend
 
 
@@ -39,12 +40,17 @@ def _worker(in_q, out_q, actions):
         out_q.put({"event": "error", "error": f"load failed: {type(e).__name__}: {e}"})
         return
     while True:
-        item = in_q.get()
+        try:
+            item = in_q.get()
+        except (KeyboardInterrupt, EOFError):
+            return
         if item is None:
             return
         try:
+            t0 = time.time()
             res = DeepFace.analyze(item, actions=actions, enforce_detection=False,
                                    detector_backend="skip", silent=True)
+            latency_ms = (time.time() - t0) * 1000.0
             if isinstance(res, list):
                 res = res[0] if res else {}
             out = {}
@@ -57,7 +63,7 @@ def _worker(in_q, out_q, actions):
                 out["age"] = int(res["age"])
             if "dominant_gender" in res:
                 out["gender"] = str(res["dominant_gender"]).lower()
-            out_q.put({"event": "result", "result": out})
+            out_q.put({"event": "result", "result": out, "latency_ms": latency_ms})
         except Exception as e:  # noqa: BLE001
             out_q.put({"event": "error", "error": f"inference failed: {e}"})
 
@@ -75,6 +81,7 @@ class DeepFaceBackend(Backend):
         self._cached = None
         self.status = "waiting for face"
         self._errors = 0
+        self._last_latency_ms = 0.0
         self._ctx = get_context("spawn")
         self._in_q = None
         self._out_q = None
@@ -122,6 +129,8 @@ class DeepFaceBackend(Backend):
             if crop is not None and crop.size:
                 self._crop = crop            # BGR, DeepFace's expected order
                 self._ensure_worker()
+        debug_log("deepface", f"status={self.status} proc={getattr(self, '_proc', None) is not None} "
+                              f"cached={self._cached} latency_ms={self._last_latency_ms:.0f}")
 
     def compute(self) -> dict | None:
         if not self.available or self._proc is None:
@@ -152,6 +161,7 @@ class DeepFaceBackend(Backend):
                 print(f"[emotion/deepface] worker ready (keras backend={backend})")
             elif event == "result":
                 self.status = "ready"
+                self._last_latency_ms = float(msg.get("latency_ms") or 0.0)
                 result = msg.get("result") or {}
                 self._cached = result or self._cached
             elif event == "error":
