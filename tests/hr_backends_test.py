@@ -7,16 +7,20 @@ in which case only classical readings appear.
 """
 import sys
 import time
+import os
 from pathlib import Path
 
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+os.environ.setdefault("KERAS_BACKEND", "jax")
 
 from core.context import FrameContext
-from extractors.face import FaceExtractor
 from modules.heart_rate import HeartRate
-from tests.smoke_test import make_face_frame
+from extractors.face import FaceExtractor
+from smoke_test import make_face_frame
 
 
 def main():
@@ -27,15 +31,28 @@ def main():
     face = FaceExtractor()
     t0 = time.time()
     seen = {}
+    last_ctx = None
     N = 260  # ~13s at 20fps
     for i in range(N):
         ts = t0 + i * 0.05
         frame = make_face_frame(t=i * 0.05)
         ctx = FrameContext(frame=frame, timestamp=ts, frame_index=i, fps=20.0)
+        last_ctx = ctx
         face.extract(ctx)
         out = hr.process(ctx) or []
         for r in out:
             seen[r.key] = (r.value, r.confidence, r.message)
+
+    # Open-RPPG inference is asynchronous in live mode; give the background
+    # pass a moment to publish its result without blocking normal frames.
+    deadline = time.time() + 30.0
+    while last_ctx is not None and time.time() < deadline:
+        out = hr.process(last_ctx) or []
+        for r in out:
+            seen[r.key] = (r.value, r.confidence, r.message)
+        if any(k.startswith("bpm_open") for k in seen):
+            break
+        time.sleep(0.25)
 
     print(f"[hr-test] emitted {len(seen)} distinct keys after {N} frames:")
     for k in sorted(seen):

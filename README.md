@@ -40,9 +40,35 @@ Select in `config/modules.yaml`:
 ```yaml
 heart_rate:
   backends: [classical, openrppg]   # drop openrppg to run classical only
+  openrppg_model: null              # null = default; try physformer or efficientphys
 ```
 open-rppg loads its model once (~15–20s) at startup, then runs batched
-inference on a rolling buffer of face crops (~0.6s per run, CPU-friendly).
+inference on a rolling buffer of face crops. Live inference runs in a background
+thread so CPU-only Open-RPPG does not freeze camera frames; by default it updates
+about every 5 seconds from the same 30-second signal window.
+The backend sets `KERAS_BACKEND=jax` before importing Open-RPPG to avoid
+TensorFlow/JAX tensor mismatches. On startup it logs the selected model,
+dependency versions, and JAX devices so you can confirm whether the A2000 GPU is
+being used. If JAX only prints `cpu:0`, install a CUDA-enabled JAX wheel; on
+Windows this is most reliable inside WSL2/Linux.
+The dashboard always shows Open-RPPG rows for HR, RMSSD, SDNN, respiration, and
+status; unavailable metrics display `...` until enough clean signal is available.
+The terminal also prints periodic vitals summaries; tune with
+`--vitals-log-every` or disable with `--vitals-log-every 0`.
+
+For accuracy testing, record the same clean clip while wearing a pulse oximeter,
+watch, or chest strap, then benchmark candidate models:
+```bash
+python tests/benchmark_rppg_models.py --source clip.mp4 --reference-bpm 72 \
+  --models default physformer efficientphys --csv rppg_benchmark.csv
+```
+Pick the model with the lowest MAE, acceptable confidence coverage, and usable
+latency. HRV and BVP-derived breathing are only emitted after a longer clean
+window, and may show lower confidence, because they are less reliable than HR
+from webcam video.
+
+DeepFace emotion runs in a separate TensorFlow subprocess so it can coexist with
+Open-RPPG's required JAX backend in the main process.
 
 ## Architecture
 ```

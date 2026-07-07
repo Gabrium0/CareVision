@@ -19,8 +19,12 @@ modules/. Add a detector by dropping a file there and listing it in the yaml.
 from __future__ import annotations
 
 import argparse
+import os
 import time
 from pathlib import Path
+
+if os.environ.get("DEEPFACE_WORKER") != "1":
+    os.environ.setdefault("KERAS_BACKEND", "jax")
 
 import yaml
 
@@ -70,12 +74,26 @@ def main():
                     help="manual exposure value (camera-specific; try -6 to -4)")
     ap.add_argument("--fps", type=float, default=30.0,
                     help="requested capture fps (default 30)")
+    ap.add_argument("--width", type=int, default=640,
+                    help="requested/display processing width (default 640)")
+    ap.add_argument("--height", type=int, default=480,
+                    help="requested capture height (default 480)")
+    ap.add_argument("--vitals-log-every", type=float, default=10.0,
+                    help="seconds between terminal vitals summaries; 0 disables")
+    ap.add_argument("--alert-cooldown", type=float, default=30.0,
+                    help="seconds before repeating the same terminal alert")
+    ap.add_argument("--no-deepface", action="store_true",
+                    help="disable DeepFace subprocess backend for this run")
     args = ap.parse_args()
 
     camera_opts = {"lock": not args.no_lock, "exposure": args.exposure,
-                   "request_fps": args.fps}
+                   "request_fps": args.fps, "request_size": (args.width, args.height),
+                   "target_width": args.width}
 
     config = load_config()
+    if args.no_deepface:
+        emotion = config.get("modules", {}).get("emotion", {})
+        emotion["backends"] = [b for b in emotion.get("backends", []) if b != "deepface"]
     pipeline, aggregator = build_pipeline(args.source, config, camera_opts)
     greeter = GreetingEngine(name=args.name)
 
@@ -87,8 +105,22 @@ def main():
         from output import overlay, dashboard
 
     force_greet = {"v": False}
-    last_alert_print = {"t": 0.0}
+    last_alert_print: dict[str, float] = {}
+    last_vitals_print = {"t": 0.0}
     last_greeting = {"text": None}
+
+    def print_vitals(snapshot):
+        if args.vitals_log_every <= 0:
+            return
+        now = time.time()
+        if now - last_vitals_print["t"] < args.vitals_log_every:
+            return
+        rows = [r for r in snapshot if r.module == "heart_rate"]
+        if not rows:
+            return
+        last_vitals_print["t"] = now
+        parts = [f"{r.key}={r.value} ({r.confidence:.2f})" for r in sorted(rows, key=lambda r: r.key)]
+        print("[vitals] " + " | ".join(parts))
 
     def on_frame(ctx, results):
         greeting = greeter.maybe_greet(aggregator, force=force_greet["v"])
@@ -98,14 +130,18 @@ def main():
             print("\n" + "=" * 50 + f"\n{greeting}\n" + "=" * 50)
 
         # surface alerts promptly even without an arrival
-        alerts = greeter.alerts(aggregator.snapshot())
-        if alerts and time.time() - last_alert_print["t"] > 5.0:
-            for a in alerts:
+        snapshot = aggregator.snapshot()
+        print_vitals(snapshot)
+
+        alerts = greeter.alerts(snapshot)
+        now = time.time()
+        due = [a for a in alerts if now - last_alert_print.get(a, 0.0) >= args.alert_cooldown]
+        if due:
+            for a in due:
                 print(f"[ALERT] {a}")
-            last_alert_print["t"] = time.time()
+                last_alert_print[a] = now
 
         if display:
-            snapshot = aggregator.snapshot()
             if args.combined:
                 frame = overlay.draw(ctx.frame.copy(), ctx, snapshot, ctx.fps)
                 cv2.imshow("Humanoid Camera — detections", frame)

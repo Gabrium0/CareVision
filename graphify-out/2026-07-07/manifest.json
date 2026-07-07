@@ -15,9 +15,9 @@
     "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
   },
   "core/camera.py": {
-    "mtime": 1783399501.6507647,
-    "ast_hash": "afa5757a13b0c2890ec0bada7e25300a",
-    "semantic_hash": "afa5757a13b0c2890ec0bada7e25300a"
+    "mtime": 1783406307.9454007,
+    "ast_hash": "006cd241d1d18b83838242836ec49d0a",
+    "semantic_hash": ""
   },
   "core/context.py": {
     "mtime": 1783399497.3100197,
@@ -50,9 +50,9 @@
     "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
   },
   "extractors/face.py": {
-    "mtime": 1783400347.0329843,
-    "ast_hash": "8fe033edafb719bdb0ca7a913acd4386",
-    "semantic_hash": "8fe033edafb719bdb0ca7a913acd4386"
+    "mtime": 1783406624.9395666,
+    "ast_hash": "1ecdb8bfcbcc27a7e43261d9036273aa",
+    "semantic_hash": ""
   },
   "extractors/face_landmarks.py": {
     "mtime": 1783399575.6358514,
@@ -70,8 +70,8 @@
     "semantic_hash": "dc8ef7df56c875e0c58d66181415e175"
   },
   "main.py": {
-    "mtime": 1783404440.9780295,
-    "ast_hash": "fce81673c6d6e5aabb73815d292695b1",
+    "mtime": 1783415242.9543543,
+    "ast_hash": "df76f842144e151108f8188dea65ef4b",
     "semantic_hash": ""
   },
   "modules/__init__.py": {
@@ -135,9 +135,9 @@
     "semantic_hash": "513e4230c6eb1b25bf6a3272f8f6c8f1"
   },
   "modules/emotion.py": {
-    "mtime": 1783399936.4129963,
-    "ast_hash": "e13a4dbd20554ac67558966a6c681e4d",
-    "semantic_hash": "e13a4dbd20554ac67558966a6c681e4d"
+    "mtime": 1783415064.7065966,
+    "ast_hash": "ba0cf3ff170b7e1aa2101625e26bfdae",
+    "semantic_hash": ""
   },
   "modules/eye_movement.py": {
     "mtime": 1783399823.753784,
@@ -150,9 +150,9 @@
     "semantic_hash": "88b9d9f073019336121b8c7d51b4f5e1"
   },
   "modules/facial_asymmetry.py": {
-    "mtime": 1783399740.4999208,
-    "ast_hash": "7bf1de6ea4f8a088f3151692fcfa326c",
-    "semantic_hash": "7bf1de6ea4f8a088f3151692fcfa326c"
+    "mtime": 1783414665.735191,
+    "ast_hash": "f5ff2362673261055e4dfab1e4c90acf",
+    "semantic_hash": ""
   },
   "modules/facial_swelling.py": {
     "mtime": 1783399750.4386835,
@@ -180,8 +180,8 @@
     "semantic_hash": "cc2cdbba56bfe3cb9c6af4b299bd5813"
   },
   "modules/heart_rate.py": {
-    "mtime": 1783404340.7714531,
-    "ast_hash": "e90d7825c2df5a2b7a239bc1261285cf",
+    "mtime": 1783414696.0238242,
+    "ast_hash": "54abe3c98c929491d3552aa78b563bc3",
     "semantic_hash": ""
   },
   "modules/masked_face.py": {
@@ -245,9 +245,9 @@
     "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
   },
   "output/aggregator.py": {
-    "mtime": 1783400002.4287217,
-    "ast_hash": "54fc04b08be140a5958f078778472a95",
-    "semantic_hash": "54fc04b08be140a5958f078778472a95"
+    "mtime": 1783406874.8670554,
+    "ast_hash": "05f55060634c74eb17ae055f137ce476",
+    "semantic_hash": ""
   },
   "output/greeting_engine.py": {
     "mtime": 1783400025.4249244,
@@ -285,8 +285,8 @@
     "semantic_hash": "8d704776b2e386fa7ee754d6f7ad9a1b"
   },
   "config/modules.yaml": {
-    "mtime": 1783404357.6979797,
-    "ast_hash": "260139eea93991ed8440fa02966fe20c",
+    "mtime": 1783414789.6221414,
+    "ast_hash": "244f536472c543d0238d7b1d18b883fd",
     "semantic_hash": ""
   },
   "docs/RESEARCH.md": {
@@ -300,8 +300,8 @@
     "semantic_hash": "8a6643a420fdad6bfb583523bc6cef16"
   },
   "README.md": {
-    "mtime": 1783404587.9918616,
-    "ast_hash": "944ae5cfd6498d6baa1e51cc7e3983f8",
+    "mtime": 1783414803.7534,
+    "ast_hash": "16a19134ad091107f74d1ebbf4a782ff",
     "semantic_hash": ""
   },
   "detectionList.md": {
@@ -325,8 +325,8 @@
     "semantic_hash": ""
   },
   "modules/rppg_backends/base.py": {
-    "mtime": 1783404088.4979873,
-    "ast_hash": "6a2cd5099e6ecebda7f2f0d139e6a075",
+    "mtime": 1783406374.2927315,
+    "ast_hash": "5d4b0f0e8f93795554db6883b995a3f3",
     "semantic_hash": ""
   },
   "modules/rppg_backends/classical.py": {
@@ -335,28 +335,133 @@
     "semantic_hash": ""
   },
   "modules/rppg_backends/openrppg.py": {
-    "mtime": 1783404311.4118593,
-    "ast_hash": "d130cf0ee62d1a35373d91462aa25412",
+    "mtime": 1783414684.0379326,
+    "ast_hash": "c36ca53125f3af65d82b89cc9481f5b0",
     "semantic_hash": ""
   },
   "output/dashboard.py": {
-    "mtime": 1783404392.2631266,
-    "ast_hash": "e43b72050f0141de15345a559feb1669",
+    "mtime": 1783415079.2392132,
+    "ast_hash": "d9e9b9254f6f609b12a28248ce040101",
     "semantic_hash": ""
   },
   "tests/hr_backends_test.py": {
-    "mtime": 1783404480.8455744,
-    "ast_hash": "5562b7767f7403f1151a5f21cc656e15",
+    "mtime": 1783413767.6090896,
+    "ast_hash": "f6d886c0c5d3c39a1790b88a4acfb3d2",
     "semantic_hash": ""
   },
   "requirements-openrppg.txt": {
-    "mtime": 1783404472.5296624,
-    "ast_hash": "15818d9f7650485d0bbb43b33756c057",
+    "mtime": 1783409615.5563042,
+    "ast_hash": "6179936b69d683b536e1639f081f2507",
     "semantic_hash": ""
   },
   "docs/dashboard_preview.png": {
-    "mtime": 1783404547.2279544,
-    "ast_hash": "892cb4c9a2aadd063c9628831fb578f0",
+    "mtime": 1783406757.1856897,
+    "ast_hash": "c197efedcfc38b687854dc01c88fd839",
+    "semantic_hash": ""
+  },
+  ".opencode/opencode.json": {
+    "mtime": 1783407801.0236108,
+    "ast_hash": "1efe24ecf938911d4f23e4b1c6ec91f7",
+    "semantic_hash": ""
+  },
+  ".opencode/plugins/graphify.js": {
+    "mtime": 1783407754.349005,
+    "ast_hash": "b33d000860642c6f4907a877e0387a21",
+    "semantic_hash": ""
+  },
+  "extractors/smoothing.py": {
+    "mtime": 1783406607.875457,
+    "ast_hash": "de97e19724cdc66350ba05a72d792870",
+    "semantic_hash": ""
+  },
+  "modules/backends/__init__.py": {
+    "mtime": 1783406361.407646,
+    "ast_hash": "75cdaa8cab99a822edfd29a5ddfbdfe4",
+    "semantic_hash": ""
+  },
+  "modules/backends/base.py": {
+    "mtime": 1783406366.569679,
+    "ast_hash": "d2b0b23c2ec7d9dac86c6e5e9d0f1487",
+    "semantic_hash": ""
+  },
+  "modules/emotion_backends/__init__.py": {
+    "mtime": 1783406425.2563183,
+    "ast_hash": "ed649d2006de149e7c23a8e5d5a5cd72",
+    "semantic_hash": ""
+  },
+  "modules/emotion_backends/deepface_backend.py": {
+    "mtime": 1783415233.0263333,
+    "ast_hash": "2e30c0b03591f1ae88f652c5c3a9e24c",
+    "semantic_hash": ""
+  },
+  "modules/emotion_backends/ferplus.py": {
+    "mtime": 1783406440.6877027,
+    "ast_hash": "0935940ee44029544f97faf65cf6dbaa",
+    "semantic_hash": ""
+  },
+  "modules/emotion_backends/heuristic.py": {
+    "mtime": 1783406433.299165,
+    "ast_hash": "0bb418424af86b44cb07e6b23e4f5011",
+    "semantic_hash": ""
+  },
+  "modules/emotion_backends/hsemotion.py": {
+    "mtime": 1783407090.705764,
+    "ast_hash": "0a9ba2fd55ad55318b7c7f3726c7338e",
+    "semantic_hash": ""
+  },
+  "tests/benchmark_rppg_models.py": {
+    "mtime": 1783413791.735203,
+    "ast_hash": "be2dd3e27bf2ca89a618f5910a8418b4",
+    "semantic_hash": ""
+  },
+  ".opencode/skills/graphify/SKILL.md": {
+    "mtime": 1783407754.349005,
+    "ast_hash": "191057e7ac59245c89ea26cbea701526",
+    "semantic_hash": ""
+  },
+  ".opencode/skills/graphify/references/add-watch.md": {
+    "mtime": 1783397915.8752048,
+    "ast_hash": "d59d027fe449f06aa03905a01184e779",
+    "semantic_hash": ""
+  },
+  ".opencode/skills/graphify/references/exports.md": {
+    "mtime": 1783397915.882671,
+    "ast_hash": "9da2a2152e60a22f07f05fed5158f287",
+    "semantic_hash": ""
+  },
+  ".opencode/skills/graphify/references/extraction-spec.md": {
+    "mtime": 1783397915.883502,
+    "ast_hash": "42fef56a01698118f7fd722acdadea34",
+    "semantic_hash": ""
+  },
+  ".opencode/skills/graphify/references/github-and-merge.md": {
+    "mtime": 1783397915.8857334,
+    "ast_hash": "cde13df085e4c492aeb7ba298a996d0d",
+    "semantic_hash": ""
+  },
+  ".opencode/skills/graphify/references/hooks.md": {
+    "mtime": 1783397915.8857334,
+    "ast_hash": "3f545db6ce646650bb9de588f5512a27",
+    "semantic_hash": ""
+  },
+  ".opencode/skills/graphify/references/query.md": {
+    "mtime": 1783397915.887742,
+    "ast_hash": "3c46f8ad006874260614ed8657d02307",
+    "semantic_hash": ""
+  },
+  ".opencode/skills/graphify/references/transcribe.md": {
+    "mtime": 1783397915.887742,
+    "ast_hash": "67b6a5fa6c0974e18f60db9f8932fbd8",
+    "semantic_hash": ""
+  },
+  ".opencode/skills/graphify/references/update.md": {
+    "mtime": 1783397915.893768,
+    "ast_hash": "c698309979460d0f02ba616417844399",
+    "semantic_hash": ""
+  },
+  "AGENTS.md": {
+    "mtime": 1783407754.349005,
+    "ast_hash": "21ceb6533048be51308e69e7b74a35cf",
     "semantic_hash": ""
   }
 }

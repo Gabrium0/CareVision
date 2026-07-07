@@ -26,11 +26,16 @@ from extractors import face_landmarks as FL
 class FacialAsymmetry(DetectionModule):
     interval = 0.5
     requires = ("face",)
+    learning_seconds = 20.0
+    threshold = 0.05
+    alert_threshold = 0.08
+    alert_after_count = 3
 
     def __init__(self, **params):
         super().__init__(**params)
         self.baseline = None
         self.t0 = None
+        self._hits = 0
 
     def process(self, ctx: FrameContext):
         px = ctx.face_px()
@@ -56,17 +61,21 @@ class FacialAsymmetry(DetectionModule):
         if self.t0 is None:
             self.t0, self.baseline = ctx.timestamp, asym
             return None
-        learning = (ctx.timestamp - self.t0) < 20.0
+        learning = (ctx.timestamp - self.t0) < self.learning_seconds
         a = 0.1 if learning else 0.01
         self.baseline = (1 - a) * self.baseline + a * asym
         if learning:
             return None
 
         change = asym - self.baseline
-        if change < 0.03:
+        if change < self.threshold:
+            self._hits = 0
+            return None
+        self._hits += 1
+        if self._hits < self.alert_after_count:
             return None
         conf = float(min(0.8, change * 10))
-        sev = Severity.WARNING if change < 0.06 else Severity.ALERT
+        sev = Severity.WARNING if change < self.alert_threshold else Severity.ALERT
         return self.result(
             "asymmetry_change", round(change, 3), conf, sev,
             "Facial asymmetry increased vs baseline (possible droop — "

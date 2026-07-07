@@ -3,5 +3,10 @@
 # The heart_rate module auto-detects this; without it, only the classical
 # backend runs. open-rppg needs pkg_resources, which setuptools >=81 removed,
 # so setuptools is pinned below.
+#
+# The backend sets KERAS_BACKEND=jax before importing open-rppg. For NVIDIA GPU
+# inference, prefer WSL2/Linux and install a CUDA-enabled JAX wheel there, e.g.:
+#   pip uninstall -y jax jaxlib
+#   pip install -U "jax[cuda12]"
 open-rppg>=0.1
 setuptools<81

@@ -50,20 +50,32 @@ class Emotion(DetectionModule):
         if not self._backends:
             self._backends.append(HeuristicEmotionBackend())
 
+    def _placeholder(self, metric: str, label: str):
+        return self.result(f"{metric}_{label}", "...", 0.0, Severity.INFO, "", ttl=3.0)
+
+    def _status_result(self, label: str, value: str):
+        return self.result(f"backend_status_{label}", value, 0.0, Severity.INFO, "", ttl=3.0)
+
     def process(self, ctx: FrameContext):
         results = []
         for be in self._backends:
             be.update(ctx)
             reading = be.compute()
-            if not reading:
-                continue
             label = be.label
+            status = getattr(be, "status", None)
+            if status is not None:
+                results.append(self._status_result(label, str(status)))
+            if not reading:
+                results.append(self._placeholder("emotion", label))
+                continue
             emo = reading.get("emotion")
             conf = float(reading.get("confidence", 0.4))
             if emo is not None:
                 results.append(self.result(
                     f"emotion_{label}", emo, conf, Severity.INFO,
                     f"Emotion ({label}): {emo}", ttl=3.0))
+            else:
+                results.append(self._placeholder("emotion", label))
             if "valence" in reading:
                 v = reading["valence"]
                 mood = "positive" if v > 0.15 else ("negative" if v < -0.15 else "neutral")

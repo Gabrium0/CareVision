@@ -6,9 +6,18 @@ modules:
   # --- Vitals ---
   heart_rate:
     enabled: true
-    window_seconds: 12        # rPPG buffer length
+    window_seconds: 30        # longer rPPG buffer improves HRV/breathing reliability
     backends: [classical, openrppg]   # run both and show numbers side by side;
                                        # openrppg auto-disables if `rppg`/jax missing
+    openrppg_model: null              # null = open-rppg default; try physformer/efficientphys
+    openrppg_infer_every: 5.0       # CPU-only JAX is heavy; same 30s window, fewer freezes
+    openrppg_min_seconds: 10.0
+    openrppg_hrv_min_seconds: 30.0    # HRV/breathing need longer clean windows than HR
+    openrppg_min_confidence: 0.35
+    openrppg_smoothing_window: 5
+    openrppg_motion_threshold: 18.0
+    openrppg_face_jitter_threshold: 0.12
+    openrppg_async_inference: true     # keeps CPU-only Open-RPPG from freezing camera frames
   respiration:
     enabled: true
     window_seconds: 25
@@ -28,6 +37,10 @@ modules:
     enabled: true
   facial_asymmetry:           # stroke-relevant droop
     enabled: true
+    threshold: 0.05
+    alert_threshold: 0.08
+    alert_after_count: 3
+    learning_seconds: 20.0
   facial_swelling:
     enabled: true
 
@@ -68,8 +81,7 @@ modules:
   # --- Emotion & cognition ---
   emotion:
     enabled: true
-    backends: [heuristic, hsemotion, deepface]  # tested models auto-disable if
-                                                 # their deps aren't installed
+    backends: [heuristic, hsemotion, deepface]  # deepface runs in a TensorFlow subprocess
   pain:
     enabled: true
   agitation:

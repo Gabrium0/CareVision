@@ -9,9 +9,9 @@ Three sections:
 - greeting footer.
 
 Multi-backend results are keyed "<metric>_<backend>" (e.g. bpm_classical,
-bpm_open_rppg, emotion_heuristic, emotion_deepface). Backend labels can
-contain underscores (open_rppg), so we split against a known-label set rather
-than on the last underscore.
+bpm_open_rppg, emotion_heuristic, emotion_deepface). Backend labels can contain
+underscores and model suffixes (open_rppg_physformer), so we split against a
+known-label set rather than on the last underscore.
 """
 from __future__ import annotations
 
@@ -33,17 +33,20 @@ _FONT = cv2.FONT_HERSHEY_SIMPLEX
 
 # Known backend labels (normalized to result-key form). Longest-first so
 # "open_rppg" matches before a hypothetical "rppg".
-_BACKENDS = ["open_rppg", "tandon_lstm", "hsemotion", "classical", "heuristic",
-             "deepface", "ferplus", "pyfeat", "yolo"]
+_BACKENDS = ["open_rppg", "open_rppg_physformer", "open_rppg_efficientphys",
+             "open_rppg_mamba", "tandon_lstm", "hsemotion", "classical",
+             "heuristic", "deepface", "ferplus", "pyfeat", "yolo"]
 
 # Pretty names + column order for known metrics
 _METRIC_NAMES = {
     "bpm": "HR (bpm)", "hrv_rmssd_ms": "RMSSD (ms)", "hrv_sdnn_ms": "SDNN (ms)",
-    "breaths_per_min": "Resp (/min)", "emotion": "Emotion", "valence": "Mood",
+    "breaths_per_min": "Resp (/min)", "status": "rPPG Status",
+    "backend_status": "Backend Status",
+    "emotion": "Emotion", "valence": "Mood",
     "fall": "Fall", "pain": "Pain", "age": "Age",
 }
 _METRIC_ORDER = ["bpm", "hrv_rmssd_ms", "hrv_sdnn_ms", "breaths_per_min",
-                 "emotion", "valence", "fall", "pain", "age"]
+                 "status", "backend_status", "emotion", "valence", "fall", "pain", "age"]
 
 
 def _text(img, s, x, y, scale=0.5, color=(230, 230, 230), thick=1):
@@ -54,6 +57,10 @@ def _split_backend(key: str):
     for b in _BACKENDS:
         if key.endswith("_" + b):
             return key[: -(len(b) + 1)], b
+    marker = "_open_rppg_"
+    if marker in key:
+        metric, model = key.split(marker, 1)
+        return metric, "open_rppg_" + model
     return None, None
 
 
@@ -105,11 +112,11 @@ def render(snapshot, fps: float, greeting: str | None = None):
                 col = _COLORS[r.severity]
                 conf = r.confidence
                 shade = col if conf >= 0.4 else tuple(int(c * 0.6) for c in col)
-                _text(img, f"{b}:", x, y, 0.42, (150, 150, 150))
-                _text(img, _fmt(r.value), x + 78, y, 0.5, shade, 1)
-                _text(img, f"{conf:.2f}", x + 78, y + 14, 0.36, (130, 130, 130))
-                x += 165
-                if x > _W - 150:
+                _text(img, f"{b}:", x, y, 0.38, (150, 150, 150))
+                _text(img, _fmt(r.value), x + 78, y, 0.46, shade, 1)
+                _text(img, f"{conf:.2f}", x + 78, y + 14, 0.34, (130, 130, 130))
+                x += 150
+                if x > _W - 120:
                     break
             y += 40
 
