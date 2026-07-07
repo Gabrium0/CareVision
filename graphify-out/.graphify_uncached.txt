@@ -1,0 +1,7 @@
+C:\Users\Gabriel\Downloads\proj\CLAUDE.md
+C:\Users\Gabriel\Downloads\proj\README.md
+C:\Users\Gabriel\Downloads\proj\config\modules.yaml
+C:\Users\Gabriel\Downloads\proj\detectionList.md
+C:\Users\Gabriel\Downloads\proj\docs\RESEARCH.md
+C:\Users\Gabriel\Downloads\proj\requirements.txt
+C:\Users\Gabriel\Downloads\proj\research.md

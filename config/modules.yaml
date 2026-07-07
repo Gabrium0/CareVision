@@ -1,0 +1,84 @@
+# Enable/disable and tune detection modules without touching code.
+# Each key is a registered module name; params besides `enabled` are passed
+# to the module constructor.
+
+modules:
+  # --- Vitals ---
+  heart_rate:
+    enabled: true
+    window_seconds: 12        # rPPG buffer length
+  respiration:
+    enabled: true
+    window_seconds: 25
+
+  # --- Skin & face ---
+  skin_color:                 # pallor / flushing / jaundice / cyanosis
+    enabled: true
+  rash:
+    enabled: true
+  bruise:
+    enabled: true
+  eye_redness:
+    enabled: true
+  sweating:
+    enabled: true
+  dry_lips:
+    enabled: true
+  facial_asymmetry:           # stroke-relevant droop
+    enabled: true
+  facial_swelling:
+    enabled: true
+
+  # --- Motor / neurological ---
+  tremor:
+    enabled: true
+  gait:
+    enabled: true
+  balance:
+    enabled: true
+  bradykinesia:
+    enabled: true
+  masked_face:                # reduced expressiveness / flat affect
+    enabled: true
+  eye_movement:               # gaze + nystagmus screen
+    enabled: true
+
+  # --- Fatigue & consciousness ---
+  drowsiness:                 # PERCLOS + blink rate + microsleep
+    enabled: true
+  yawn:
+    enabled: true
+  head_nod:
+    enabled: true
+
+  # --- Safety ---
+  fall:
+    enabled: true
+  unresponsive:
+    enabled: true
+    threshold_minutes: 3
+  wandering:
+    enabled: true
+  hazard_zones:
+    enabled: false            # needs per-room calibration; zones are
+    zones: []                 # [{name: stove, polygon: [[x,y], ...]}] normalized 0..1
+
+  # --- Emotion & cognition ---
+  emotion:
+    enabled: true
+  pain:
+    enabled: true
+  agitation:
+    enabled: true
+
+  # --- Behavior (longitudinal, persisted to SQLite) ---
+  activity_level:
+    enabled: true
+  presence:
+    enabled: true
+
+  # --- Demographics / context ---
+  age_estimation:
+    enabled: true             # auto-disables if models/age_googlenet.onnx missing
+  body_estimate:              # rough build proxy; low precision by nature
+    enabled: true

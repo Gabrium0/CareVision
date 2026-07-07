@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(pip install opencv-python mediapipe --quiet 2>$null)",
+      "PowerShell(python -c \"import cv2, mediapipe; print\\(cv2.__version__, mediapipe.__version__\\)\")"
+    ]
+  }
+}
