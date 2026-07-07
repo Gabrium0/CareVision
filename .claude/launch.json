@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "companion",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "webui._demo"],
+      "port": 8770
+    }
+  ]
+}

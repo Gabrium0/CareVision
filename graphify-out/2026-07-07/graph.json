@@ -66,6 +66,816 @@
     {
       "label": "__init__.py",
       "file_type": "code",
+      "source_file": "agent/__init__.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "agent_init",
+      "community": 96,
+      "norm_label": "__init__.py"
+    },
+    {
+      "label": "Conversational voice agent.  A modular, stateful layer on top of the detection p",
+      "file_type": "rationale",
+      "source_file": "agent/__init__.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "agent_init_rationale_1",
+      "community": 96,
+      "norm_label": "conversational voice agent.  a modular, stateful layer on top of the detection p"
+    },
+    {
+      "label": "env.py",
+      "file_type": "code",
+      "source_file": "agent/env.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "agent_env",
+      "community": 21,
+      "norm_label": "env.py"
+    },
+    {
+      "label": "load_env()",
+      "file_type": "code",
+      "source_file": "agent/env.py",
+      "source_location": "L9",
+      "_origin": "ast",
+      "id": "agent_env_load_env",
+      "community": 21,
+      "norm_label": "load_env()"
+    },
+    {
+      "label": "gemini_api_key()",
+      "file_type": "code",
+      "source_file": "agent/env.py",
+      "source_location": "L29",
+      "_origin": "ast",
+      "id": "agent_env_gemini_api_key",
+      "community": 21,
+      "norm_label": "gemini_api_key()"
+    },
+    {
+      "label": "Environment / secrets loading for the agent (keys come from .env).",
+      "file_type": "rationale",
+      "source_file": "agent/env.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "agent_env_rationale_1",
+      "community": 21,
+      "norm_label": "environment / secrets loading for the agent (keys come from .env)."
+    },
+    {
+      "label": "Load .env into os.environ once (no-op if python-dotenv is absent).",
+      "file_type": "rationale",
+      "source_file": "agent/env.py",
+      "source_location": "L10",
+      "_origin": "ast",
+      "id": "agent_env_rationale_10",
+      "community": 21,
+      "norm_label": "load .env into os.environ once (no-op if python-dotenv is absent)."
+    },
+    {
+      "label": "gemini_client.py",
+      "file_type": "code",
+      "source_file": "agent/gemini_client.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "agent_gemini_client",
+      "community": 21,
+      "norm_label": "gemini_client.py"
+    },
+    {
+      "label": "GeminiClient",
+      "file_type": "code",
+      "source_file": "agent/gemini_client.py",
+      "source_location": "L21",
+      "_origin": "ast",
+      "id": "agent_gemini_client_geminiclient",
+      "community": 12,
+      "norm_label": "geminiclient"
+    },
+    {
+      "label": ".__init__()",
+      "file_type": "code",
+      "source_file": "agent/gemini_client.py",
+      "source_location": "L22",
+      "_origin": "ast",
+      "id": "agent_gemini_client_geminiclient_init",
+      "community": 21,
+      "norm_label": ".__init__()"
+    },
+    {
+      "label": ".generate()",
+      "file_type": "code",
+      "source_file": "agent/gemini_client.py",
+      "source_location": "L39",
+      "_origin": "ast",
+      "id": "agent_gemini_client_geminiclient_generate",
+      "community": 12,
+      "norm_label": ".generate()"
+    },
+    {
+      "label": "Gemini natural-language generation for the voice agent.  Turns an utterance inte",
+      "file_type": "rationale",
+      "source_file": "agent/gemini_client.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "agent_gemini_client_rationale_1",
+      "community": 21,
+      "norm_label": "gemini natural-language generation for the voice agent.  turns an utterance inte"
+    },
+    {
+      "label": "policy.py",
+      "file_type": "code",
+      "source_file": "agent/policy.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "agent_policy",
+      "community": 12,
+      "norm_label": "policy.py"
+    },
+    {
+      "label": "Intent",
+      "file_type": "code",
+      "source_file": "agent/policy.py",
+      "source_location": "L24",
+      "_origin": "ast",
+      "id": "agent_policy_intent",
+      "community": 12,
+      "norm_label": "intent"
+    },
+    {
+      "label": "Policy",
+      "file_type": "code",
+      "source_file": "agent/policy.py",
+      "source_location": "L40",
+      "_origin": "ast",
+      "id": "agent_policy_policy",
+      "community": 12,
+      "norm_label": "policy"
+    },
+    {
+      "label": ".__init__()",
+      "file_type": "code",
+      "source_file": "agent/policy.py",
+      "source_location": "L41",
+      "_origin": "ast",
+      "id": "agent_policy_policy_init",
+      "community": 12,
+      "norm_label": ".__init__()"
+    },
+    {
+      "label": "._fresh()",
+      "file_type": "code",
+      "source_file": "agent/policy.py",
+      "source_location": "L51",
+      "_origin": "ast",
+      "id": "agent_policy_policy_fresh",
+      "community": 12,
+      "norm_label": "._fresh()"
+    },
+    {
+      "label": "._candidates()",
+      "file_type": "code",
+      "source_file": "agent/policy.py",
+      "source_location": "L55",
+      "_origin": "ast",
+      "id": "agent_policy_policy_candidates",
+      "community": 12,
+      "norm_label": "._candidates()"
+    },
+    {
+      "label": ".next_intent()",
+      "file_type": "code",
+      "source_file": "agent/policy.py",
+      "source_location": "L110",
+      "_origin": "ast",
+      "id": "agent_policy_policy_next_intent",
+      "community": 12,
+      "norm_label": ".next_intent()"
+    },
+    {
+      "label": ".mark_spoken()",
+      "file_type": "code",
+      "source_file": "agent/policy.py",
+      "source_location": "L120",
+      "_origin": "ast",
+      "id": "agent_policy_policy_mark_spoken",
+      "community": 12,
+      "norm_label": ".mark_spoken()"
+    },
+    {
+      "label": "Conversation policy: decide WHEN and WHAT the agent says.  Event-driven + timed.",
+      "file_type": "rationale",
+      "source_file": "agent/policy.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "agent_policy_rationale_1",
+      "community": 12,
+      "norm_label": "conversation policy: decide when and what the agent says.  event-driven + timed."
+    },
+    {
+      "label": "state.py",
+      "file_type": "code",
+      "source_file": "agent/state.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "agent_state",
+      "community": 12,
+      "norm_label": "state.py"
+    },
+    {
+      "label": "ObservationMemory",
+      "file_type": "code",
+      "source_file": "agent/state.py",
+      "source_location": "L18",
+      "_origin": "ast",
+      "id": "agent_state_observationmemory",
+      "community": 12,
+      "norm_label": "observationmemory"
+    },
+    {
+      "label": ".ingest()",
+      "file_type": "code",
+      "source_file": "agent/state.py",
+      "source_location": "L24",
+      "_origin": "ast",
+      "id": "agent_state_observationmemory_ingest",
+      "community": 12,
+      "norm_label": ".ingest()"
+    },
+    {
+      "label": ".get()",
+      "file_type": "code",
+      "source_file": "agent/state.py",
+      "source_location": "L37",
+      "_origin": "ast",
+      "id": "agent_state_observationmemory_get",
+      "community": 12,
+      "norm_label": ".get()"
+    },
+    {
+      "label": ".get_val()",
+      "file_type": "code",
+      "source_file": "agent/state.py",
+      "source_location": "L40",
+      "_origin": "ast",
+      "id": "agent_state_observationmemory_get_val",
+      "community": 12,
+      "norm_label": ".get_val()"
+    },
+    {
+      "label": ".is_new()",
+      "file_type": "code",
+      "source_file": "agent/state.py",
+      "source_location": "L44",
+      "_origin": "ast",
+      "id": "agent_state_observationmemory_is_new",
+      "community": 12,
+      "norm_label": ".is_new()"
+    },
+    {
+      "label": ".time_of_day()",
+      "file_type": "code",
+      "source_file": "agent/state.py",
+      "source_location": "L52",
+      "_origin": "ast",
+      "id": "agent_state_observationmemory_time_of_day",
+      "community": 12,
+      "norm_label": ".time_of_day()"
+    },
+    {
+      "label": "._first_present_backend()",
+      "file_type": "code",
+      "source_file": "agent/state.py",
+      "source_location": "L56",
+      "_origin": "ast",
+      "id": "agent_state_observationmemory_first_present_backend",
+      "community": 12,
+      "norm_label": "._first_present_backend()"
+    },
+    {
+      "label": ".mood()",
+      "file_type": "code",
+      "source_file": "agent/state.py",
+      "source_location": "L63",
+      "_origin": "ast",
+      "id": "agent_state_observationmemory_mood",
+      "community": 12,
+      "norm_label": ".mood()"
+    },
+    {
+      "label": ".context_text()",
+      "file_type": "code",
+      "source_file": "agent/state.py",
+      "source_location": "L71",
+      "_origin": "ast",
+      "id": "agent_state_observationmemory_context_text",
+      "community": 12,
+      "norm_label": ".context_text()"
+    },
+    {
+      "label": "ObservationMemory: the agent's evolving knowledge of the person.  Ingests the ag",
+      "file_type": "rationale",
+      "source_file": "agent/state.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "agent_state_rationale_1",
+      "community": 12,
+      "norm_label": "observationmemory: the agent's evolving knowledge of the person.  ingests the ag"
+    },
+    {
+      "label": "True if this (module,key,value) first appeared within `within` sec.",
+      "file_type": "rationale",
+      "source_file": "agent/state.py",
+      "source_location": "L46",
+      "_origin": "ast",
+      "id": "agent_state_rationale_46",
+      "community": 12,
+      "norm_label": "true if this (module,key,value) first appeared within `within` sec."
+    },
+    {
+      "label": "Return the first available value among <base>_<backend> keys.",
+      "file_type": "rationale",
+      "source_file": "agent/state.py",
+      "source_location": "L57",
+      "_origin": "ast",
+      "id": "agent_state_rationale_57",
+      "community": 12,
+      "norm_label": "return the first available value among <base>_<backend> keys."
+    },
+    {
+      "label": "Compact description of what the agent currently knows, for the LLM.",
+      "file_type": "rationale",
+      "source_file": "agent/state.py",
+      "source_location": "L72",
+      "_origin": "ast",
+      "id": "agent_state_rationale_72",
+      "community": 12,
+      "norm_label": "compact description of what the agent currently knows, for the llm."
+    },
+    {
+      "label": "voice_agent.py",
+      "file_type": "code",
+      "source_file": "agent/voice_agent.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "agent_voice_agent",
+      "community": 12,
+      "norm_label": "voice_agent.py"
+    },
+    {
+      "label": "VoiceAgent",
+      "file_type": "code",
+      "source_file": "agent/voice_agent.py",
+      "source_location": "L18",
+      "_origin": "ast",
+      "id": "agent_voice_agent_voiceagent",
+      "community": 12,
+      "norm_label": "voiceagent"
+    },
+    {
+      "label": ".__init__()",
+      "file_type": "code",
+      "source_file": "agent/voice_agent.py",
+      "source_location": "L19",
+      "_origin": "ast",
+      "id": "agent_voice_agent_voiceagent_init",
+      "community": 12,
+      "norm_label": ".__init__()"
+    },
+    {
+      "label": ".tick()",
+      "file_type": "code",
+      "source_file": "agent/voice_agent.py",
+      "source_location": "L29",
+      "_origin": "ast",
+      "id": "agent_voice_agent_voiceagent_tick",
+      "community": 12,
+      "norm_label": ".tick()"
+    },
+    {
+      "label": ".close()",
+      "file_type": "code",
+      "source_file": "agent/voice_agent.py",
+      "source_location": "L42",
+      "_origin": "ast",
+      "id": "agent_voice_agent_voiceagent_close",
+      "community": 12,
+      "norm_label": ".close()"
+    },
+    {
+      "label": "VoiceAgent: orchestrates memory -> policy -> Gemini -> speech.  Call `tick(snaps",
+      "file_type": "rationale",
+      "source_file": "agent/voice_agent.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "agent_voice_agent_rationale_1",
+      "community": 12,
+      "norm_label": "voiceagent: orchestrates memory -> policy -> gemini -> speech.  call `tick(snaps"
+    },
+    {
+      "label": "__init__.py",
+      "file_type": "code",
+      "source_file": "alerts/__init__.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "alerts_init",
+      "community": 98,
+      "norm_label": "__init__.py"
+    },
+    {
+      "label": "Caregiver alerting: turn Severity.ALERT detections into real notifications.  Det",
+      "file_type": "rationale",
+      "source_file": "alerts/__init__.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "alerts_init_rationale_1",
+      "community": 98,
+      "norm_label": "caregiver alerting: turn severity.alert detections into real notifications.  det"
+    },
+    {
+      "label": "manager.py",
+      "file_type": "code",
+      "source_file": "alerts/manager.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "alerts_manager",
+      "community": 100,
+      "norm_label": "manager.py"
+    },
+    {
+      "label": "_AlertState",
+      "file_type": "code",
+      "source_file": "alerts/manager.py",
+      "source_location": "L26",
+      "_origin": "ast",
+      "id": "alerts_manager_alertstate",
+      "community": 100,
+      "norm_label": "_alertstate"
+    },
+    {
+      "label": "AlertManager",
+      "file_type": "code",
+      "source_file": "alerts/manager.py",
+      "source_location": "L34",
+      "_origin": "ast",
+      "id": "alerts_manager_alertmanager",
+      "community": 100,
+      "norm_label": "alertmanager"
+    },
+    {
+      "label": ".from_config()",
+      "file_type": "code",
+      "source_file": "alerts/manager.py",
+      "source_location": "L44",
+      "_origin": "ast",
+      "id": "alerts_manager_alertmanager_from_config",
+      "community": 100,
+      "norm_label": ".from_config()"
+    },
+    {
+      "label": "._in_quiet_hours()",
+      "file_type": "code",
+      "source_file": "alerts/manager.py",
+      "source_location": "L56",
+      "_origin": "ast",
+      "id": "alerts_manager_alertmanager_in_quiet_hours",
+      "community": 100,
+      "norm_label": "._in_quiet_hours()"
+    },
+    {
+      "label": "._dispatch()",
+      "file_type": "code",
+      "source_file": "alerts/manager.py",
+      "source_location": "L63",
+      "_origin": "ast",
+      "id": "alerts_manager_alertmanager_dispatch",
+      "community": 100,
+      "norm_label": "._dispatch()"
+    },
+    {
+      "label": ".evaluate()",
+      "file_type": "code",
+      "source_file": "alerts/manager.py",
+      "source_location": "L67",
+      "_origin": "ast",
+      "id": "alerts_manager_alertmanager_evaluate",
+      "community": 100,
+      "norm_label": ".evaluate()"
+    },
+    {
+      "label": "AlertManager: turn ALERT-severity detections into caregiver notifications with c",
+      "file_type": "rationale",
+      "source_file": "alerts/manager.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "alerts_manager_rationale_1",
+      "community": 100,
+      "norm_label": "alertmanager: turn alert-severity detections into caregiver notifications with c"
+    },
+    {
+      "label": "notifier.py",
+      "file_type": "code",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "alerts_notifier",
+      "community": 15,
+      "norm_label": "notifier.py"
+    },
+    {
+      "label": "Channel",
+      "file_type": "code",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L16",
+      "_origin": "ast",
+      "id": "alerts_notifier_channel",
+      "community": 15,
+      "norm_label": "channel"
+    },
+    {
+      "label": "ABC",
+      "file_type": "code",
+      "source_file": "",
+      "source_location": "",
+      "_origin": "ast",
+      "id": "abc",
+      "community": 15,
+      "norm_label": "abc"
+    },
+    {
+      "label": ".send()",
+      "file_type": "code",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L21",
+      "_origin": "ast",
+      "id": "alerts_notifier_channel_send",
+      "community": 15,
+      "norm_label": ".send()"
+    },
+    {
+      "label": "ConsoleChannel",
+      "file_type": "code",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L25",
+      "_origin": "ast",
+      "id": "alerts_notifier_consolechannel",
+      "community": 15,
+      "norm_label": "consolechannel"
+    },
+    {
+      "label": ".send()",
+      "file_type": "code",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L28",
+      "_origin": "ast",
+      "id": "alerts_notifier_consolechannel_send",
+      "community": 15,
+      "norm_label": ".send()"
+    },
+    {
+      "label": "EmailChannel",
+      "file_type": "code",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L33",
+      "_origin": "ast",
+      "id": "alerts_notifier_emailchannel",
+      "community": 15,
+      "norm_label": "emailchannel"
+    },
+    {
+      "label": ".__init__()",
+      "file_type": "code",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L37",
+      "_origin": "ast",
+      "id": "alerts_notifier_emailchannel_init",
+      "community": 15,
+      "norm_label": ".__init__()"
+    },
+    {
+      "label": ".send()",
+      "file_type": "code",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L45",
+      "_origin": "ast",
+      "id": "alerts_notifier_emailchannel_send",
+      "community": 15,
+      "norm_label": ".send()"
+    },
+    {
+      "label": "WebhookChannel",
+      "file_type": "code",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L64",
+      "_origin": "ast",
+      "id": "alerts_notifier_webhookchannel",
+      "community": 15,
+      "norm_label": "webhookchannel"
+    },
+    {
+      "label": ".__init__()",
+      "file_type": "code",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L68",
+      "_origin": "ast",
+      "id": "alerts_notifier_webhookchannel_init",
+      "community": 15,
+      "norm_label": ".__init__()"
+    },
+    {
+      "label": ".send()",
+      "file_type": "code",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L72",
+      "_origin": "ast",
+      "id": "alerts_notifier_webhookchannel_send",
+      "community": 15,
+      "norm_label": ".send()"
+    },
+    {
+      "label": "SmsChannel",
+      "file_type": "code",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L84",
+      "_origin": "ast",
+      "id": "alerts_notifier_smschannel",
+      "community": 15,
+      "norm_label": "smschannel"
+    },
+    {
+      "label": ".__init__()",
+      "file_type": "code",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L88",
+      "_origin": "ast",
+      "id": "alerts_notifier_smschannel_init",
+      "community": 15,
+      "norm_label": ".__init__()"
+    },
+    {
+      "label": ".send()",
+      "file_type": "code",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L103",
+      "_origin": "ast",
+      "id": "alerts_notifier_smschannel_send",
+      "community": 15,
+      "norm_label": ".send()"
+    },
+    {
+      "label": "build_channels()",
+      "file_type": "code",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L119",
+      "_origin": "ast",
+      "id": "alerts_notifier_build_channels",
+      "community": 15,
+      "norm_label": "build_channels()"
+    },
+    {
+      "label": "Pluggable notification channels for caregiver alerts.  Each channel self-disable",
+      "file_type": "rationale",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "alerts_notifier_rationale_1",
+      "community": 15,
+      "norm_label": "pluggable notification channels for caregiver alerts.  each channel self-disable"
+    },
+    {
+      "label": "SMTP email. Reads SMTP_HOST/PORT/USER/PASSWORD and ALERT_EMAIL_TO.",
+      "file_type": "rationale",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L34",
+      "_origin": "ast",
+      "id": "alerts_notifier_rationale_34",
+      "community": 15,
+      "norm_label": "smtp email. reads smtp_host/port/user/password and alert_email_to."
+    },
+    {
+      "label": "POST to ALERT_WEBHOOK_URL (Slack/Discord/custom). Uses requests.",
+      "file_type": "rationale",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L65",
+      "_origin": "ast",
+      "id": "alerts_notifier_rationale_65",
+      "community": 15,
+      "norm_label": "post to alert_webhook_url (slack/discord/custom). uses requests."
+    },
+    {
+      "label": "Twilio SMS. Reads TWILIO_SID/TWILIO_TOKEN/TWILIO_FROM and ALERT_SMS_TO.",
+      "file_type": "rationale",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L85",
+      "_origin": "ast",
+      "id": "alerts_notifier_rationale_85",
+      "community": 15,
+      "norm_label": "twilio sms. reads twilio_sid/twilio_token/twilio_from and alert_sms_to."
+    },
+    {
+      "label": "Instantiate the named channels; drop any whose creds are missing.",
+      "file_type": "rationale",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L120",
+      "_origin": "ast",
+      "id": "alerts_notifier_rationale_120",
+      "community": 15,
+      "norm_label": "instantiate the named channels; drop any whose creds are missing."
+    },
+    {
+      "label": "__init__.py",
+      "file_type": "code",
+      "source_file": "audio/__init__.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "audio_init",
+      "community": 99,
+      "norm_label": "__init__.py"
+    },
+    {
+      "label": "Audio output (and, later, input) for the humanoid camera.",
+      "file_type": "rationale",
+      "source_file": "audio/__init__.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "audio_init_rationale_1",
+      "community": 99,
+      "norm_label": "audio output (and, later, input) for the humanoid camera."
+    },
+    {
+      "label": "tts.py",
+      "file_type": "code",
+      "source_file": "audio/tts.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "audio_tts",
+      "community": 12,
+      "norm_label": "tts.py"
+    },
+    {
+      "label": "Speaker",
+      "file_type": "code",
+      "source_file": "audio/tts.py",
+      "source_location": "L13",
+      "_origin": "ast",
+      "id": "audio_tts_speaker",
+      "community": 12,
+      "norm_label": "speaker"
+    },
+    {
+      "label": ".__init__()",
+      "file_type": "code",
+      "source_file": "audio/tts.py",
+      "source_location": "L14",
+      "_origin": "ast",
+      "id": "audio_tts_speaker_init",
+      "community": 12,
+      "norm_label": ".__init__()"
+    },
+    {
+      "label": "._run()",
+      "file_type": "code",
+      "source_file": "audio/tts.py",
+      "source_location": "L32",
+      "_origin": "ast",
+      "id": "audio_tts_speaker_run",
+      "community": 12,
+      "norm_label": "._run()"
+    },
+    {
+      "label": ".say()",
+      "file_type": "code",
+      "source_file": "audio/tts.py",
+      "source_location": "L43",
+      "_origin": "ast",
+      "id": "audio_tts_speaker_say",
+      "community": 12,
+      "norm_label": ".say()"
+    },
+    {
+      "label": ".close()",
+      "file_type": "code",
+      "source_file": "audio/tts.py",
+      "source_location": "L50",
+      "_origin": "ast",
+      "id": "audio_tts_speaker_close",
+      "community": 12,
+      "norm_label": ".close()"
+    },
+    {
+      "label": "Offline text-to-speech \u2014 the agent's mouth.  Uses pyttsx3 (offline, cross-platfo",
+      "file_type": "rationale",
+      "source_file": "audio/tts.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "audio_tts_rationale_1",
+      "community": 12,
+      "norm_label": "offline text-to-speech \u2014 the agent's mouth.  uses pyttsx3 (offline, cross-platfo"
+    },
+    {
+      "label": "__init__.py",
+      "file_type": "code",
       "source_file": "core/__init__.py",
       "source_location": "L1",
       "_origin": "ast",
@@ -200,7 +1010,7 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "core_context_facedata",
-      "community": 18,
+      "community": 101,
       "norm_label": "facedata"
     },
     {
@@ -210,7 +1020,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "core_context_posedata",
-      "community": 0,
+      "community": 82,
       "norm_label": "posedata"
     },
     {
@@ -510,7 +1320,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "core_registry_discover",
-      "community": 0,
+      "community": 22,
       "norm_label": "discover()"
     },
     {
@@ -520,7 +1330,7 @@
       "source_location": "L30",
       "_origin": "ast",
       "id": "core_registry_build_enabled",
-      "community": 0,
+      "community": 21,
       "norm_label": "build_enabled()"
     },
     {
@@ -530,7 +1340,7 @@
       "source_location": "L46",
       "_origin": "ast",
       "id": "core_registry_all_registered",
-      "community": 0,
+      "community": 22,
       "norm_label": "all_registered()"
     },
     {
@@ -560,7 +1370,7 @@
       "source_location": "L24",
       "_origin": "ast",
       "id": "core_registry_rationale_24",
-      "community": 0,
+      "community": 22,
       "norm_label": "import every submodule of `modules/` so @register decorators run."
     },
     {
@@ -570,7 +1380,7 @@
       "source_location": "L31",
       "_origin": "ast",
       "id": "core_registry_rationale_31",
-      "community": 0,
+      "community": 21,
       "norm_label": "instantiate modules enabled in config, passing their params."
     },
     {
@@ -650,7 +1460,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "extractors_face",
-      "community": 18,
+      "community": 101,
       "norm_label": "face.py"
     },
     {
@@ -660,7 +1470,7 @@
       "source_location": "L24",
       "_origin": "ast",
       "id": "extractors_face_faceextractor",
-      "community": 18,
+      "community": 101,
       "norm_label": "faceextractor"
     },
     {
@@ -680,7 +1490,7 @@
       "source_location": "L43",
       "_origin": "ast",
       "id": "extractors_face_faceextractor_extract",
-      "community": 18,
+      "community": 101,
       "norm_label": ".extract()"
     },
     {
@@ -690,7 +1500,7 @@
       "source_location": "L69",
       "_origin": "ast",
       "id": "extractors_face_faceextractor_close",
-      "community": 18,
+      "community": 101,
       "norm_label": ".close()"
     },
     {
@@ -700,7 +1510,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "extractors_face_rationale_1",
-      "community": 18,
+      "community": 101,
       "norm_label": "shared face extractor: mediapipe tasks facelandmarker (478 landmarks including i"
     },
     {
@@ -730,7 +1540,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "extractors_motion",
-      "community": 0,
+      "community": 22,
       "norm_label": "motion.py"
     },
     {
@@ -740,7 +1550,7 @@
       "source_location": "L10",
       "_origin": "ast",
       "id": "extractors_motion_motionextractor",
-      "community": 0,
+      "community": 22,
       "norm_label": "motionextractor"
     },
     {
@@ -750,7 +1560,7 @@
       "source_location": "L11",
       "_origin": "ast",
       "id": "extractors_motion_motionextractor_init",
-      "community": 0,
+      "community": 22,
       "norm_label": ".__init__()"
     },
     {
@@ -760,7 +1570,7 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "extractors_motion_motionextractor_extract",
-      "community": 0,
+      "community": 5,
       "norm_label": ".extract()"
     },
     {
@@ -770,7 +1580,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "extractors_motion_rationale_1",
-      "community": 0,
+      "community": 22,
       "norm_label": "frame-difference motion energy, shared by activity/agitation/unresponsive."
     },
     {
@@ -790,7 +1600,7 @@
       "source_location": "L29",
       "_origin": "ast",
       "id": "extractors_pose_poseextractor",
-      "community": 0,
+      "community": 82,
       "norm_label": "poseextractor"
     },
     {
@@ -800,7 +1610,7 @@
       "source_location": "L30",
       "_origin": "ast",
       "id": "extractors_pose_poseextractor_init",
-      "community": 0,
+      "community": 82,
       "norm_label": ".__init__()"
     },
     {
@@ -810,7 +1620,7 @@
       "source_location": "L45",
       "_origin": "ast",
       "id": "extractors_pose_poseextractor_extract",
-      "community": 0,
+      "community": 82,
       "norm_label": ".extract()"
     },
     {
@@ -820,7 +1630,7 @@
       "source_location": "L65",
       "_origin": "ast",
       "id": "extractors_pose_poseextractor_close",
-      "community": 0,
+      "community": 82,
       "norm_label": ".close()"
     },
     {
@@ -940,37 +1750,47 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "main",
-      "community": 0,
+      "community": 21,
       "norm_label": "main.py"
     },
     {
       "label": "load_config()",
       "file_type": "code",
       "source_file": "main.py",
-      "source_location": "L44",
+      "source_location": "L48",
       "_origin": "ast",
       "id": "main_load_config",
-      "community": 0,
+      "community": 21,
       "norm_label": "load_config()"
+    },
+    {
+      "label": "load_alerts_config()",
+      "file_type": "code",
+      "source_file": "main.py",
+      "source_location": "L53",
+      "_origin": "ast",
+      "id": "main_load_alerts_config",
+      "community": 21,
+      "norm_label": "load_alerts_config()"
     },
     {
       "label": "build_pipeline()",
       "file_type": "code",
       "source_file": "main.py",
-      "source_location": "L49",
+      "source_location": "L60",
       "_origin": "ast",
       "id": "main_build_pipeline",
-      "community": 0,
+      "community": 21,
       "norm_label": "build_pipeline()"
     },
     {
       "label": "main()",
       "file_type": "code",
       "source_file": "main.py",
-      "source_location": "L61",
+      "source_location": "L72",
       "_origin": "ast",
       "id": "main_main",
-      "community": 0,
+      "community": 21,
       "norm_label": "main()"
     },
     {
@@ -980,7 +1800,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "main_rationale_1",
-      "community": 0,
+      "community": 21,
       "norm_label": "live humanoid-camera detection pipeline.  usage:   python main.py"
     },
     {
@@ -1050,7 +1870,7 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "modules_util_timedbuffer_span",
-      "community": 2,
+      "community": 84,
       "norm_label": ".span()"
     },
     {
@@ -1060,7 +1880,7 @@
       "source_location": "L35",
       "_origin": "ast",
       "id": "modules_util_timedbuffer_arrays",
-      "community": 2,
+      "community": 84,
       "norm_label": ".arrays()"
     },
     {
@@ -1070,7 +1890,7 @@
       "source_location": "",
       "_origin": "ast",
       "id": "modules_util_py_ndarray",
-      "community": 6,
+      "community": 84,
       "norm_label": "ndarray"
     },
     {
@@ -1080,7 +1900,7 @@
       "source_location": "L38",
       "_origin": "ast",
       "id": "modules_util_timedbuffer_resampled",
-      "community": 2,
+      "community": 84,
       "norm_label": ".resampled()"
     },
     {
@@ -1090,7 +1910,7 @@
       "source_location": "L49",
       "_origin": "ast",
       "id": "modules_util_dominant_frequency",
-      "community": 6,
+      "community": 1,
       "norm_label": "dominant_frequency()"
     },
     {
@@ -1100,7 +1920,7 @@
       "source_location": "L72",
       "_origin": "ast",
       "id": "modules_util_bandpass",
-      "community": 6,
+      "community": 1,
       "norm_label": "bandpass()"
     },
     {
@@ -1120,7 +1940,7 @@
       "source_location": "L90",
       "_origin": "ast",
       "id": "modules_util_roi_patch",
-      "community": 6,
+      "community": 84,
       "norm_label": "roi_patch()"
     },
     {
@@ -1130,7 +1950,7 @@
       "source_location": "L104",
       "_origin": "ast",
       "id": "modules_util_polygon_mask",
-      "community": 1,
+      "community": 84,
       "norm_label": "polygon_mask()"
     },
     {
@@ -1140,7 +1960,7 @@
       "source_location": "L111",
       "_origin": "ast",
       "id": "modules_util_face_skin_mask",
-      "community": 1,
+      "community": 84,
       "norm_label": "face_skin_mask()"
     },
     {
@@ -1170,7 +1990,7 @@
       "source_location": "L39",
       "_origin": "ast",
       "id": "modules_util_rationale_39",
-      "community": 2,
+      "community": 84,
       "norm_label": "uniformly resample values at fs hz; returns (signal, fs) or none."
     },
     {
@@ -1180,7 +2000,7 @@
       "source_location": "L51",
       "_origin": "ast",
       "id": "modules_util_rationale_51",
-      "community": 6,
+      "community": 1,
       "norm_label": "strongest frequency in [fmin, fmax] hz.      returns (frequency_hz, prominence 0"
     },
     {
@@ -1200,7 +2020,7 @@
       "source_location": "L91",
       "_origin": "ast",
       "id": "modules_util_rationale_91",
-      "community": 6,
+      "community": 84,
       "norm_label": "square skin patch around a face landmark; radius relative to face width."
     },
     {
@@ -1210,7 +2030,7 @@
       "source_location": "L105",
       "_origin": "ast",
       "id": "modules_util_rationale_105",
-      "community": 1,
+      "community": 84,
       "norm_label": "binary mask (uint8) of the polygon given by points_px."
     },
     {
@@ -1220,7 +2040,7 @@
       "source_location": "L112",
       "_origin": "ast",
       "id": "modules_util_rationale_112",
-      "community": 1,
+      "community": 84,
       "norm_label": "face-oval mask minus eyes and mouth \u2014 'skin only' pixels."
     },
     {
@@ -1400,7 +2220,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "modules_backends_base",
-      "community": 11,
+      "community": 1,
       "norm_label": "base.py"
     },
     {
@@ -1410,18 +2230,8 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "modules_backends_base_backend",
-      "community": 11,
+      "community": 1,
       "norm_label": "backend"
-    },
-    {
-      "label": "ABC",
-      "file_type": "code",
-      "source_file": "",
-      "source_location": "",
-      "_origin": "ast",
-      "id": "abc",
-      "community": 11,
-      "norm_label": "abc"
     },
     {
       "label": ".update()",
@@ -1430,7 +2240,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "modules_backends_base_backend_update",
-      "community": 11,
+      "community": 5,
       "norm_label": ".update()"
     },
     {
@@ -1450,7 +2260,7 @@
       "source_location": "L30",
       "_origin": "ast",
       "id": "modules_backends_base_backend_close",
-      "community": 11,
+      "community": 1,
       "norm_label": ".close()"
     },
     {
@@ -1460,7 +2270,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "modules_backends_base_rationale_1",
-      "community": 11,
+      "community": 1,
       "norm_label": "common interface for a detector backend.  a backend is fed one frame at a time v"
     },
     {
@@ -1470,7 +2280,7 @@
       "source_location": "L24",
       "_origin": "ast",
       "id": "modules_backends_base_rationale_24",
-      "community": 11,
+      "community": 5,
       "norm_label": "feed one frame (cheap: buffer / stash what compute() needs)."
     },
     {
@@ -1560,7 +2370,7 @@
       "source_location": "L33",
       "_origin": "ast",
       "id": "modules_base_detectionmodule_init",
-      "community": 0,
+      "community": 1,
       "norm_label": ".__init__()"
     },
     {
@@ -1570,7 +2380,7 @@
       "source_location": "",
       "_origin": "ast",
       "id": "any",
-      "community": 0,
+      "community": 1,
       "norm_label": "any"
     },
     {
@@ -1590,7 +2400,7 @@
       "source_location": "L42",
       "_origin": "ast",
       "id": "modules_base_detectionmodule_result",
-      "community": 0,
+      "community": 1,
       "norm_label": ".result()"
     },
     {
@@ -1730,7 +2540,7 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "modules_bruise_bruise_process",
-      "community": 1,
+      "community": 84,
       "norm_label": ".process()"
     },
     {
@@ -2000,7 +2810,7 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "modules_dry_lips_drylips_process",
-      "community": 1,
+      "community": 84,
       "norm_label": ".process()"
     },
     {
@@ -2020,7 +2830,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "modules_emotion",
-      "community": 12,
+      "community": 1,
       "norm_label": "emotion.py"
     },
     {
@@ -2090,7 +2900,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "modules_emotion_rationale_1",
-      "community": 12,
+      "community": 1,
       "norm_label": "emotion / mood recognition \u2014 multi-backend.  runs several emotion backends toget"
     },
     {
@@ -2120,7 +2930,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "modules_emotion_backends_deepface_backend",
-      "community": 4,
+      "community": 1,
       "norm_label": "deepface_backend.py"
     },
     {
@@ -2130,7 +2940,7 @@
       "source_location": "L25",
       "_origin": "ast",
       "id": "modules_emotion_backends_deepface_backend_worker",
-      "community": 4,
+      "community": 8,
       "norm_label": "_worker()"
     },
     {
@@ -2140,7 +2950,7 @@
       "source_location": "L71",
       "_origin": "ast",
       "id": "modules_emotion_backends_deepface_backend_deepfacebackend",
-      "community": 4,
+      "community": 8,
       "norm_label": "deepfacebackend"
     },
     {
@@ -2150,7 +2960,7 @@
       "source_location": "L74",
       "_origin": "ast",
       "id": "modules_emotion_backends_deepface_backend_deepfacebackend_init",
-      "community": 4,
+      "community": 8,
       "norm_label": ".__init__()"
     },
     {
@@ -2160,7 +2970,7 @@
       "source_location": "L91",
       "_origin": "ast",
       "id": "modules_emotion_backends_deepface_backend_deepfacebackend_ensure_worker",
-      "community": 4,
+      "community": 8,
       "norm_label": "._ensure_worker()"
     },
     {
@@ -2170,7 +2980,7 @@
       "source_location": "L126",
       "_origin": "ast",
       "id": "modules_emotion_backends_deepface_backend_deepfacebackend_update",
-      "community": 4,
+      "community": 8,
       "norm_label": ".update()"
     },
     {
@@ -2180,7 +2990,7 @@
       "source_location": "L135",
       "_origin": "ast",
       "id": "modules_emotion_backends_deepface_backend_deepfacebackend_compute",
-      "community": 4,
+      "community": 8,
       "norm_label": ".compute()"
     },
     {
@@ -2190,7 +3000,7 @@
       "source_location": "L151",
       "_origin": "ast",
       "id": "modules_emotion_backends_deepface_backend_deepfacebackend_drain",
-      "community": 4,
+      "community": 8,
       "norm_label": "._drain()"
     },
     {
@@ -2200,7 +3010,7 @@
       "source_location": "L176",
       "_origin": "ast",
       "id": "modules_emotion_backends_deepface_backend_deepfacebackend_close",
-      "community": 4,
+      "community": 8,
       "norm_label": ".close()"
     },
     {
@@ -2210,7 +3020,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "modules_emotion_backends_deepface_backend_rationale_1",
-      "community": 4,
+      "community": 1,
       "norm_label": "deepface emotion (+age/gender) backend (tested; from research.md).  uses the `de"
     },
     {
@@ -2220,7 +3030,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "modules_emotion_backends_ferplus",
-      "community": 11,
+      "community": 1,
       "norm_label": "ferplus.py"
     },
     {
@@ -2230,7 +3040,7 @@
       "source_location": "L20",
       "_origin": "ast",
       "id": "modules_emotion_backends_ferplus_ferplusbackend",
-      "community": 15,
+      "community": 8,
       "norm_label": "ferplusbackend"
     },
     {
@@ -2240,7 +3050,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "modules_emotion_backends_ferplus_ferplusbackend_init",
-      "community": 15,
+      "community": 8,
       "norm_label": ".__init__()"
     },
     {
@@ -2250,7 +3060,7 @@
       "source_location": "L38",
       "_origin": "ast",
       "id": "modules_emotion_backends_ferplus_ferplusbackend_update",
-      "community": 15,
+      "community": 8,
       "norm_label": ".update()"
     },
     {
@@ -2260,7 +3070,7 @@
       "source_location": "L43",
       "_origin": "ast",
       "id": "modules_emotion_backends_ferplus_ferplusbackend_compute",
-      "community": 15,
+      "community": 8,
       "norm_label": ".compute()"
     },
     {
@@ -2270,7 +3080,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "modules_emotion_backends_ferplus_rationale_1",
-      "community": 11,
+      "community": 1,
       "norm_label": "fer+ onnx emotion backend (optional).  uses models/emotion.onnx (fer+ 64x64 gray"
     },
     {
@@ -2280,7 +3090,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "modules_emotion_backends_heuristic",
-      "community": 11,
+      "community": 1,
       "norm_label": "heuristic.py"
     },
     {
@@ -2330,7 +3140,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "modules_emotion_backends_heuristic_rationale_1",
-      "community": 11,
+      "community": 1,
       "norm_label": "landmark-geometry emotion heuristic (original, dependency-free).  maps smile cur"
     },
     {
@@ -2340,7 +3150,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "modules_emotion_backends_hsemotion",
-      "community": 12,
+      "community": 1,
       "norm_label": "hsemotion.py"
     },
     {
@@ -2350,7 +3160,7 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "modules_emotion_backends_hsemotion_hsemotionbackend",
-      "community": 12,
+      "community": 8,
       "norm_label": "hsemotionbackend"
     },
     {
@@ -2360,7 +3170,7 @@
       "source_location": "L30",
       "_origin": "ast",
       "id": "modules_emotion_backends_hsemotion_hsemotionbackend_init",
-      "community": 12,
+      "community": 8,
       "norm_label": ".__init__()"
     },
     {
@@ -2370,7 +3180,7 @@
       "source_location": "L51",
       "_origin": "ast",
       "id": "modules_emotion_backends_hsemotion_hsemotionbackend_update",
-      "community": 12,
+      "community": 8,
       "norm_label": ".update()"
     },
     {
@@ -2380,7 +3190,7 @@
       "source_location": "L57",
       "_origin": "ast",
       "id": "modules_emotion_backends_hsemotion_hsemotionbackend_compute",
-      "community": 12,
+      "community": 8,
       "norm_label": ".compute()"
     },
     {
@@ -2390,7 +3200,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "modules_emotion_backends_hsemotion_rationale_1",
-      "community": 12,
+      "community": 1,
       "norm_label": "hsemotion emotion+mood backend (tested; affectnet-trained, onnx).  uses the `hse"
     },
     {
@@ -2470,7 +3280,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "modules_eye_redness_eyeredness",
-      "community": 5,
+      "community": 84,
       "norm_label": "eyeredness"
     },
     {
@@ -2480,7 +3290,7 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "modules_eye_redness_eyeredness_sclera_redness",
-      "community": 5,
+      "community": 84,
       "norm_label": "._sclera_redness()"
     },
     {
@@ -2490,7 +3300,7 @@
       "source_location": "L40",
       "_origin": "ast",
       "id": "modules_eye_redness_eyeredness_process",
-      "community": 5,
+      "community": 84,
       "norm_label": ".process()"
     },
     {
@@ -2520,7 +3330,7 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "modules_facial_asymmetry_facialasymmetry",
-      "community": 22,
+      "community": 5,
       "norm_label": "facialasymmetry"
     },
     {
@@ -2530,7 +3340,7 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "modules_facial_asymmetry_facialasymmetry_init",
-      "community": 22,
+      "community": 5,
       "norm_label": ".__init__()"
     },
     {
@@ -2540,7 +3350,7 @@
       "source_location": "L40",
       "_origin": "ast",
       "id": "modules_facial_asymmetry_facialasymmetry_process",
-      "community": 22,
+      "community": 5,
       "norm_label": ".process()"
     },
     {
@@ -2570,7 +3380,7 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "modules_facial_swelling_facialswelling",
-      "community": 21,
+      "community": 103,
       "norm_label": "facialswelling"
     },
     {
@@ -2580,7 +3390,7 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "modules_facial_swelling_facialswelling_init",
-      "community": 21,
+      "community": 103,
       "norm_label": ".__init__()"
     },
     {
@@ -2590,7 +3400,7 @@
       "source_location": "L31",
       "_origin": "ast",
       "id": "modules_facial_swelling_facialswelling_features",
-      "community": 21,
+      "community": 103,
       "norm_label": "._features()"
     },
     {
@@ -2600,7 +3410,7 @@
       "source_location": "L39",
       "_origin": "ast",
       "id": "modules_facial_swelling_facialswelling_process",
-      "community": 21,
+      "community": 103,
       "norm_label": ".process()"
     },
     {
@@ -2710,7 +3520,7 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "modules_gait_gait_process",
-      "community": 6,
+      "community": 2,
       "norm_label": ".process()"
     },
     {
@@ -2840,7 +3650,7 @@
       "source_location": "L37",
       "_origin": "ast",
       "id": "modules_heart_rate_heartrate",
-      "community": 18,
+      "community": 6,
       "norm_label": "heartrate"
     },
     {
@@ -2850,7 +3660,7 @@
       "source_location": "L52",
       "_origin": "ast",
       "id": "modules_heart_rate_heartrate_init",
-      "community": 18,
+      "community": 6,
       "norm_label": ".__init__()"
     },
     {
@@ -2860,7 +3670,7 @@
       "source_location": "L82",
       "_origin": "ast",
       "id": "modules_heart_rate_heartrate_key",
-      "community": 18,
+      "community": 6,
       "norm_label": "._key()"
     },
     {
@@ -2870,7 +3680,7 @@
       "source_location": "L85",
       "_origin": "ast",
       "id": "modules_heart_rate_heartrate_placeholder",
-      "community": 18,
+      "community": 6,
       "norm_label": "._placeholder()"
     },
     {
@@ -2880,7 +3690,7 @@
       "source_location": "L88",
       "_origin": "ast",
       "id": "modules_heart_rate_heartrate_status_result",
-      "community": 18,
+      "community": 6,
       "norm_label": "._status_result()"
     },
     {
@@ -2890,7 +3700,7 @@
       "source_location": "L91",
       "_origin": "ast",
       "id": "modules_heart_rate_heartrate_process",
-      "community": 18,
+      "community": 6,
       "norm_label": ".process()"
     },
     {
@@ -2900,7 +3710,7 @@
       "source_location": "L141",
       "_origin": "ast",
       "id": "modules_heart_rate_heartrate_close",
-      "community": 18,
+      "community": 6,
       "norm_label": ".close()"
     },
     {
@@ -3040,7 +3850,7 @@
       "source_location": "L20",
       "_origin": "ast",
       "id": "modules_presence_presence",
-      "community": 19,
+      "community": 5,
       "norm_label": "presence"
     },
     {
@@ -3060,7 +3870,7 @@
       "source_location": "L30",
       "_origin": "ast",
       "id": "modules_presence_presence_process",
-      "community": 19,
+      "community": 5,
       "norm_label": ".process()"
     },
     {
@@ -3100,7 +3910,7 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "modules_rash_rash_process",
-      "community": 1,
+      "community": 84,
       "norm_label": ".process()"
     },
     {
@@ -3150,7 +3960,7 @@
       "source_location": "L29",
       "_origin": "ast",
       "id": "modules_respiration_respiration_process",
-      "community": 6,
+      "community": 2,
       "norm_label": ".process()"
     },
     {
@@ -3190,7 +4000,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "modules_rppg_backends_base",
-      "community": 11,
+      "community": 1,
       "norm_label": "base.py"
     },
     {
@@ -3200,7 +4010,7 @@
       "source_location": "L17",
       "_origin": "ast",
       "id": "modules_rppg_backends_base_rppgbackend",
-      "community": 11,
+      "community": 1,
       "norm_label": "rppgbackend"
     },
     {
@@ -3210,7 +4020,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "modules_rppg_backends_base_rationale_1",
-      "community": 11,
+      "community": 1,
       "norm_label": "rppg heart-rate backend interface.  thin specialization of the shared `modules.b"
     },
     {
@@ -3220,7 +4030,7 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "modules_rppg_backends_base_rationale_18",
-      "community": 11,
+      "community": 1,
       "norm_label": "alias kept for the rppg backends; identical contract to backend."
     },
     {
@@ -3230,7 +4040,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "modules_rppg_backends_classical",
-      "community": 6,
+      "community": 1,
       "norm_label": "classical.py"
     },
     {
@@ -3250,7 +4060,7 @@
       "source_location": "L25",
       "_origin": "ast",
       "id": "modules_rppg_backends_classical_classicalbackend_init",
-      "community": 2,
+      "community": 6,
       "norm_label": ".__init__()"
     },
     {
@@ -3260,7 +4070,7 @@
       "source_location": "L29",
       "_origin": "ast",
       "id": "modules_rppg_backends_classical_classicalbackend_update",
-      "community": 6,
+      "community": 84,
       "norm_label": ".update()"
     },
     {
@@ -3280,7 +4090,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "modules_rppg_backends_classical_rationale_1",
-      "community": 6,
+      "community": 1,
       "norm_label": "classical rppg backend: forehead green-channel bandpass + fft.  this is the orig"
     },
     {
@@ -3290,7 +4100,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "modules_rppg_backends_openrppg",
-      "community": 6,
+      "community": 1,
       "norm_label": "openrppg.py"
     },
     {
@@ -3300,7 +4110,7 @@
       "source_location": "L40",
       "_origin": "ast",
       "id": "modules_rppg_backends_openrppg_openrppgbackend",
-      "community": 18,
+      "community": 6,
       "norm_label": "openrppgbackend"
     },
     {
@@ -3310,7 +4120,7 @@
       "source_location": "L44",
       "_origin": "ast",
       "id": "modules_rppg_backends_openrppg_openrppgbackend_init",
-      "community": 18,
+      "community": 6,
       "norm_label": ".__init__()"
     },
     {
@@ -3320,7 +4130,7 @@
       "source_location": "L96",
       "_origin": "ast",
       "id": "modules_rppg_backends_openrppg_openrppgbackend_update",
-      "community": 18,
+      "community": 6,
       "norm_label": ".update()"
     },
     {
@@ -3330,7 +4140,7 @@
       "source_location": "L121",
       "_origin": "ast",
       "id": "modules_rppg_backends_openrppg_openrppgbackend_stable_face",
-      "community": 18,
+      "community": 6,
       "norm_label": "._stable_face()"
     },
     {
@@ -3340,7 +4150,7 @@
       "source_location": "L138",
       "_origin": "ast",
       "id": "modules_rppg_backends_openrppg_openrppgbackend_infer",
-      "community": 18,
+      "community": 6,
       "norm_label": "._infer()"
     },
     {
@@ -3350,7 +4160,7 @@
       "source_location": "",
       "_origin": "ast",
       "id": "modules_rppg_backends_openrppg_py_ndarray",
-      "community": 18,
+      "community": 6,
       "norm_label": "ndarray"
     },
     {
@@ -3360,7 +4170,7 @@
       "source_location": "L150",
       "_origin": "ast",
       "id": "modules_rppg_backends_openrppg_openrppgbackend_compute",
-      "community": 18,
+      "community": 6,
       "norm_label": ".compute()"
     },
     {
@@ -3370,7 +4180,7 @@
       "source_location": "L188",
       "_origin": "ast",
       "id": "modules_rppg_backends_openrppg_openrppgbackend_compute_tensor",
-      "community": 18,
+      "community": 6,
       "norm_label": "._compute_tensor()"
     },
     {
@@ -3380,7 +4190,7 @@
       "source_location": "L249",
       "_origin": "ast",
       "id": "modules_rppg_backends_openrppg_openrppgbackend_prepare_runtime",
-      "community": 18,
+      "community": 6,
       "norm_label": "._prepare_runtime()"
     },
     {
@@ -3390,7 +4200,7 @@
       "source_location": "L263",
       "_origin": "ast",
       "id": "modules_rppg_backends_openrppg_openrppgbackend_log_runtime",
-      "community": 18,
+      "community": 6,
       "norm_label": "._log_runtime()"
     },
     {
@@ -3400,7 +4210,7 @@
       "source_location": "L289",
       "_origin": "ast",
       "id": "modules_rppg_backends_openrppg_openrppgbackend_close",
-      "community": 18,
+      "community": 6,
       "norm_label": ".close()"
     },
     {
@@ -3410,7 +4220,7 @@
       "source_location": "L305",
       "_origin": "ast",
       "id": "modules_rppg_backends_openrppg_finite",
-      "community": 18,
+      "community": 6,
       "norm_label": "_finite()"
     },
     {
@@ -3430,7 +4240,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "modules_rppg_backends_openrppg_rationale_1",
-      "community": 6,
+      "community": 1,
       "norm_label": "neural rppg backend using the open-rppg toolbox (kegangwangccnu/open-rppg).  rep"
     },
     {
@@ -3440,7 +4250,7 @@
       "source_location": "L139",
       "_origin": "ast",
       "id": "modules_rppg_backends_openrppg_rationale_139",
-      "community": 18,
+      "community": 6,
       "norm_label": "one inference pass -> (hr_dict, bvp_array, bvp_ts). mirrors         process_face"
     },
     {
@@ -3470,7 +4280,7 @@
       "source_location": "L30",
       "_origin": "ast",
       "id": "modules_skin_color_norm_chroma",
-      "community": 104,
+      "community": 84,
       "norm_label": "_norm_chroma()"
     },
     {
@@ -3480,7 +4290,7 @@
       "source_location": "",
       "_origin": "ast",
       "id": "modules_skin_color_py_ndarray",
-      "community": 104,
+      "community": 84,
       "norm_label": "ndarray"
     },
     {
@@ -3490,7 +4300,7 @@
       "source_location": "L38",
       "_origin": "ast",
       "id": "modules_skin_color_baseline",
-      "community": 104,
+      "community": 84,
       "norm_label": "_baseline"
     },
     {
@@ -3500,7 +4310,7 @@
       "source_location": "L39",
       "_origin": "ast",
       "id": "modules_skin_color_baseline_init",
-      "community": 104,
+      "community": 84,
       "norm_label": ".__init__()"
     },
     {
@@ -3510,7 +4320,7 @@
       "source_location": "L45",
       "_origin": "ast",
       "id": "modules_skin_color_baseline_update",
-      "community": 104,
+      "community": 84,
       "norm_label": ".update()"
     },
     {
@@ -3520,7 +4330,7 @@
       "source_location": "L56",
       "_origin": "ast",
       "id": "modules_skin_color_skincolor",
-      "community": 104,
+      "community": 84,
       "norm_label": "skincolor"
     },
     {
@@ -3530,7 +4340,7 @@
       "source_location": "L60",
       "_origin": "ast",
       "id": "modules_skin_color_skincolor_init",
-      "community": 104,
+      "community": 84,
       "norm_label": ".__init__()"
     },
     {
@@ -3540,7 +4350,7 @@
       "source_location": "L64",
       "_origin": "ast",
       "id": "modules_skin_color_skincolor_process",
-      "community": 104,
+      "community": 84,
       "norm_label": ".process()"
     },
     {
@@ -3560,7 +4370,7 @@
       "source_location": "L31",
       "_origin": "ast",
       "id": "modules_skin_color_rationale_31",
-      "community": 104,
+      "community": 84,
       "norm_label": "mean normalized (r,g,b) chromaticity of a set of bgr pixels."
     },
     {
@@ -3580,7 +4390,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "modules_sweating_sweating",
-      "community": 82,
+      "community": 84,
       "norm_label": "sweating"
     },
     {
@@ -3590,7 +4400,7 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "modules_sweating_sweating_init",
-      "community": 82,
+      "community": 84,
       "norm_label": ".__init__()"
     },
     {
@@ -3600,7 +4410,7 @@
       "source_location": "L31",
       "_origin": "ast",
       "id": "modules_sweating_sweating_process",
-      "community": 82,
+      "community": 84,
       "norm_label": ".process()"
     },
     {
@@ -3650,7 +4460,7 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "modules_tremor_tremor_process",
-      "community": 6,
+      "community": 2,
       "norm_label": ".process()"
     },
     {
@@ -4090,7 +4900,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "output_greeting_engine",
-      "community": 0,
+      "community": 83,
       "norm_label": "greeting_engine.py"
     },
     {
@@ -4100,7 +4910,7 @@
       "source_location": "L21",
       "_origin": "ast",
       "id": "output_greeting_engine_greetingengine",
-      "community": 0,
+      "community": 83,
       "norm_label": "greetingengine"
     },
     {
@@ -4110,7 +4920,7 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "output_greeting_engine_greetingengine_init",
-      "community": 0,
+      "community": 83,
       "norm_label": ".__init__()"
     },
     {
@@ -4120,7 +4930,7 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "output_greeting_engine_greetingengine_time_of_day",
-      "community": 0,
+      "community": 83,
       "norm_label": "._time_of_day()"
     },
     {
@@ -4130,7 +4940,7 @@
       "source_location": "L35",
       "_origin": "ast",
       "id": "output_greeting_engine_greetingengine_alerts",
-      "community": 0,
+      "community": 83,
       "norm_label": ".alerts()"
     },
     {
@@ -4140,7 +4950,7 @@
       "source_location": "L39",
       "_origin": "ast",
       "id": "output_greeting_engine_greetingengine_maybe_greet",
-      "community": 0,
+      "community": 83,
       "norm_label": ".maybe_greet()"
     },
     {
@@ -4150,7 +4960,7 @@
       "source_location": "L51",
       "_origin": "ast",
       "id": "output_greeting_engine_greetingengine_compose",
-      "community": 0,
+      "community": 83,
       "norm_label": ".compose()"
     },
     {
@@ -4160,7 +4970,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "output_greeting_engine_rationale_1",
-      "community": 0,
+      "community": 83,
       "norm_label": "rule-based greeting + recommendation engine.  consumes the aggregator snapshot a"
     },
     {
@@ -4170,7 +4980,7 @@
       "source_location": "L40",
       "_origin": "ast",
       "id": "output_greeting_engine_rationale_40",
-      "community": 0,
+      "community": 83,
       "norm_label": "return a greeting string if a person just arrived (or forced)."
     },
     {
@@ -4260,7 +5070,7 @@
       "source_location": "L20",
       "_origin": "ast",
       "id": "storage_history_store_historystore_init",
-      "community": 0,
+      "community": 19,
       "norm_label": ".__init__()"
     },
     {
@@ -4270,7 +5080,7 @@
       "source_location": "",
       "_origin": "ast",
       "id": "path",
-      "community": 0,
+      "community": 82,
       "norm_label": "path"
     },
     {
@@ -4324,13 +5134,83 @@
       "norm_label": "persistent longitudinal store (sqlite).  longitudinal modules (activity trends,"
     },
     {
+      "label": "agent_alert_test.py",
+      "file_type": "code",
+      "source_file": "tests/agent_alert_test.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "tests_agent_alert_test",
+      "community": 100,
+      "norm_label": "agent_alert_test.py"
+    },
+    {
+      "label": "Recorder",
+      "file_type": "code",
+      "source_file": "tests/agent_alert_test.py",
+      "source_location": "L27",
+      "_origin": "ast",
+      "id": "tests_agent_alert_test_recorder",
+      "community": 100,
+      "norm_label": "recorder"
+    },
+    {
+      "label": ".__init__()",
+      "file_type": "code",
+      "source_file": "tests/agent_alert_test.py",
+      "source_location": "L30",
+      "_origin": "ast",
+      "id": "tests_agent_alert_test_recorder_init",
+      "community": 100,
+      "norm_label": ".__init__()"
+    },
+    {
+      "label": ".send()",
+      "file_type": "code",
+      "source_file": "tests/agent_alert_test.py",
+      "source_location": "L33",
+      "_origin": "ast",
+      "id": "tests_agent_alert_test_recorder_send",
+      "community": 100,
+      "norm_label": ".send()"
+    },
+    {
+      "label": "R()",
+      "file_type": "code",
+      "source_file": "tests/agent_alert_test.py",
+      "source_location": "L38",
+      "_origin": "ast",
+      "id": "tests_agent_alert_test_r",
+      "community": 100,
+      "norm_label": "r()"
+    },
+    {
+      "label": "main()",
+      "file_type": "code",
+      "source_file": "tests/agent_alert_test.py",
+      "source_location": "L43",
+      "_origin": "ast",
+      "id": "tests_agent_alert_test_main",
+      "community": 100,
+      "norm_label": "main()"
+    },
+    {
+      "label": "Voice agent + caregiver alerting test (no camera, offline-deterministic).  Force",
+      "file_type": "rationale",
+      "source_file": "tests/agent_alert_test.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "tests_agent_alert_test_rationale_1",
+      "community": 100,
+      "norm_label": "voice agent + caregiver alerting test (no camera, offline-deterministic).  force"
+    },
+    {
       "label": "benchmark_rppg_models.py",
       "file_type": "code",
       "source_file": "tests/benchmark_rppg_models.py",
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_benchmark_rppg_models",
-      "community": 18,
+      "community": 102,
       "norm_label": "benchmark_rppg_models.py"
     },
     {
@@ -4340,7 +5220,7 @@
       "source_location": "L31",
       "_origin": "ast",
       "id": "tests_benchmark_rppg_models_mean",
-      "community": 18,
+      "community": 102,
       "norm_label": "_mean()"
     },
     {
@@ -4350,7 +5230,7 @@
       "source_location": "L35",
       "_origin": "ast",
       "id": "tests_benchmark_rppg_models_median",
-      "community": 18,
+      "community": 102,
       "norm_label": "_median()"
     },
     {
@@ -4360,7 +5240,7 @@
       "source_location": "L39",
       "_origin": "ast",
       "id": "tests_benchmark_rppg_models_pct",
-      "community": 18,
+      "community": 102,
       "norm_label": "_pct()"
     },
     {
@@ -4370,7 +5250,7 @@
       "source_location": "L43",
       "_origin": "ast",
       "id": "tests_benchmark_rppg_models_load_reference",
-      "community": 18,
+      "community": 102,
       "norm_label": "_load_reference()"
     },
     {
@@ -4380,7 +5260,7 @@
       "source_location": "L58",
       "_origin": "ast",
       "id": "tests_benchmark_rppg_models_run_model",
-      "community": 18,
+      "community": 102,
       "norm_label": "_run_model()"
     },
     {
@@ -4390,7 +5270,7 @@
       "source_location": "L143",
       "_origin": "ast",
       "id": "tests_benchmark_rppg_models_write_csv",
-      "community": 18,
+      "community": 102,
       "norm_label": "_write_csv()"
     },
     {
@@ -4400,7 +5280,7 @@
       "source_location": "L151",
       "_origin": "ast",
       "id": "tests_benchmark_rppg_models_main",
-      "community": 18,
+      "community": 102,
       "norm_label": "main()"
     },
     {
@@ -4410,7 +5290,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_benchmark_rppg_models_rationale_1",
-      "community": 18,
+      "community": 102,
       "norm_label": "benchmark open-rppg models on the same clip against a reference bpm.  examples:"
     },
     {
@@ -4420,7 +5300,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_hr_backends_test",
-      "community": 18,
+      "community": 101,
       "norm_label": "hr_backends_test.py"
     },
     {
@@ -4430,7 +5310,7 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "tests_hr_backends_test_main",
-      "community": 18,
+      "community": 101,
       "norm_label": "main()"
     },
     {
@@ -4440,7 +5320,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_hr_backends_test_rationale_1",
-      "community": 18,
+      "community": 101,
       "norm_label": "integration test for the heart_rate module with both backends.  feeds synthetic"
     },
     {
@@ -4450,7 +5330,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_make_clip",
-      "community": 0,
+      "community": 22,
       "norm_label": "make_clip.py"
     },
     {
@@ -4460,7 +5340,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_make_clip_rationale_1",
-      "community": 0,
+      "community": 22,
       "norm_label": "generate a short synthetic clip with a moving face+body to exercise the real cam"
     },
     {
@@ -4470,7 +5350,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_pose_modules_test",
-      "community": 0,
+      "community": 82,
       "norm_label": "pose_modules_test.py"
     },
     {
@@ -4480,7 +5360,7 @@
       "source_location": "L24",
       "_origin": "ast",
       "id": "tests_pose_modules_test_synth_pose",
-      "community": 0,
+      "community": 82,
       "norm_label": "synth_pose()"
     },
     {
@@ -4490,7 +5370,7 @@
       "source_location": "L52",
       "_origin": "ast",
       "id": "tests_pose_modules_test_main",
-      "community": 0,
+      "community": 82,
       "norm_label": "main()"
     },
     {
@@ -4500,7 +5380,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_pose_modules_test_rationale_1",
-      "community": 0,
+      "community": 82,
       "norm_label": "exercise pose-dependent modules by injecting synthetic pose landmarks.  the synt"
     },
     {
@@ -4510,7 +5390,7 @@
       "source_location": "L25",
       "_origin": "ast",
       "id": "tests_pose_modules_test_rationale_25",
-      "community": 0,
+      "community": 82,
       "norm_label": "33x4 pose landmarks; add a fast wrist tremor + walking ankle motion."
     },
     {
@@ -4520,7 +5400,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_smoke_test",
-      "community": 0,
+      "community": 22,
       "norm_label": "smoke_test.py"
     },
     {
@@ -4530,7 +5410,7 @@
       "source_location": "L29",
       "_origin": "ast",
       "id": "tests_smoke_test_make_face_frame",
-      "community": 0,
+      "community": 22,
       "norm_label": "make_face_frame()"
     },
     {
@@ -4540,7 +5420,7 @@
       "source_location": "L48",
       "_origin": "ast",
       "id": "tests_smoke_test_main",
-      "community": 0,
+      "community": 22,
       "norm_label": "main()"
     },
     {
@@ -4550,7 +5430,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_smoke_test_rationale_1",
-      "community": 0,
+      "community": 22,
       "norm_label": "headless smoke test: no camera required.  verifies that (1) all modules import &"
     },
     {
@@ -4560,8 +5440,218 @@
       "source_location": "L30",
       "_origin": "ast",
       "id": "tests_smoke_test_rationale_30",
-      "community": 0,
+      "community": 22,
       "norm_label": "very rough synthetic 'face + body' so extractors have something to find.     med"
+    },
+    {
+      "label": "__init__.py",
+      "file_type": "code",
+      "source_file": "webui/__init__.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "webui_init",
+      "community": 4,
+      "norm_label": "__init__.py"
+    },
+    {
+      "label": "Companion web display: shows the voice agent's spoken lines as large text on a b",
+      "file_type": "rationale",
+      "source_file": "webui/__init__.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "webui_init_rationale_1",
+      "community": 4,
+      "norm_label": "companion web display: shows the voice agent's spoken lines as large text on a b"
+    },
+    {
+      "label": "_demo.py",
+      "file_type": "code",
+      "source_file": "webui/_demo.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "webui_demo",
+      "community": 4,
+      "norm_label": "_demo.py"
+    },
+    {
+      "label": "Demo launcher for the companion display (used for previewing the page).      pyt",
+      "file_type": "rationale",
+      "source_file": "webui/_demo.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "webui_demo_rationale_1",
+      "community": 4,
+      "norm_label": "demo launcher for the companion display (used for previewing the page).      pyt"
+    },
+    {
+      "label": "server.py",
+      "file_type": "code",
+      "source_file": "webui/server.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "webui_server",
+      "community": 4,
+      "norm_label": "server.py"
+    },
+    {
+      "label": "UtteranceBus",
+      "file_type": "code",
+      "source_file": "webui/server.py",
+      "source_location": "L21",
+      "_origin": "ast",
+      "id": "webui_server_utterancebus",
+      "community": 4,
+      "norm_label": "utterancebus"
+    },
+    {
+      "label": ".__init__()",
+      "file_type": "code",
+      "source_file": "webui/server.py",
+      "source_location": "L24",
+      "_origin": "ast",
+      "id": "webui_server_utterancebus_init",
+      "community": 4,
+      "norm_label": ".__init__()"
+    },
+    {
+      "label": ".publish()",
+      "file_type": "code",
+      "source_file": "webui/server.py",
+      "source_location": "L29",
+      "_origin": "ast",
+      "id": "webui_server_utterancebus_publish",
+      "community": 4,
+      "norm_label": ".publish()"
+    },
+    {
+      "label": ".since()",
+      "file_type": "code",
+      "source_file": "webui/server.py",
+      "source_location": "L38",
+      "_origin": "ast",
+      "id": "webui_server_utterancebus_since",
+      "community": 4,
+      "norm_label": ".since()"
+    },
+    {
+      "label": ".current_seq()",
+      "file_type": "code",
+      "source_file": "webui/server.py",
+      "source_location": "L42",
+      "_origin": "ast",
+      "id": "webui_server_utterancebus_current_seq",
+      "community": 4,
+      "norm_label": ".current_seq()"
+    },
+    {
+      "label": ".wait()",
+      "file_type": "code",
+      "source_file": "webui/server.py",
+      "source_location": "L46",
+      "_origin": "ast",
+      "id": "webui_server_utterancebus_wait",
+      "community": 4,
+      "norm_label": ".wait()"
+    },
+    {
+      "label": "_make_handler()",
+      "file_type": "code",
+      "source_file": "webui/server.py",
+      "source_location": "L54",
+      "_origin": "ast",
+      "id": "webui_server_make_handler",
+      "community": 4,
+      "norm_label": "_make_handler()"
+    },
+    {
+      "label": "_lan_ips()",
+      "file_type": "code",
+      "source_file": "webui/server.py",
+      "source_location": "L122",
+      "_origin": "ast",
+      "id": "webui_server_lan_ips",
+      "community": 4,
+      "norm_label": "_lan_ips()"
+    },
+    {
+      "label": "CompanionServer",
+      "file_type": "code",
+      "source_file": "webui/server.py",
+      "source_location": "L139",
+      "_origin": "ast",
+      "id": "webui_server_companionserver",
+      "community": 4,
+      "norm_label": "companionserver"
+    },
+    {
+      "label": ".__init__()",
+      "file_type": "code",
+      "source_file": "webui/server.py",
+      "source_location": "L140",
+      "_origin": "ast",
+      "id": "webui_server_companionserver_init",
+      "community": 4,
+      "norm_label": ".__init__()"
+    },
+    {
+      "label": ".start()",
+      "file_type": "code",
+      "source_file": "webui/server.py",
+      "source_location": "L147",
+      "_origin": "ast",
+      "id": "webui_server_companionserver_start",
+      "community": 4,
+      "norm_label": ".start()"
+    },
+    {
+      "label": ".publish()",
+      "file_type": "code",
+      "source_file": "webui/server.py",
+      "source_location": "L160",
+      "_origin": "ast",
+      "id": "webui_server_companionserver_publish",
+      "community": 4,
+      "norm_label": ".publish()"
+    },
+    {
+      "label": ".stop()",
+      "file_type": "code",
+      "source_file": "webui/server.py",
+      "source_location": "L163",
+      "_origin": "ast",
+      "id": "webui_server_companionserver_stop",
+      "community": 4,
+      "norm_label": ".stop()"
+    },
+    {
+      "label": "Tiny stdlib web server that broadcasts the voice agent's utterances.  No third-p",
+      "file_type": "rationale",
+      "source_file": "webui/server.py",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "webui_server_rationale_1",
+      "community": 4,
+      "norm_label": "tiny stdlib web server that broadcasts the voice agent's utterances.  no third-p"
+    },
+    {
+      "label": "Thread-safe pub/sub of agent lines with a small replay buffer.",
+      "file_type": "rationale",
+      "source_file": "webui/server.py",
+      "source_location": "L22",
+      "_origin": "ast",
+      "id": "webui_server_rationale_22",
+      "community": 4,
+      "norm_label": "thread-safe pub/sub of agent lines with a small replay buffer."
+    },
+    {
+      "label": "Block until there are items newer than last_seq (or timeout).",
+      "file_type": "rationale",
+      "source_file": "webui/server.py",
+      "source_location": "L47",
+      "_origin": "ast",
+      "id": "webui_server_rationale_47",
+      "community": 4,
+      "norm_label": "block until there are items newer than last_seq (or timeout)."
     },
     {
       "label": "SKILL.md",
@@ -6243,6 +7333,1776 @@
       "confidence_score": 1.0
     },
     {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/__init__.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "agent_init_rationale_1",
+      "target": "agent_init",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/env.py",
+      "source_location": "L29",
+      "weight": 1.0,
+      "source": "agent_env",
+      "target": "agent_env_gemini_api_key",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/env.py",
+      "source_location": "L9",
+      "weight": 1.0,
+      "source": "agent_env",
+      "target": "agent_env_load_env",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/env.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "agent_env_rationale_1",
+      "target": "agent_env",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/gemini_client.py",
+      "source_location": "L10",
+      "weight": 1.0,
+      "source": "agent_gemini_client",
+      "target": "agent_env",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "main.py",
+      "source_location": "L41",
+      "weight": 1.0,
+      "source": "main",
+      "target": "agent_env",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/agent_alert_test.py",
+      "source_location": "L18",
+      "weight": 1.0,
+      "source": "tests_agent_alert_test",
+      "target": "agent_env",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/env.py",
+      "source_location": "L30",
+      "weight": 1.0,
+      "source": "agent_env_gemini_api_key",
+      "target": "agent_env_load_env",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/env.py",
+      "source_location": "L10",
+      "weight": 1.0,
+      "source": "agent_env_rationale_10",
+      "target": "agent_env_load_env",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "main.py",
+      "source_location": "L41",
+      "weight": 1.0,
+      "source": "main",
+      "target": "agent_env_load_env",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "main.py",
+      "source_location": "L112",
+      "weight": 1.0,
+      "source": "main_main",
+      "target": "agent_env_load_env",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/gemini_client.py",
+      "source_location": "L10",
+      "weight": 1.0,
+      "source": "agent_gemini_client",
+      "target": "agent_env_gemini_api_key",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "agent/gemini_client.py",
+      "source_location": "L26",
+      "weight": 1.0,
+      "source": "agent_gemini_client_geminiclient_init",
+      "target": "agent_env_gemini_api_key"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/gemini_client.py",
+      "source_location": "L21",
+      "weight": 1.0,
+      "source": "agent_gemini_client",
+      "target": "agent_gemini_client_geminiclient",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/gemini_client.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "agent_gemini_client_rationale_1",
+      "target": "agent_gemini_client",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/voice_agent.py",
+      "source_location": "L14",
+      "weight": 1.0,
+      "source": "agent_voice_agent",
+      "target": "agent_gemini_client",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/gemini_client.py",
+      "source_location": "L39",
+      "weight": 1.0,
+      "source": "agent_gemini_client_geminiclient",
+      "target": "agent_gemini_client_geminiclient_generate",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/gemini_client.py",
+      "source_location": "L22",
+      "weight": 1.0,
+      "source": "agent_gemini_client_geminiclient",
+      "target": "agent_gemini_client_geminiclient_init",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/voice_agent.py",
+      "source_location": "L14",
+      "weight": 1.0,
+      "source": "agent_voice_agent",
+      "target": "agent_gemini_client_geminiclient",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "agent/voice_agent.py",
+      "source_location": "L14",
+      "weight": 0.8,
+      "source": "agent_voice_agent_voiceagent",
+      "target": "agent_gemini_client_geminiclient",
+      "confidence_score": 0.5
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "agent/voice_agent.py",
+      "source_location": "L23",
+      "weight": 1.0,
+      "source": "agent_voice_agent_voiceagent_init",
+      "target": "agent_gemini_client_geminiclient"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/policy.py",
+      "source_location": "L24",
+      "weight": 1.0,
+      "source": "agent_policy",
+      "target": "agent_policy_intent",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/policy.py",
+      "source_location": "L40",
+      "weight": 1.0,
+      "source": "agent_policy",
+      "target": "agent_policy_policy",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/policy.py",
+      "source_location": "L18",
+      "weight": 1.0,
+      "source": "agent_policy",
+      "target": "agent_state",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/policy.py",
+      "source_location": "L18",
+      "weight": 1.0,
+      "source": "agent_policy",
+      "target": "agent_state_observationmemory",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/policy.py",
+      "source_location": "L17",
+      "weight": 1.0,
+      "source": "agent_policy",
+      "target": "core_events",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/policy.py",
+      "source_location": "L17",
+      "weight": 1.0,
+      "source": "agent_policy",
+      "target": "core_events_severity",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/policy.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "agent_policy_rationale_1",
+      "target": "agent_policy",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/voice_agent.py",
+      "source_location": "L13",
+      "weight": 1.0,
+      "source": "agent_voice_agent",
+      "target": "agent_policy",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "agent/policy.py",
+      "source_location": "L18",
+      "weight": 0.8,
+      "source": "agent_policy_intent",
+      "target": "agent_state_observationmemory",
+      "confidence_score": 0.5
+    },
+    {
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "agent/policy.py",
+      "source_location": "L17",
+      "weight": 0.8,
+      "source": "agent_policy_intent",
+      "target": "core_events_severity",
+      "confidence_score": 0.5
+    },
+    {
+      "relation": "references",
+      "context": "generic_arg",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/policy.py",
+      "source_location": "L55",
+      "weight": 1.0,
+      "source": "agent_policy_policy_candidates",
+      "target": "agent_policy_intent",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/policy.py",
+      "source_location": "L120",
+      "weight": 1.0,
+      "source": "agent_policy_policy_mark_spoken",
+      "target": "agent_policy_intent",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "return_type",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/policy.py",
+      "source_location": "L110",
+      "weight": 1.0,
+      "source": "agent_policy_policy_next_intent",
+      "target": "agent_policy_intent",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/policy.py",
+      "source_location": "L55",
+      "weight": 1.0,
+      "source": "agent_policy_policy",
+      "target": "agent_policy_policy_candidates",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/policy.py",
+      "source_location": "L51",
+      "weight": 1.0,
+      "source": "agent_policy_policy",
+      "target": "agent_policy_policy_fresh",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/policy.py",
+      "source_location": "L41",
+      "weight": 1.0,
+      "source": "agent_policy_policy",
+      "target": "agent_policy_policy_init",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/policy.py",
+      "source_location": "L120",
+      "weight": 1.0,
+      "source": "agent_policy_policy",
+      "target": "agent_policy_policy_mark_spoken",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/policy.py",
+      "source_location": "L110",
+      "weight": 1.0,
+      "source": "agent_policy_policy",
+      "target": "agent_policy_policy_next_intent",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "agent/policy.py",
+      "source_location": "L18",
+      "weight": 0.8,
+      "source": "agent_policy_policy",
+      "target": "agent_state_observationmemory",
+      "confidence_score": 0.5
+    },
+    {
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "agent/policy.py",
+      "source_location": "L17",
+      "weight": 0.8,
+      "source": "agent_policy_policy",
+      "target": "core_events_severity",
+      "confidence_score": 0.5
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/voice_agent.py",
+      "source_location": "L13",
+      "weight": 1.0,
+      "source": "agent_voice_agent",
+      "target": "agent_policy_policy",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "agent/voice_agent.py",
+      "source_location": "L13",
+      "weight": 0.8,
+      "source": "agent_voice_agent_voiceagent",
+      "target": "agent_policy_policy",
+      "confidence_score": 0.5
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "agent/voice_agent.py",
+      "source_location": "L22",
+      "weight": 1.0,
+      "source": "agent_voice_agent_voiceagent_init",
+      "target": "agent_policy_policy"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/policy.py",
+      "source_location": "L71",
+      "weight": 1.0,
+      "source": "agent_policy_policy_candidates",
+      "target": "agent_policy_policy_fresh",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/policy.py",
+      "source_location": "L115",
+      "weight": 1.0,
+      "source": "agent_policy_policy_next_intent",
+      "target": "agent_policy_policy_fresh",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/policy.py",
+      "source_location": "L55",
+      "weight": 1.0,
+      "source": "agent_policy_policy_candidates",
+      "target": "agent_state_observationmemory",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/policy.py",
+      "source_location": "L114",
+      "weight": 1.0,
+      "source": "agent_policy_policy_next_intent",
+      "target": "agent_policy_policy_candidates",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/policy.py",
+      "source_location": "L110",
+      "weight": 1.0,
+      "source": "agent_policy_policy_next_intent",
+      "target": "agent_state_observationmemory",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/state.py",
+      "source_location": "L18",
+      "weight": 1.0,
+      "source": "agent_state",
+      "target": "agent_state_observationmemory",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/state.py",
+      "source_location": "L14",
+      "weight": 1.0,
+      "source": "agent_state",
+      "target": "core_events",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/state.py",
+      "source_location": "L14",
+      "weight": 1.0,
+      "source": "agent_state",
+      "target": "core_events_result",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/state.py",
+      "source_location": "L14",
+      "weight": 1.0,
+      "source": "agent_state",
+      "target": "core_events_severity",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/state.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "agent_state_rationale_1",
+      "target": "agent_state",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/voice_agent.py",
+      "source_location": "L12",
+      "weight": 1.0,
+      "source": "agent_voice_agent",
+      "target": "agent_state",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/state.py",
+      "source_location": "L71",
+      "weight": 1.0,
+      "source": "agent_state_observationmemory",
+      "target": "agent_state_observationmemory_context_text",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/state.py",
+      "source_location": "L56",
+      "weight": 1.0,
+      "source": "agent_state_observationmemory",
+      "target": "agent_state_observationmemory_first_present_backend",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/state.py",
+      "source_location": "L37",
+      "weight": 1.0,
+      "source": "agent_state_observationmemory",
+      "target": "agent_state_observationmemory_get",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/state.py",
+      "source_location": "L40",
+      "weight": 1.0,
+      "source": "agent_state_observationmemory",
+      "target": "agent_state_observationmemory_get_val",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/state.py",
+      "source_location": "L24",
+      "weight": 1.0,
+      "source": "agent_state_observationmemory",
+      "target": "agent_state_observationmemory_ingest",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/state.py",
+      "source_location": "L44",
+      "weight": 1.0,
+      "source": "agent_state_observationmemory",
+      "target": "agent_state_observationmemory_is_new",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/state.py",
+      "source_location": "L63",
+      "weight": 1.0,
+      "source": "agent_state_observationmemory",
+      "target": "agent_state_observationmemory_mood",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/state.py",
+      "source_location": "L52",
+      "weight": 1.0,
+      "source": "agent_state_observationmemory",
+      "target": "agent_state_observationmemory_time_of_day",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "agent/state.py",
+      "source_location": "L14",
+      "weight": 0.8,
+      "source": "agent_state_observationmemory",
+      "target": "core_events_result",
+      "confidence_score": 0.5
+    },
+    {
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "agent/state.py",
+      "source_location": "L14",
+      "weight": 0.8,
+      "source": "agent_state_observationmemory",
+      "target": "core_events_severity",
+      "confidence_score": 0.5
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/voice_agent.py",
+      "source_location": "L12",
+      "weight": 1.0,
+      "source": "agent_voice_agent",
+      "target": "agent_state_observationmemory",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "agent/voice_agent.py",
+      "source_location": "L12",
+      "weight": 0.8,
+      "source": "agent_voice_agent_voiceagent",
+      "target": "agent_state_observationmemory",
+      "confidence_score": 0.5
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "agent/voice_agent.py",
+      "source_location": "L21",
+      "weight": 1.0,
+      "source": "agent_voice_agent_voiceagent_init",
+      "target": "agent_state_observationmemory"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/state.py",
+      "source_location": "L30",
+      "weight": 1.0,
+      "source": "agent_state_observationmemory_ingest",
+      "target": "agent_state_observationmemory_get",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/state.py",
+      "source_location": "L32",
+      "weight": 1.0,
+      "source": "agent_state_observationmemory_ingest",
+      "target": "agent_state_observationmemory_get_val",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "generic_arg",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/state.py",
+      "source_location": "L24",
+      "weight": 1.0,
+      "source": "agent_state_observationmemory_ingest",
+      "target": "core_events_result",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/state.py",
+      "source_location": "L84",
+      "weight": 1.0,
+      "source": "agent_state_observationmemory_context_text",
+      "target": "agent_state_observationmemory_get",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "return_type",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/state.py",
+      "source_location": "L37",
+      "weight": 1.0,
+      "source": "agent_state_observationmemory_get",
+      "target": "core_events_result",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/state.py",
+      "source_location": "L41",
+      "weight": 1.0,
+      "source": "agent_state_observationmemory_get_val",
+      "target": "agent_state_observationmemory_get",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/state.py",
+      "source_location": "L48",
+      "weight": 1.0,
+      "source": "agent_state_observationmemory_is_new",
+      "target": "agent_state_observationmemory_get",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/state.py",
+      "source_location": "L77",
+      "weight": 1.0,
+      "source": "agent_state_observationmemory_context_text",
+      "target": "agent_state_observationmemory_get_val",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/state.py",
+      "source_location": "L46",
+      "weight": 1.0,
+      "source": "agent_state_rationale_46",
+      "target": "agent_state_observationmemory_is_new",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/state.py",
+      "source_location": "L73",
+      "weight": 1.0,
+      "source": "agent_state_observationmemory_context_text",
+      "target": "agent_state_observationmemory_time_of_day",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/state.py",
+      "source_location": "L64",
+      "weight": 1.0,
+      "source": "agent_state_observationmemory_mood",
+      "target": "agent_state_observationmemory_first_present_backend",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/state.py",
+      "source_location": "L57",
+      "weight": 1.0,
+      "source": "agent_state_rationale_57",
+      "target": "agent_state_observationmemory_first_present_backend",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/state.py",
+      "source_location": "L74",
+      "weight": 1.0,
+      "source": "agent_state_observationmemory_context_text",
+      "target": "agent_state_observationmemory_mood",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/state.py",
+      "source_location": "L72",
+      "weight": 1.0,
+      "source": "agent_state_rationale_72",
+      "target": "agent_state_observationmemory_context_text",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/voice_agent.py",
+      "source_location": "L18",
+      "weight": 1.0,
+      "source": "agent_voice_agent",
+      "target": "agent_voice_agent_voiceagent",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/voice_agent.py",
+      "source_location": "L15",
+      "weight": 1.0,
+      "source": "agent_voice_agent",
+      "target": "audio_tts",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/voice_agent.py",
+      "source_location": "L15",
+      "weight": 1.0,
+      "source": "agent_voice_agent",
+      "target": "audio_tts_speaker",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/voice_agent.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "agent_voice_agent_rationale_1",
+      "target": "agent_voice_agent",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "main.py",
+      "source_location": "L40",
+      "weight": 1.0,
+      "source": "main",
+      "target": "agent_voice_agent",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/agent_alert_test.py",
+      "source_location": "L22",
+      "weight": 1.0,
+      "source": "tests_agent_alert_test",
+      "target": "agent_voice_agent",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/voice_agent.py",
+      "source_location": "L42",
+      "weight": 1.0,
+      "source": "agent_voice_agent_voiceagent",
+      "target": "agent_voice_agent_voiceagent_close",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/voice_agent.py",
+      "source_location": "L19",
+      "weight": 1.0,
+      "source": "agent_voice_agent_voiceagent",
+      "target": "agent_voice_agent_voiceagent_init",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "agent/voice_agent.py",
+      "source_location": "L29",
+      "weight": 1.0,
+      "source": "agent_voice_agent_voiceagent",
+      "target": "agent_voice_agent_voiceagent_tick",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "agent/voice_agent.py",
+      "source_location": "L15",
+      "weight": 0.8,
+      "source": "agent_voice_agent_voiceagent",
+      "target": "audio_tts_speaker",
+      "confidence_score": 0.5
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "main.py",
+      "source_location": "L40",
+      "weight": 1.0,
+      "source": "main",
+      "target": "agent_voice_agent_voiceagent",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "main.py",
+      "source_location": "L126",
+      "weight": 1.0,
+      "source": "main_main",
+      "target": "agent_voice_agent_voiceagent",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/agent_alert_test.py",
+      "source_location": "L22",
+      "weight": 1.0,
+      "source": "tests_agent_alert_test",
+      "target": "agent_voice_agent_voiceagent",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/agent_alert_test.py",
+      "source_location": "L44",
+      "weight": 1.0,
+      "source": "tests_agent_alert_test_main",
+      "target": "agent_voice_agent_voiceagent",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "tests/agent_alert_test.py",
+      "source_location": "L22",
+      "weight": 0.8,
+      "source": "tests_agent_alert_test_recorder",
+      "target": "agent_voice_agent_voiceagent",
+      "confidence_score": 0.5
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "agent/voice_agent.py",
+      "source_location": "L24",
+      "weight": 1.0,
+      "source": "agent_voice_agent_voiceagent_init",
+      "target": "audio_tts_speaker"
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "alerts/__init__.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "alerts_init_rationale_1",
+      "target": "alerts_init",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "alerts/manager.py",
+      "source_location": "L34",
+      "weight": 1.0,
+      "source": "alerts_manager",
+      "target": "alerts_manager_alertmanager",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "alerts/manager.py",
+      "source_location": "L26",
+      "weight": 1.0,
+      "source": "alerts_manager",
+      "target": "alerts_manager_alertstate",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "alerts/manager.py",
+      "source_location": "L22",
+      "weight": 1.0,
+      "source": "alerts_manager",
+      "target": "alerts_notifier",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "alerts/manager.py",
+      "source_location": "L22",
+      "weight": 1.0,
+      "source": "alerts_manager",
+      "target": "alerts_notifier_build_channels",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "alerts/manager.py",
+      "source_location": "L21",
+      "weight": 1.0,
+      "source": "alerts_manager",
+      "target": "core_events",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "alerts/manager.py",
+      "source_location": "L21",
+      "weight": 1.0,
+      "source": "alerts_manager",
+      "target": "core_events_result",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "alerts/manager.py",
+      "source_location": "L21",
+      "weight": 1.0,
+      "source": "alerts_manager",
+      "target": "core_events_severity",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "alerts/manager.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "alerts_manager_rationale_1",
+      "target": "alerts_manager",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "main.py",
+      "source_location": "L39",
+      "weight": 1.0,
+      "source": "main",
+      "target": "alerts_manager",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/agent_alert_test.py",
+      "source_location": "L23",
+      "weight": 1.0,
+      "source": "tests_agent_alert_test",
+      "target": "alerts_manager",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "alerts/manager.py",
+      "source_location": "L75",
+      "weight": 1.0,
+      "source": "alerts_manager_alertmanager_evaluate",
+      "target": "alerts_manager_alertstate",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "alerts/manager.py",
+      "source_location": "L21",
+      "weight": 0.8,
+      "source": "alerts_manager_alertstate",
+      "target": "core_events_result",
+      "confidence_score": 0.5
+    },
+    {
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "alerts/manager.py",
+      "source_location": "L21",
+      "weight": 0.8,
+      "source": "alerts_manager_alertstate",
+      "target": "core_events_severity",
+      "confidence_score": 0.5
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "alerts/manager.py",
+      "source_location": "L63",
+      "weight": 1.0,
+      "source": "alerts_manager_alertmanager",
+      "target": "alerts_manager_alertmanager_dispatch",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "alerts/manager.py",
+      "source_location": "L67",
+      "weight": 1.0,
+      "source": "alerts_manager_alertmanager",
+      "target": "alerts_manager_alertmanager_evaluate",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "alerts/manager.py",
+      "source_location": "L44",
+      "weight": 1.0,
+      "source": "alerts_manager_alertmanager",
+      "target": "alerts_manager_alertmanager_from_config",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "alerts/manager.py",
+      "source_location": "L56",
+      "weight": 1.0,
+      "source": "alerts_manager_alertmanager",
+      "target": "alerts_manager_alertmanager_in_quiet_hours",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "alerts/manager.py",
+      "source_location": "L21",
+      "weight": 0.8,
+      "source": "alerts_manager_alertmanager",
+      "target": "core_events_result",
+      "confidence_score": 0.5
+    },
+    {
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "alerts/manager.py",
+      "source_location": "L21",
+      "weight": 0.8,
+      "source": "alerts_manager_alertmanager",
+      "target": "core_events_severity",
+      "confidence_score": 0.5
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "main.py",
+      "source_location": "L39",
+      "weight": 1.0,
+      "source": "main",
+      "target": "alerts_manager_alertmanager",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/agent_alert_test.py",
+      "source_location": "L23",
+      "weight": 1.0,
+      "source": "tests_agent_alert_test",
+      "target": "alerts_manager_alertmanager",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/agent_alert_test.py",
+      "source_location": "L47",
+      "weight": 1.0,
+      "source": "tests_agent_alert_test_main",
+      "target": "alerts_manager_alertmanager",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "tests/agent_alert_test.py",
+      "source_location": "L23",
+      "weight": 0.8,
+      "source": "tests_agent_alert_test_recorder",
+      "target": "alerts_manager_alertmanager",
+      "confidence_score": 0.5
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "alerts/manager.py",
+      "source_location": "L48",
+      "weight": 1.0,
+      "source": "alerts_manager_alertmanager_from_config",
+      "target": "alerts_notifier_build_channels"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "main.py",
+      "source_location": "L125",
+      "weight": 1.0,
+      "source": "main_main",
+      "target": "alerts_manager_alertmanager_from_config"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "alerts/manager.py",
+      "source_location": "L78",
+      "weight": 1.0,
+      "source": "alerts_manager_alertmanager_evaluate",
+      "target": "alerts_manager_alertmanager_in_quiet_hours",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "alerts/manager.py",
+      "source_location": "L84",
+      "weight": 1.0,
+      "source": "alerts_manager_alertmanager_evaluate",
+      "target": "alerts_manager_alertmanager_dispatch",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "generic_arg",
+      "confidence": "EXTRACTED",
+      "source_file": "alerts/manager.py",
+      "source_location": "L67",
+      "weight": 1.0,
+      "source": "alerts_manager_alertmanager_evaluate",
+      "target": "core_events_result",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L12",
+      "weight": 1.0,
+      "source": "alerts_notifier",
+      "target": "abc",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L119",
+      "weight": 1.0,
+      "source": "alerts_notifier",
+      "target": "alerts_notifier_build_channels",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L16",
+      "weight": 1.0,
+      "source": "alerts_notifier",
+      "target": "alerts_notifier_channel",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "indirect_call",
+      "confidence": "INFERRED",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L116",
+      "weight": 1.0,
+      "context": "collection",
+      "source": "alerts_notifier",
+      "target": "alerts_notifier_consolechannel",
+      "confidence_score": 0.5
+    },
+    {
+      "relation": "indirect_call",
+      "confidence": "INFERRED",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L116",
+      "weight": 1.0,
+      "context": "collection",
+      "source": "alerts_notifier",
+      "target": "alerts_notifier_emailchannel",
+      "confidence_score": 0.5
+    },
+    {
+      "relation": "indirect_call",
+      "confidence": "INFERRED",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L116",
+      "weight": 1.0,
+      "context": "collection",
+      "source": "alerts_notifier",
+      "target": "alerts_notifier_smschannel",
+      "confidence_score": 0.5
+    },
+    {
+      "relation": "indirect_call",
+      "confidence": "INFERRED",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L116",
+      "weight": 1.0,
+      "context": "collection",
+      "source": "alerts_notifier",
+      "target": "alerts_notifier_webhookchannel",
+      "confidence_score": 0.5
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "alerts_notifier_rationale_1",
+      "target": "alerts_notifier",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/agent_alert_test.py",
+      "source_location": "L24",
+      "weight": 1.0,
+      "source": "tests_agent_alert_test",
+      "target": "alerts_notifier",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "generic_arg",
+      "confidence": "EXTRACTED",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L119",
+      "weight": 1.0,
+      "source": "alerts_notifier_build_channels",
+      "target": "alerts_notifier_channel",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "inherits",
+      "confidence": "EXTRACTED",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L16",
+      "weight": 1.0,
+      "source": "alerts_notifier_channel",
+      "target": "abc",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L21",
+      "weight": 1.0,
+      "source": "alerts_notifier_channel",
+      "target": "alerts_notifier_channel_send",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "inherits",
+      "confidence": "EXTRACTED",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L25",
+      "weight": 1.0,
+      "source": "alerts_notifier_consolechannel",
+      "target": "alerts_notifier_channel",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "inherits",
+      "confidence": "EXTRACTED",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L33",
+      "weight": 1.0,
+      "source": "alerts_notifier_emailchannel",
+      "target": "alerts_notifier_channel",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "inherits",
+      "confidence": "EXTRACTED",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L84",
+      "weight": 1.0,
+      "source": "alerts_notifier_smschannel",
+      "target": "alerts_notifier_channel",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "inherits",
+      "confidence": "EXTRACTED",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L64",
+      "weight": 1.0,
+      "source": "alerts_notifier_webhookchannel",
+      "target": "alerts_notifier_channel",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/agent_alert_test.py",
+      "source_location": "L24",
+      "weight": 1.0,
+      "source": "tests_agent_alert_test",
+      "target": "alerts_notifier_channel",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "tests/agent_alert_test.py",
+      "source_location": "L24",
+      "weight": 0.8,
+      "source": "tests_agent_alert_test_recorder",
+      "target": "alerts_notifier_channel",
+      "confidence_score": 0.5
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/backends/base.py",
+      "source_location": "L13",
+      "weight": 1.0,
+      "source": "modules_backends_base",
+      "target": "abc",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "inherits",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/backends/base.py",
+      "source_location": "L18",
+      "weight": 1.0,
+      "source": "modules_backends_base_backend",
+      "target": "abc",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/base.py",
+      "source_location": "L21",
+      "weight": 1.0,
+      "source": "modules_base",
+      "target": "abc",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "inherits",
+      "confidence": "EXTRACTED",
+      "source_file": "modules/base.py",
+      "source_location": "L28",
+      "weight": 1.0,
+      "source": "modules_base_detectionmodule",
+      "target": "abc",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L133",
+      "weight": 1.0,
+      "source": "alerts_notifier_build_channels",
+      "target": "alerts_notifier_consolechannel",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L28",
+      "weight": 1.0,
+      "source": "alerts_notifier_consolechannel",
+      "target": "alerts_notifier_consolechannel_send",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L37",
+      "weight": 1.0,
+      "source": "alerts_notifier_emailchannel",
+      "target": "alerts_notifier_emailchannel_init",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L45",
+      "weight": 1.0,
+      "source": "alerts_notifier_emailchannel",
+      "target": "alerts_notifier_emailchannel_send",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L34",
+      "weight": 1.0,
+      "source": "alerts_notifier_rationale_34",
+      "target": "alerts_notifier_emailchannel",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L65",
+      "weight": 1.0,
+      "source": "alerts_notifier_rationale_65",
+      "target": "alerts_notifier_webhookchannel",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L68",
+      "weight": 1.0,
+      "source": "alerts_notifier_webhookchannel",
+      "target": "alerts_notifier_webhookchannel_init",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L72",
+      "weight": 1.0,
+      "source": "alerts_notifier_webhookchannel",
+      "target": "alerts_notifier_webhookchannel_send",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L85",
+      "weight": 1.0,
+      "source": "alerts_notifier_rationale_85",
+      "target": "alerts_notifier_smschannel",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L88",
+      "weight": 1.0,
+      "source": "alerts_notifier_smschannel",
+      "target": "alerts_notifier_smschannel_init",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L103",
+      "weight": 1.0,
+      "source": "alerts_notifier_smschannel",
+      "target": "alerts_notifier_smschannel_send",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "alerts/notifier.py",
+      "source_location": "L120",
+      "weight": 1.0,
+      "source": "alerts_notifier_rationale_120",
+      "target": "alerts_notifier_build_channels",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "audio/__init__.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "audio_init_rationale_1",
+      "target": "audio_init",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "audio/tts.py",
+      "source_location": "L13",
+      "weight": 1.0,
+      "source": "audio_tts",
+      "target": "audio_tts_speaker",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "audio/tts.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "audio_tts_rationale_1",
+      "target": "audio_tts",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "audio/tts.py",
+      "source_location": "L50",
+      "weight": 1.0,
+      "source": "audio_tts_speaker",
+      "target": "audio_tts_speaker_close",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "audio/tts.py",
+      "source_location": "L14",
+      "weight": 1.0,
+      "source": "audio_tts_speaker",
+      "target": "audio_tts_speaker_init",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "audio/tts.py",
+      "source_location": "L32",
+      "weight": 1.0,
+      "source": "audio_tts_speaker",
+      "target": "audio_tts_speaker_run",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "audio/tts.py",
+      "source_location": "L43",
+      "weight": 1.0,
+      "source": "audio_tts_speaker",
+      "target": "audio_tts_speaker_say",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "audio/tts.py",
+      "source_location": "L38",
+      "weight": 1.0,
+      "source": "audio_tts_speaker_run",
+      "target": "audio_tts_speaker_say",
+      "confidence_score": 1.0
+    },
+    {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "core/camera.py",
@@ -6434,7 +9294,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "main.py",
-      "source_location": "L56",
+      "source_location": "L67",
       "weight": 1.0,
       "source": "main_build_pipeline",
       "target": "core_camera_camera",
@@ -9499,6 +12359,17 @@
       "confidence_score": 1.0
     },
     {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/agent_alert_test.py",
+      "source_location": "L21",
+      "weight": 1.0,
+      "source": "tests_agent_alert_test",
+      "target": "core_events",
+      "confidence_score": 1.0
+    },
+    {
       "relation": "inherits",
       "confidence": "EXTRACTED",
       "source_file": "core/events.py",
@@ -10319,6 +13190,27 @@
       "confidence_score": 1.0
     },
     {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/agent_alert_test.py",
+      "source_location": "L21",
+      "weight": 1.0,
+      "source": "tests_agent_alert_test",
+      "target": "core_events_severity",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "tests/agent_alert_test.py",
+      "source_location": "L21",
+      "weight": 0.8,
+      "source": "tests_agent_alert_test_recorder",
+      "target": "core_events_severity",
+      "confidence_score": 0.5
+    },
+    {
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "core/events.py",
@@ -10565,6 +13457,38 @@
       "confidence_score": 1.0
     },
     {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/agent_alert_test.py",
+      "source_location": "L21",
+      "weight": 1.0,
+      "source": "tests_agent_alert_test",
+      "target": "core_events_result",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/agent_alert_test.py",
+      "source_location": "L39",
+      "weight": 1.0,
+      "source": "tests_agent_alert_test_r",
+      "target": "core_events_result",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "tests/agent_alert_test.py",
+      "source_location": "L21",
+      "weight": 0.8,
+      "source": "tests_agent_alert_test_recorder",
+      "target": "core_events_result",
+      "confidence_score": 0.5
+    },
+    {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "core/pipeline.py",
@@ -10673,7 +13597,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "main.py",
-      "source_location": "L57",
+      "source_location": "L68",
       "weight": 1.0,
       "source": "main_build_pipeline",
       "target": "core_pipeline_pipeline",
@@ -11556,7 +14480,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "main.py",
-      "source_location": "L50",
+      "source_location": "L61",
       "weight": 1.0,
       "source": "main_build_pipeline",
       "target": "core_registry_discover",
@@ -11632,7 +14556,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "main.py",
-      "source_location": "L51",
+      "source_location": "L62",
       "weight": 1.0,
       "source": "main_build_pipeline",
       "target": "core_registry_build_enabled",
@@ -11803,7 +14727,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "main.py",
-      "source_location": "L54",
+      "source_location": "L65",
       "weight": 1.0,
       "source": "main_build_pipeline",
       "target": "core_scheduler_scheduler",
@@ -12006,7 +14930,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "main.py",
-      "source_location": "L53",
+      "source_location": "L64",
       "weight": 1.0,
       "source": "main_build_pipeline",
       "target": "extractors_face_faceextractor",
@@ -12342,7 +15266,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "main.py",
-      "source_location": "L53",
+      "source_location": "L64",
       "weight": 1.0,
       "source": "main_build_pipeline",
       "target": "extractors_motion_motionextractor",
@@ -12590,7 +15514,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "main.py",
-      "source_location": "L53",
+      "source_location": "L64",
       "weight": 1.0,
       "source": "main_build_pipeline",
       "target": "extractors_pose_poseextractor",
@@ -12746,7 +15670,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "main.py",
-      "source_location": "L49",
+      "source_location": "L60",
       "weight": 1.0,
       "source": "main",
       "target": "main_build_pipeline",
@@ -12756,7 +15680,17 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "main.py",
-      "source_location": "L44",
+      "source_location": "L53",
+      "weight": 1.0,
+      "source": "main",
+      "target": "main_load_alerts_config",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "main.py",
+      "source_location": "L48",
       "weight": 1.0,
       "source": "main",
       "target": "main_load_config",
@@ -12766,7 +15700,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "main.py",
-      "source_location": "L61",
+      "source_location": "L72",
       "weight": 1.0,
       "source": "main",
       "target": "main_main",
@@ -12799,7 +15733,7 @@
       "context": "submodule_import",
       "confidence": "EXTRACTED",
       "source_file": "main.py",
-      "source_location": "L109",
+      "source_location": "L139",
       "weight": 1.0,
       "source": "main",
       "target": "output_dashboard",
@@ -12807,13 +15741,24 @@
     },
     {
       "relation": "imports_from",
+      "context": "submodule_import",
+      "confidence": "EXTRACTED",
+      "source_file": "main.py",
+      "source_location": "L139",
+      "weight": 1.0,
+      "source": "main",
+      "target": "output_overlay",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "main.py",
-      "source_location": "L39",
+      "source_location": "L42",
       "weight": 1.0,
       "source": "main",
-      "target": "output_greeting_engine",
+      "target": "webui_server",
       "confidence_score": 1.0
     },
     {
@@ -12821,21 +15766,10 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "main.py",
-      "source_location": "L39",
+      "source_location": "L42",
       "weight": 1.0,
       "source": "main",
-      "target": "output_greeting_engine_greetingengine",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "imports_from",
-      "context": "submodule_import",
-      "confidence": "EXTRACTED",
-      "source_file": "main.py",
-      "source_location": "L109",
-      "weight": 1.0,
-      "source": "main",
-      "target": "output_overlay",
+      "target": "webui_server_companionserver",
       "confidence_score": 1.0
     },
     {
@@ -12853,7 +15787,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "main.py",
-      "source_location": "L97",
+      "source_location": "L118",
       "weight": 1.0,
       "source": "main_main",
       "target": "main_load_config",
@@ -12864,7 +15798,18 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "main.py",
-      "source_location": "L55",
+      "source_location": "L124",
+      "weight": 1.0,
+      "source": "main_main",
+      "target": "main_load_alerts_config",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "main.py",
+      "source_location": "L66",
       "weight": 1.0,
       "source": "main_build_pipeline",
       "target": "output_aggregator_aggregator",
@@ -12875,7 +15820,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "main.py",
-      "source_location": "L101",
+      "source_location": "L122",
       "weight": 1.0,
       "source": "main_main",
       "target": "main_build_pipeline",
@@ -12886,10 +15831,10 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "main.py",
-      "source_location": "L102",
+      "source_location": "L131",
       "weight": 1.0,
       "source": "main_main",
-      "target": "output_greeting_engine_greetingengine",
+      "target": "webui_server_companionserver",
       "confidence_score": 1.0
     },
     {
@@ -14710,17 +17655,6 @@
       "confidence_score": 1.0
     },
     {
-      "relation": "imports_from",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "modules/backends/base.py",
-      "source_location": "L13",
-      "weight": 1.0,
-      "source": "modules_backends_base",
-      "target": "abc",
-      "confidence_score": 1.0
-    },
-    {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "modules/backends/base.py",
@@ -14793,16 +17727,6 @@
       "weight": 1.0,
       "source": "modules_rppg_backends_base",
       "target": "modules_backends_base",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "inherits",
-      "confidence": "EXTRACTED",
-      "source_file": "modules/backends/base.py",
-      "source_location": "L18",
-      "weight": 1.0,
-      "source": "modules_backends_base_backend",
-      "target": "abc",
       "confidence_score": 1.0
     },
     {
@@ -14939,27 +17863,6 @@
       "source": "modules_rppg_backends_base_rppgbackend",
       "target": "modules_backends_base_backend",
       "confidence_score": 0.5
-    },
-    {
-      "relation": "imports_from",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "modules/base.py",
-      "source_location": "L21",
-      "weight": 1.0,
-      "source": "modules_base",
-      "target": "abc",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "inherits",
-      "confidence": "EXTRACTED",
-      "source_file": "modules/base.py",
-      "source_location": "L28",
-      "weight": 1.0,
-      "source": "modules_base_detectionmodule",
-      "target": "abc",
-      "confidence_score": 1.0
     },
     {
       "relation": "rationale_for",
@@ -19366,6 +22269,88 @@
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
+      "source_file": "tests/agent_alert_test.py",
+      "source_location": "L43",
+      "weight": 1.0,
+      "source": "tests_agent_alert_test",
+      "target": "tests_agent_alert_test_main",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/agent_alert_test.py",
+      "source_location": "L38",
+      "weight": 1.0,
+      "source": "tests_agent_alert_test",
+      "target": "tests_agent_alert_test_r",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/agent_alert_test.py",
+      "source_location": "L27",
+      "weight": 1.0,
+      "source": "tests_agent_alert_test",
+      "target": "tests_agent_alert_test_recorder",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/agent_alert_test.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "tests_agent_alert_test_rationale_1",
+      "target": "tests_agent_alert_test",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/agent_alert_test.py",
+      "source_location": "L46",
+      "weight": 1.0,
+      "source": "tests_agent_alert_test_main",
+      "target": "tests_agent_alert_test_recorder",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/agent_alert_test.py",
+      "source_location": "L30",
+      "weight": 1.0,
+      "source": "tests_agent_alert_test_recorder",
+      "target": "tests_agent_alert_test_recorder_init",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/agent_alert_test.py",
+      "source_location": "L33",
+      "weight": 1.0,
+      "source": "tests_agent_alert_test_recorder",
+      "target": "tests_agent_alert_test_recorder_send",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/agent_alert_test.py",
+      "source_location": "L50",
+      "weight": 1.0,
+      "source": "tests_agent_alert_test_main",
+      "target": "tests_agent_alert_test_r",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
       "source_file": "tests/benchmark_rppg_models.py",
       "source_location": "L43",
       "weight": 1.0,
@@ -19683,6 +22668,285 @@
       "weight": 1.0,
       "source": "tests_smoke_test_rationale_30",
       "target": "tests_smoke_test_make_face_frame",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "re_exports",
+      "context": "export",
+      "confidence": "EXTRACTED",
+      "source_file": "webui/__init__.py",
+      "source_location": "L5",
+      "weight": 1.0,
+      "source": "webui_init",
+      "target": "webui_server",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "webui/__init__.py",
+      "source_location": "L5",
+      "weight": 1.0,
+      "source": "webui_init",
+      "target": "webui_server_companionserver",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "webui/__init__.py",
+      "source_location": "L5",
+      "weight": 1.0,
+      "source": "webui_init",
+      "target": "webui_server_utterancebus",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "webui/__init__.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "webui_init_rationale_1",
+      "target": "webui_init",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "webui/_demo.py",
+      "source_location": "L9",
+      "weight": 1.0,
+      "source": "webui_demo",
+      "target": "webui_server",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "webui/_demo.py",
+      "source_location": "L9",
+      "weight": 1.0,
+      "source": "webui_demo",
+      "target": "webui_server_companionserver",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "webui/_demo.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "webui_demo_rationale_1",
+      "target": "webui_demo",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "webui/server.py",
+      "source_location": "L139",
+      "weight": 1.0,
+      "source": "webui_server",
+      "target": "webui_server_companionserver",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "webui/server.py",
+      "source_location": "L122",
+      "weight": 1.0,
+      "source": "webui_server",
+      "target": "webui_server_lan_ips",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "webui/server.py",
+      "source_location": "L54",
+      "weight": 1.0,
+      "source": "webui_server",
+      "target": "webui_server_make_handler",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "webui/server.py",
+      "source_location": "L21",
+      "weight": 1.0,
+      "source": "webui_server",
+      "target": "webui_server_utterancebus",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "webui/server.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "webui_server_rationale_1",
+      "target": "webui_server",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "webui/server.py",
+      "source_location": "L143",
+      "weight": 1.0,
+      "source": "webui_server_companionserver_init",
+      "target": "webui_server_utterancebus",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "webui/server.py",
+      "source_location": "L54",
+      "weight": 1.0,
+      "source": "webui_server_make_handler",
+      "target": "webui_server_utterancebus",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "webui/server.py",
+      "source_location": "L22",
+      "weight": 1.0,
+      "source": "webui_server_rationale_22",
+      "target": "webui_server_utterancebus",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "webui/server.py",
+      "source_location": "L42",
+      "weight": 1.0,
+      "source": "webui_server_utterancebus",
+      "target": "webui_server_utterancebus_current_seq",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "webui/server.py",
+      "source_location": "L24",
+      "weight": 1.0,
+      "source": "webui_server_utterancebus",
+      "target": "webui_server_utterancebus_init",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "webui/server.py",
+      "source_location": "L29",
+      "weight": 1.0,
+      "source": "webui_server_utterancebus",
+      "target": "webui_server_utterancebus_publish",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "webui/server.py",
+      "source_location": "L38",
+      "weight": 1.0,
+      "source": "webui_server_utterancebus",
+      "target": "webui_server_utterancebus_since",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "webui/server.py",
+      "source_location": "L46",
+      "weight": 1.0,
+      "source": "webui_server_utterancebus",
+      "target": "webui_server_utterancebus_wait",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "webui/server.py",
+      "source_location": "L47",
+      "weight": 1.0,
+      "source": "webui_server_rationale_47",
+      "target": "webui_server_utterancebus_wait",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "webui/server.py",
+      "source_location": "L149",
+      "weight": 1.0,
+      "source": "webui_server_companionserver_start",
+      "target": "webui_server_make_handler",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "webui/server.py",
+      "source_location": "L154",
+      "weight": 1.0,
+      "source": "webui_server_companionserver_start",
+      "target": "webui_server_lan_ips",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "webui/server.py",
+      "source_location": "L140",
+      "weight": 1.0,
+      "source": "webui_server_companionserver",
+      "target": "webui_server_companionserver_init",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "webui/server.py",
+      "source_location": "L160",
+      "weight": 1.0,
+      "source": "webui_server_companionserver",
+      "target": "webui_server_companionserver_publish",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "webui/server.py",
+      "source_location": "L147",
+      "weight": 1.0,
+      "source": "webui_server_companionserver",
+      "target": "webui_server_companionserver_start",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "webui/server.py",
+      "source_location": "L163",
+      "weight": 1.0,
+      "source": "webui_server_companionserver",
+      "target": "webui_server_companionserver_stop",
       "confidence_score": 1.0
     },
     {
@@ -20567,5 +23831,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "fa67a81e205bda669823c5c6b412587051d685b2"
+  "built_at_commit": "2f6f9cda57346ec3e9ddcaff708f75a2d28cde00"
 }

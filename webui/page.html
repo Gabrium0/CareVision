@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Companion</title>
+<style>
+  :root { --bg:#0f1113; --fg:#f2f4f7; --dim:#7d8590; --accent:#7fd0ff; }
+  * { box-sizing:border-box; -webkit-text-size-adjust:100%; }
+  html,body { margin:0; height:100%; overflow:hidden; background:var(--bg); color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+    overscroll-behavior:none; -webkit-touch-callout:none; -webkit-user-select:none; user-select:none; }
+  #app { height:100vh; display:flex; flex-direction:column; justify-content:space-between; padding:4vmin 6vmin; }
+  header { display:flex; align-items:center; justify-content:space-between; color:var(--dim);
+    font-size:clamp(13px,2.2vw,22px); flex:0 0 auto; }
+  header .dot { width:1.4vmin; height:1.4vmin; min-width:9px; min-height:9px; border-radius:50%; background:var(--dim); display:inline-block; margin-right:1vmin; vertical-align:middle; }
+  header .live .dot { background:#57d977; box-shadow:0 0 1.2vmin #57d977; }
+  #mid { flex:1 1 auto; display:flex; flex-direction:column; justify-content:center; gap:2vmin; min-height:0; }
+  #history { display:flex; flex-direction:column; justify-content:flex-end; gap:1vmin;
+    color:var(--dim); font-size:clamp(16px,3vw,34px); line-height:1.35; opacity:.55; overflow:hidden; }
+  #history .line { opacity:0; animation:rise .5s forwards; }
+  #current p { margin:0; font-size:clamp(30px,6vw,76px); line-height:1.25; font-weight:600; letter-spacing:.2px;
+    opacity:0; transform:translateY(1.5vmin); }
+  #current p.show { animation:fade .55s ease forwards; }
+  #status { color:var(--dim); font-size:clamp(14px,2.4vw,26px); flex:0 0 auto; }
+  .pulse::after { content:"●"; color:var(--accent); margin-left:1.2vmin; animation:blink 1.1s infinite; }
+  @keyframes fade { to { opacity:1; transform:none; } }
+  @keyframes rise { to { opacity:.55; } }
+  @keyframes blink { 0%,100%{opacity:.25} 50%{opacity:1} }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <span id="conn"><span class="dot"></span><span id="connlabel">connecting…</span></span>
+    <span>Companion</span>
+  </header>
+  <div id="mid">
+    <div id="history"></div>
+    <div id="current"><p id="line"></p></div>
+  </div>
+  <div id="status"></div>
+</div>
+<script>
+(function () {
+  const line = document.getElementById('line');
+  const history = document.getElementById('history');
+  const status = document.getElementById('status');
+  const conn = document.getElementById('conn');
+  const connlabel = document.getElementById('connlabel');
+  let lastSeq = 0;
+  let idleTimer = null;
+  const past = [];
+
+  function setConnected(on) {
+    conn.classList.toggle('live', on);
+    connlabel.textContent = on ? 'connected' : 'connecting…';
+  }
+
+  function show(item) {
+    if (item.seq <= lastSeq) return;
+    lastSeq = item.seq;
+    // move the previous line into faint history
+    if (line.textContent) {
+      past.push(line.textContent);
+      while (past.length > 3) past.shift();
+      history.innerHTML = past.map(t => `<div class="line">${escapeHtml(t)}</div>`).join('');
+    }
+    line.textContent = item.text;
+    line.classList.remove('show'); void line.offsetWidth; line.classList.add('show');
+    status.textContent = 'speaking';
+    status.className = 'pulse';
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => { status.textContent = '· listening'; status.className = ''; }, 6000);
+  }
+
+  function escapeHtml(s){return s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+
+  // --- live updates: SSE with polling fallback ---
+  function startSSE() {
+    try {
+      const es = new EventSource('/events');
+      es.onopen = () => setConnected(true);
+      es.onmessage = (e) => { setConnected(true); try { show(JSON.parse(e.data)); } catch(_){} };
+      es.onerror = () => { setConnected(false); };  // EventSource auto-reconnects
+    } catch (_) { startPolling(); }
+  }
+  function startPolling() {
+    setInterval(async () => {
+      try {
+        const r = await fetch('/latest?since=' + lastSeq, {cache:'no-store'});
+        const d = await r.json();
+        setConnected(true);
+        (d.items || []).forEach(show);
+      } catch (_) { setConnected(false); }
+    }, 1500);
+  }
+  if (window.EventSource) startSSE(); else startPolling();
+
+  // --- kiosk niceties ---
+  async function keepAwake() {
+    try { if ('wakeLock' in navigator) { const w = await navigator.wakeLock.request('screen');
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') keepAwake(); }); } }
+    catch (_) {}
+  }
+  keepAwake();
+  document.body.addEventListener('click', () => {
+    const el = document.documentElement;
+    if (el.requestFullscreen) el.requestFullscreen().catch(()=>{});
+    else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+  });
+  status.textContent = '· listening';
+})();
+</script>
+</body>
+</html>

@@ -39,6 +39,7 @@ from output.aggregator import Aggregator
 from alerts.manager import AlertManager
 from agent.voice_agent import VoiceAgent
 from agent.env import load_env
+from webui.server import CompanionServer
 
 CONFIG = Path(__file__).resolve().parent / "config" / "modules.yaml"
 ALERTS_CONFIG = Path(__file__).resolve().parent / "config" / "alerts.yaml"
@@ -100,6 +101,11 @@ def main():
                     help="disable the spoken voice agent (still prints its lines)")
     ap.add_argument("--voice-model", default="gemini-2.5-flash",
                     help="Gemini model for the voice agent (key from .env)")
+    ap.add_argument("--webui", action="store_true",
+                    help="serve the agent's text on a web page for an iPad "
+                         "(prints the URL to open)")
+    ap.add_argument("--webui-port", type=int, default=8770,
+                    help="port for the companion web display (default 8770)")
     args = ap.parse_args()
     if args.debug_modules:
         os.environ["APP_DEBUG_MODULES"] = args.debug_modules
@@ -119,6 +125,11 @@ def main():
     alert_mgr = AlertManager.from_config(alerts_cfg) if alerts_cfg.get("enabled", True) else None
     voice_agent = VoiceAgent(name=args.name, speak=not args.no_voice,
                              model=args.voice_model)
+
+    web = None
+    if args.webui:
+        web = CompanionServer(port=args.webui_port)
+        web.start()
 
     display = not args.headless
     cv2 = None
@@ -159,6 +170,8 @@ def main():
         utterance = voice_agent.tick(snapshot)
         if utterance:
             last_greeting["text"] = utterance
+            if web is not None:
+                web.publish(utterance)
 
         print_vitals(snapshot)
 
@@ -187,6 +200,8 @@ def main():
         print("\n[main] stopped.")
     finally:
         voice_agent.close()
+        if web is not None:
+            web.stop()
         if display and cv2 is not None:
             cv2.destroyAllWindows()
 

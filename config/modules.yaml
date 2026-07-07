@@ -30,12 +30,13 @@ modules:
     refresh_seconds: 600
   clothing:
     enabled: true
-    backend: owlvit                 # optional: pip install -r requirements-clothing.txt
-    model: google/owlv2-base-patch16-ensemble   # OWLv2; falls back to owlvit-base-patch32
+    backend: owlvit                 # "none" disables clothing; else uses `recognizer`
+    recognizer: clip                # clip (FashionCLIP, fast) | owlvit (detection)
+    model: null                     # null = auto (FashionCLIP for clip / OWLv2 for owlvit)
     labels: [tank top, t-shirt, long sleeve shirt, hoodie,
              sweater, jacket, coat, raincoat]
-    pipeline_threshold: 0.02        # low, so the detector returns candidates
-    min_confidence: 0.08            # post-filter gate
+    pipeline_threshold: 0.02        # owlvit detection threshold (unused for clip)
+    min_confidence: 0.15            # gate on the top score
     infer_every: 8.0
   clothing_advice:
     enabled: true

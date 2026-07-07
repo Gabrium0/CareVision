@@ -82,6 +82,8 @@
   "80": "OpenFace (Facial Action Units)",
   "81": "Ultralytics YOLO (YOLOv8/YOLOv11)",
   "82": "Sweating",
+  "83": "GreetingEngine",
+  "84": "EyeRedness",
   "85": "graphify reference: add a URL and watch a folder",
   "86": "graphify reference: commit hook and native CLAUDE.md integration",
   "87": "graphify reference: incremental update and cluster-only",
@@ -93,6 +95,12 @@
   "93": "__init__.py",
   "94": "__init__.py",
   "95": "extraction-spec.md",
+  "96": "__init__.py",
   "97": "Pain",
-  "104": "EyeRedness"
+  "98": "__init__.py",
+  "99": "__init__.py",
+  "100": "agent_alert_test.py",
+  "101": "FaceExtractor",
+  "102": "benchmark_rppg_models.py",
+  "103": "FacialSwelling"
 }

@@ -1,16 +1,16 @@
 # Graph Report - proj  (2026-07-07)
 
 ## Corpus Check
-- 105 files · ~42,375 words
+- 109 files · ~44,133 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 693 nodes · 1540 edges · 100 communities (33 shown, 67 thin omitted)
+- 719 nodes · 1589 edges · 97 communities (32 shown, 65 thin omitted)
 - Extraction: 90% EXTRACTED · 10% INFERRED · 0% AMBIGUOUS · INFERRED: 152 edges (avg confidence: 0.51)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `5ed50cf5`
+- Built from commit: `2f6f9cda`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -32,7 +32,6 @@
 - [[_COMMUNITY_Age Estimation Module|Age Estimation Module]]
 - [[_COMMUNITY_FerPlusBackend|FerPlusBackend]]
 - [[_COMMUNITY_Gait|Gait]]
-- [[_COMMUNITY_Yawn|Yawn]]
 - [[_COMMUNITY_OneEuroArray|OneEuroArray]]
 - [[_COMMUNITY_HistoryStore|HistoryStore]]
 - [[_COMMUNITY_graphify reference extra exports and benchmark|graphify reference: extra exports and benchmark]]
@@ -40,8 +39,6 @@
 - [[_COMMUNITY_FacialAsymmetry|FacialAsymmetry]]
 - [[_COMMUNITY_Clothing|Clothing]]
 - [[_COMMUNITY_graphify reference query, path, explain|graphify reference: query, path, explain]]
-- [[_COMMUNITY_Detection Overlay|Detection Overlay]]
-- [[_COMMUNITY_.face_px|.face_px]]
 - [[_COMMUNITY_Weather|Weather]]
 - [[_COMMUNITY_CLAUDE|CLAUDE.md]]
 - [[_COMMUNITY___init__.py|__init__.py]]
@@ -92,8 +89,6 @@
 - [[_COMMUNITY_Open-rPPG toolbox|Open-rPPG toolbox]]
 - [[_COMMUNITY_OpenFace (Facial Action Units)|OpenFace (Facial Action Units)]]
 - [[_COMMUNITY_Ultralytics YOLO (YOLOv8YOLOv11)|Ultralytics YOLO (YOLOv8/YOLOv11)]]
-- [[_COMMUNITY_Sweating|Sweating]]
-- [[_COMMUNITY_GreetingEngine|GreetingEngine]]
 - [[_COMMUNITY_EyeRedness|EyeRedness]]
 - [[_COMMUNITY_graphify reference add a URL and watch a folder|graphify reference: add a URL and watch a folder]]
 - [[_COMMUNITY_graphify reference commit hook and native CLAUDE.md integration|graphify reference: commit hook and native CLAUDE.md integration]]
@@ -110,9 +105,11 @@
 - [[_COMMUNITY_Pain|Pain]]
 - [[_COMMUNITY___init__.py|__init__.py]]
 - [[_COMMUNITY___init__.py|__init__.py]]
+- [[_COMMUNITY_benchmark_rppg_models.py|benchmark_rppg_models.py]]
+- [[_COMMUNITY_FacialSwelling|FacialSwelling]]
 
 ## God Nodes (most connected - your core abstractions)
-1. `FrameContext` - 157 edges
+1. `FrameContext` - 159 edges
 2. `Severity` - 89 edges
 3. `DetectionModule` - 74 edges
 4. `TimedBuffer` - 53 edges
@@ -121,7 +118,7 @@
 7. `ObservationMemory` - 19 edges
 8. `bandpass()` - 16 edges
 9. `Backend` - 16 edges
-10. `OpenRPPGBackend` - 16 edges
+10. `Clothing` - 16 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `Intent` --uses--> `Severity`  [INFERRED]
@@ -138,43 +135,47 @@
 ## Import Cycles
 - None detected.
 
-## Communities (100 total, 67 thin omitted)
+## Communities (97 total, 65 thin omitted)
 
 ### Community 0 - "Core Pipeline & Camera"
-Cohesion: 0.24
-Nodes (4): A single detection outcome.      module:     registered module name (e.g. "heart, Result, Aggregator, Aggregator: keeps the latest non-expired Result per (module, key).  Provides a s
+Cohesion: 0.21
+Nodes (7): HeartRate, Remote photoplethysmography (rPPG) heart rate + HRV.  Runs one or more pluggable, rPPG heart-rate backend interface.  Thin specialization of the shared `modules.b, Alias kept for the rPPG backends; identical contract to Backend., RPPGBackend, ClassicalBackend, Classical rPPG backend: forehead green-channel bandpass + FFT.  This is the orig
 
 ### Community 1 - "Framework & Context Core"
 Cohesion: 0.08
-Nodes (53): Any, Per-frame shared state passed to every module.  Expensive extraction (face mesh,, enabled(), log(), Small opt-in debug logger for noisy live modules., Unified result schema emitted by every detection module., Severity, Module registry: modules self-register via decorator; the pipeline instantiates (+45 more)
+Nodes (54): Per-frame shared state passed to every module.  Expensive extraction (face mesh,, enabled(), log(), Small opt-in debug logger for noisy live modules., Unified result schema emitted by every detection module., Severity, Module registry: modules self-register via decorator; the pipeline instantiates, Class decorator: @register("fall_detection"). (+46 more)
 
 ### Community 2 - "Motor & Gaze Detection"
 Cohesion: 0.05
 Nodes (18): Agitation, Balance, BodyEstimate, Bradykinesia, Drowsiness, _ear(), EyeMovement, Fall (+10 more)
 
 ### Community 4 - "Longitudinal Behavior Storage"
-Cohesion: 0.27
-Nodes (3): DeepFaceBackend, DeepFace emotion (+age/gender) backend (tested; from research.md).  Uses the `de, _worker()
+Cohesion: 0.13
+Nodes (9): Demo launcher for the companion display (used for previewing the page).      pyt, Companion web display: shows the voice agent's spoken lines as large text on a b, CompanionServer, _lan_ips(), _make_handler(), Tiny stdlib web server that broadcasts the voice agent's utterances.  No third-p, Thread-safe pub/sub of agent lines with a small replay buffer., Block until there are items newer than last_seq (or timeout). (+1 more)
 
 ### Community 5 - "Context & Safety Modules"
-Cohesion: 0.11
-Nodes (7): FrameContext, AgeEstimation, FacialAsymmetry, FacialSwelling, HazardZones, Sweating, Unresponsive
+Cohesion: 0.12
+Nodes (8): FrameContext, ndarray, Face landmarks in pixel coordinates, shape (478, 2)., Pose landmarks in pixel coordinates, shape (33, 2)., AgeEstimation, FacialAsymmetry, HazardZones, Unresponsive
 
 ### Community 6 - "Skin Color Analysis"
-Cohesion: 0.06
-Nodes (30): HeartRate, Remote photoplethysmography (rPPG) heart rate + HRV.  Runs one or more pluggable, rPPG heart-rate backend interface.  Thin specialization of the shared `modules.b, Alias kept for the rPPG backends; identical contract to Backend., RPPGBackend, ClassicalBackend, Classical rPPG backend: forehead green-channel bandpass + FFT.  This is the orig, _finite() (+22 more)
+Cohesion: 0.23
+Nodes (4): _finite(), OpenRPPGBackend, ndarray, One inference pass -> (hr_dict, bvp_array, bvp_ts). Mirrors         process_face
 
 ### Community 7 - "Landmark Pixel Helpers"
 Cohesion: 0.08
 Nodes (22): Behavioral & Routine Patterns (longitudinal, needs history), Demographic / Contextual Estimation, Detection List, Emotional & Cognitive State, Facial & Skin Analysis, Falls & Safety Events, Fatigue, Drowsiness & Consciousness, Neurological / Motor Function (+14 more)
+
+### Community 8 - "Emotion"
+Cohesion: 0.07
+Nodes (13): Backend, Common interface for a detector backend.  A backend is fed one frame at a time v, Feed one frame (cheap: buffer / stash what compute() needs)., Return a reading dict, or None if not ready this call., DeepFaceBackend, _worker(), FerPlusBackend, FER+ ONNX emotion backend (optional).  Uses models/emotion.onnx (FER+ 64x64 gray (+5 more)
 
 ### Community 10 - "What You Must Do When Invoked"
 Cohesion: 0.08
 Nodes (24): For /graphify add and --watch, For /graphify query, For the commit hook and native CLAUDE.md integration, For --update and --cluster-only, /graphify, Honesty Rules, Interpreter guard for subcommands, Part A - Structural extraction for code files (+16 more)
 
 ### Community 11 - "Backend"
-Cohesion: 0.12
-Nodes (10): Backend, Common interface for a detector backend.  A backend is fed one frame at a time v, Feed one frame (cheap: buffer / stash what compute() needs)., Return a reading dict, or None if not ready this call., FerPlusBackend, FER+ ONNX emotion backend (optional).  Uses models/emotion.onnx (FER+ 64x64 gray, Landmark-geometry emotion heuristic (original, dependency-free).  Maps smile cur, HSEmotionBackend (+2 more)
+Cohesion: 0.22
+Nodes (8): _hrv_from_bvp(), Neural rPPG backend using the open-rppg toolbox (KegangWangCCNU/open-rppg).  Rep, Derive RMSSD/SDNN (ms) and breathing rate (/min) straight from the     open-rppg, bandpass(), dominant_frequency(), peak_intervals(), Strongest frequency in [fmin, fmax] Hz.      Returns (frequency_hz, prominence 0, Inter-peak intervals in seconds (for HRV from a pulse waveform).
 
 ### Community 12 - "emotion.py"
 Cohesion: 0.10
@@ -189,56 +190,44 @@ Cohesion: 0.42
 Nodes (9): _fmt(), _parse_comparisons(), Standalone data window: renders all detections as readable text on a dark panel,, -> {(module, metric): {backend: Result}} for multi-backend keys., render(), _render_clothing_weather(), _render_fatigue_stats(), _split_backend() (+1 more)
 
 ### Community 15 - "FerPlusBackend"
-Cohesion: 0.09
-Nodes (19): ABC, AlertManager, _AlertState, AlertManager: turn ALERT-severity detections into caregiver notifications with c, build_channels(), Channel, ConsoleChannel, EmailChannel (+11 more)
+Cohesion: 0.05
+Nodes (27): ABC, AlertManager, _AlertState, AlertManager: turn ALERT-severity detections into caregiver notifications with c, build_channels(), Channel, ConsoleChannel, EmailChannel (+19 more)
 
-### Community 17 - "Yawn"
-Cohesion: 0.18
-Nodes (6): Frame source abstraction: webcam index, video file, or RTSP URL.  For a live web, Pipeline, Pipeline: capture -> shared extractors -> scheduled modules -> aggregator., on_frame(ctx, results) -> bool; return False to stop., Cadence-aware scheduler.  Each module declares:   interval: minimum seconds betw, Scheduler
+### Community 16 - "Gait"
+Cohesion: 0.40
+Nodes (3): EyeRedness, polygon_mask(), Binary mask (uint8) of the polygon given by points_px.
 
 ### Community 18 - "OneEuroArray"
-Cohesion: 0.12
-Nodes (19): FaceData, FaceExtractor, Shared face extractor: MediaPipe Tasks FaceLandmarker (478 landmarks including i, _alpha(), _alpha_vec(), OneEuroArray, ndarray, Vectorized One-Euro filter for landmark de-jittering.  One-Euro (Casiez et al. 2 (+11 more)
+Cohesion: 0.24
+Nodes (6): _alpha(), _alpha_vec(), OneEuroArray, ndarray, Vectorized One-Euro filter for landmark de-jittering.  One-Euro (Casiez et al. 2, One-Euro filter over a fixed-shape landmark array, indexed per element.
 
 ### Community 19 - "HistoryStore"
-Cohesion: 0.22
-Nodes (3): ActivityLevel, Presence, HistoryStore
+Cohesion: 0.15
+Nodes (5): ActivityLevel, Presence, Path, HistoryStore, Persistent longitudinal store (SQLite).  Longitudinal modules (activity trends,
 
 ### Community 20 - "graphify reference: extra exports and benchmark"
 Cohesion: 0.22
 Nodes (8): graphify reference: extra exports and benchmark, Step 6b - Wiki (only if --wiki flag), Step 7 - Neo4j export (only if --neo4j or --neo4j-push flag), Step 7a - FalkorDB export (only if --falkordb or --falkordb-push flag), Step 7b - SVG export (only if --svg flag), Step 7c - GraphML export (only if --graphml flag), Step 7d - MCP server (only if --mcp flag), Step 8 - Token reduction benchmark (only if total_words > 5000)
 
 ### Community 21 - "FacialSwelling"
-Cohesion: 0.17
-Nodes (14): gemini_api_key(), load_env(), Environment / secrets loading for the agent (keys come from .env)., Load .env into os.environ once (no-op if python-dotenv is absent)., Gemini natural-language generation for the voice agent.  Turns an utterance inte, build_enabled(), discover(), Import every submodule of `modules/` so @register decorators run. (+6 more)
+Cohesion: 0.06
+Nodes (31): gemini_api_key(), load_env(), Environment / secrets loading for the agent (keys come from .env)., Load .env into os.environ once (no-op if python-dotenv is absent)., Gemini natural-language generation for the voice agent.  Turns an utterance inte, Camera, Frame source abstraction: webcam index, video file, or RTSP URL.  For a live web, Request resolution/fps and (optionally) lock auto controls. (+23 more)
 
 ### Community 22 - "FacialAsymmetry"
-Cohesion: 0.21
-Nodes (8): all_registered(), MotionExtractor, Frame-difference motion energy, shared by activity/agitation/unresponsive., Generate a short synthetic clip with a moving face+body to exercise the real Cam, main(), make_face_frame(), Headless smoke test: no camera required.  Verifies that (1) all modules import &, Very rough synthetic 'face + body' so extractors have something to find.     Med
+Cohesion: 0.14
+Nodes (13): FaceData, all_registered(), FaceExtractor, Shared face extractor: MediaPipe Tasks FaceLandmarker (478 landmarks including i, MotionExtractor, Frame-difference motion energy, shared by activity/agitation/unresponsive., main(), Integration test for the heart_rate module with BOTH backends.  Feeds synthetic (+5 more)
 
 ### Community 23 - "Clothing"
-Cohesion: 0.25
-Nodes (4): Clothing, ndarray, Torso/person region for detection. Prefer the pose box (covers         shoulders, Map a returned prompt (or raw label) back to a base clothing label.
+Cohesion: 0.23
+Nodes (4): Clothing, ndarray, Shoulder-anchored, shoulder-width-scaled torso crop. No hips needed;         inc, bare" (short sleeve) | "covered" (long sleeve) | None if unknown.         Compar
 
 ### Community 24 - "graphify reference: query, path, explain"
 Cohesion: 0.33
 Nodes (5): For /graphify explain, For /graphify path, graphify reference: query, path, explain, Step 0 — Constrained query expansion (REQUIRED before traversal), Step 1 — Traversal
 
-### Community 25 - "Detection Overlay"
-Cohesion: 0.40
-Nodes (3): draw_boxes(), Draw detection results onto the frame for a live debug view., Lightweight camera overlay: face/pose boxes + fps only. All textual     data liv
-
-### Community 31 - ".face_px"
-Cohesion: 0.40
-Nodes (3): ndarray, Face landmarks in pixel coordinates, shape (478, 2)., Pose landmarks in pixel coordinates, shape (33, 2).
-
-### Community 82 - "Sweating"
-Cohesion: 0.21
-Nodes (7): PoseData, PoseExtractor, Path, main(), Exercise pose-dependent modules by injecting synthetic pose landmarks.  The synt, 33x4 pose landmarks; add a fast wrist tremor + walking ankle motion., synth_pose()
-
-### Community 83 - "GreetingEngine"
-Cohesion: 0.31
-Nodes (3): GreetingEngine, Rule-based greeting + recommendation engine.  Consumes the aggregator snapshot a, Return a greeting string if a person just arrived (or forced).
+### Community 84 - "EyeRedness"
+Cohesion: 0.12
+Nodes (9): _Baseline, _norm_chroma(), ndarray, Mean normalized (r,g,b) chromaticity of a set of BGR pixels., face_skin_mask(), ndarray, Face-oval mask minus eyes and mouth — 'skin only' pixels., Square skin patch around a face landmark; radius relative to face width. (+1 more)
 
 ### Community 85 - "graphify reference: add a URL and watch a folder"
 Cohesion: 0.50
@@ -252,20 +241,24 @@ Nodes (3): For git commit hook, For native CLAUDE.md integration, graphify refer
 Cohesion: 0.50
 Nodes (3): For --cluster-only, For --update (incremental re-extraction), graphify reference: incremental update and cluster-only
 
+### Community 102 - "benchmark_rppg_models.py"
+Cohesion: 0.42
+Nodes (8): _load_reference(), main(), _mean(), _median(), _pct(), Benchmark Open-RPPG models on the same clip against a reference BPM.  Examples:, _run_model(), _write_csv()
+
 ## Knowledge Gaps
 - **113 isolated node(s):** `$schema`, `plugin`, `Usage`, `What graphify is for`, `Step 0 - GitHub repos and multi-path merge (only if a URL or several paths)` (+108 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **67 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **65 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `FrameContext` connect `Context & Safety Modules` to `Core Pipeline & Camera`, `Framework & Context Core`, `Motor & Gaze Detection`, `Pain`, `Longitudinal Behavior Storage`, `Weather`, `Skin Color Analysis`, `Emotion`, `Backend`, `Gait`, `Yawn`, `OneEuroArray`, `Sweating`, `HistoryStore`, `EyeRedness`, `FacialAsymmetry`, `Clothing`, `.face_px`?**
-  _High betweenness centrality (0.238) - this node is a cross-community bridge._
-- **Why does `Severity` connect `Framework & Context Core` to `Weather`, `Pain`, `Motor & Gaze Detection`, `Core Pipeline & Camera`, `Context & Safety Modules`, `Skin Color Analysis`, `Emotion`, `Backend`, `emotion.py`, `Age Estimation Module`, `FerPlusBackend`, `HistoryStore`, `EyeRedness`, `GreetingEngine`, `Clothing`, `Detection Overlay`?**
-  _High betweenness centrality (0.123) - this node is a cross-community bridge._
-- **Why does `DetectionModule` connect `Framework & Context Core` to `Core Pipeline & Camera`, `Pain`, `Motor & Gaze Detection`, `Weather`, `Context & Safety Modules`, `Skin Color Analysis`, `Emotion`, `Backend`, `FerPlusBackend`, `HistoryStore`, `EyeRedness`, `Clothing`?**
-  _High betweenness centrality (0.030) - this node is a cross-community bridge._
+- **Why does `FrameContext` connect `Context & Safety Modules` to `Core Pipeline & Camera`, `Framework & Context Core`, `Motor & Gaze Detection`, `Pain`, `Weather`, `Skin Color Analysis`, `FacialSwelling`, `Emotion`, `benchmark_rppg_models.py`, `Backend`, `FerPlusBackend`, `Gait`, `HistoryStore`, `EyeRedness`, `FacialSwelling`, `FacialAsymmetry`, `Clothing`?**
+  _High betweenness centrality (0.240) - this node is a cross-community bridge._
+- **Why does `Severity` connect `Framework & Context Core` to `Core Pipeline & Camera`, `Pain`, `Motor & Gaze Detection`, `Weather`, `Context & Safety Modules`, `FacialSwelling`, `Emotion`, `emotion.py`, `Age Estimation Module`, `FerPlusBackend`, `Gait`, `HistoryStore`, `EyeRedness`, `FacialSwelling`, `Clothing`?**
+  _High betweenness centrality (0.118) - this node is a cross-community bridge._
+- **Why does `DetectionModule` connect `Framework & Context Core` to `Core Pipeline & Camera`, `Pain`, `Motor & Gaze Detection`, `Weather`, `Context & Safety Modules`, `FacialSwelling`, `Emotion`, `FerPlusBackend`, `Gait`, `HistoryStore`, `Clothing`?**
+  _High betweenness centrality (0.029) - this node is a cross-community bridge._
 - **Are the 48 inferred relationships involving `FrameContext` (e.g. with `Camera` and `Pipeline`) actually correct?**
   _`FrameContext` has 48 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 43 inferred relationships involving `Severity` (e.g. with `Intent` and `Policy`) actually correct?**

@@ -70,8 +70,8 @@
     "semantic_hash": "dc8ef7df56c875e0c58d66181415e175"
   },
   "main.py": {
-    "mtime": 1783422761.6407983,
-    "ast_hash": "7e16563a033fa74934677f241b031968",
+    "mtime": 1783423939.3560536,
+    "ast_hash": "488efddcbbd852a3585b3198010c5a6b",
     "semantic_hash": ""
   },
   "modules/__init__.py": {
@@ -285,8 +285,8 @@
     "semantic_hash": ""
   },
   "config/modules.yaml": {
-    "mtime": 1783421172.3627417,
-    "ast_hash": "b7dffad13d8615c05814ddf42fc9435b",
+    "mtime": 1783425027.0006187,
+    "ast_hash": "17f5f3cb3c93dce8019440813815aeff",
     "semantic_hash": ""
   },
   "docs/RESEARCH.md": {
@@ -465,8 +465,8 @@
     "semantic_hash": ""
   },
   "modules/clothing.py": {
-    "mtime": 1783421122.1526406,
-    "ast_hash": "7f1cc213a707bcbf41b1073896b57204",
+    "mtime": 1783425000.7417524,
+    "ast_hash": "2576f09b4ef4aa131303a0117c1ce136",
     "semantic_hash": ""
   },
   "modules/clothing_advice.py": {
@@ -557,6 +557,31 @@
   "requirements-agent.txt": {
     "mtime": 1783423133.7248528,
     "ast_hash": "f2b4c21a1893a292364cf68bbe9da8ad",
+    "semantic_hash": ""
+  },
+  ".claude/launch.json": {
+    "mtime": 1783424043.2093716,
+    "ast_hash": "fca6355fafecf4423ecc47053a232059",
+    "semantic_hash": ""
+  },
+  "webui/__init__.py": {
+    "mtime": 1783423814.5629644,
+    "ast_hash": "355cac43d5d9851e035243902ea68508",
+    "semantic_hash": ""
+  },
+  "webui/_demo.py": {
+    "mtime": 1783424032.4680545,
+    "ast_hash": "1019941586432766ae158aaed3c6ecab",
+    "semantic_hash": ""
+  },
+  "webui/server.py": {
+    "mtime": 1783423843.1424007,
+    "ast_hash": "e80c55696f8754ee119facbb4050ba3e",
+    "semantic_hash": ""
+  },
+  "webui/page.html": {
+    "mtime": 1783424235.5943792,
+    "ast_hash": "8177bef744a3e150471d1f4c6bbaeb02",
     "semantic_hash": ""
   }
 }
