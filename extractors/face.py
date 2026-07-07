@@ -16,12 +16,16 @@ from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision
 
 from core.context import FaceData, FrameContext
+from extractors.smoothing import OneEuroArray
 
 _MODEL = Path(__file__).resolve().parent.parent / "models" / "face_landmarker.task"
 
 
 class FaceExtractor:
-    def __init__(self):
+    def __init__(self, smooth: bool = True):
+        # One-Euro de-jitter on face landmarks steadies emotion/asymmetry/EAR;
+        # face motion is low-frequency so this does not blur any measured signal.
+        self._smoother = OneEuroArray(mincutoff=1.5, beta=0.05) if smooth else None
         if not _MODEL.exists():
             raise FileNotFoundError(
                 f"Missing {_MODEL}. Download face_landmarker.task from "
@@ -45,6 +49,8 @@ class FaceExtractor:
             return
         lm = out.face_landmarks[0]
         pts = np.array([[p.x, p.y, p.z] for p in lm], dtype=np.float32)
+        if self._smoother is not None:
+            pts = self._smoother(pts, ctx.timestamp).astype(np.float32)
 
         px = pts[:, :2] * np.array([ctx.w, ctx.h])
         x1, y1 = px.min(axis=0).astype(int)

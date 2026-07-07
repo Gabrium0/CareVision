@@ -14,12 +14,35 @@ the method and feasibility rating behind each one.
 ## Quick start
 ```bash
 pip install -r requirements.txt
+pip install -r requirements-openrppg.txt   # optional: neural rPPG backend
 # MediaPipe .task models are downloaded into models/ (see docs/RESEARCH.md)
-python main.py                       # default webcam, live window
+python main.py                       # default webcam; Camera + Data windows
 python main.py --source clip.mp4     # run on a video file
+python main.py --combined            # old single-window overlay instead
 python main.py --headless --name Margaret   # no window; prints greetings/alerts
 ```
 Windowed controls: `q` quit · `g` force a greeting.
+
+By default two windows open: **Camera** (video + face/pose boxes only) and
+**Detections — Data**, a readable dashboard with all signals. The vitals
+section shows both heart-rate backends side by side:
+
+![data window](docs/dashboard_preview.png)
+
+### Heart rate: two backends, compared live
+The `heart_rate` module runs one or more rPPG backends and reports each one's
+numbers so you can compare them:
+- **classical** — forehead green-channel bandpass + FFT (numpy/scipy only).
+- **open-rppg** — neural models ([KegangWangCCNU/open-rppg](https://github.com/KegangWangCCNU/open-rppg),
+  JAX); gives HR, RMSSD, SDNN, and breathing rate. Auto-disables if not installed.
+
+Select in `config/modules.yaml`:
+```yaml
+heart_rate:
+  backends: [classical, openrppg]   # drop openrppg to run classical only
+```
+open-rppg loads its model once (~15–20s) at startup, then runs batched
+inference on a rolling buffer of face crops (~0.6s per run, CPU-friendly).
 
 ## Architecture
 ```

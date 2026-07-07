@@ -37,3 +37,7 @@ class Pipeline:
                 close = getattr(ex, "close", None)
                 if close:
                     close()
+            for module in self.scheduler.modules:
+                close = getattr(module, "close", None)
+                if close:
+                    close()

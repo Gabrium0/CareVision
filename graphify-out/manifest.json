@@ -30,9 +30,9 @@
     "semantic_hash": "1f825a5359db5287fff7779d0fca8240"
   },
   "core/pipeline.py": {
-    "mtime": 1783399518.3021255,
-    "ast_hash": "c51f8966ffd8104fff98721a0cc14632",
-    "semantic_hash": "c51f8966ffd8104fff98721a0cc14632"
+    "mtime": 1783404456.499988,
+    "ast_hash": "cd1ed24401eeb85460c2ec28a4c5f560",
+    "semantic_hash": ""
   },
   "core/registry.py": {
     "mtime": 1783399507.8382425,
@@ -70,9 +70,9 @@
     "semantic_hash": "dc8ef7df56c875e0c58d66181415e175"
   },
   "main.py": {
-    "mtime": 1783400050.0860963,
-    "ast_hash": "b4ba81eec40cbcda0c46fe74ba736504",
-    "semantic_hash": "b4ba81eec40cbcda0c46fe74ba736504"
+    "mtime": 1783404440.9780295,
+    "ast_hash": "fce81673c6d6e5aabb73815d292695b1",
+    "semantic_hash": ""
   },
   "modules/__init__.py": {
     "mtime": 1783399536.8863864,
@@ -180,9 +180,9 @@
     "semantic_hash": "cc2cdbba56bfe3cb9c6af4b299bd5813"
   },
   "modules/heart_rate.py": {
-    "mtime": 1783399646.433341,
-    "ast_hash": "b058d87a227b1ebbaabfd0d64d7371d9",
-    "semantic_hash": "b058d87a227b1ebbaabfd0d64d7371d9"
+    "mtime": 1783404340.7714531,
+    "ast_hash": "e90d7825c2df5a2b7a239bc1261285cf",
+    "semantic_hash": ""
   },
   "modules/masked_face.py": {
     "mtime": 1783399813.1778228,
@@ -255,9 +255,9 @@
     "semantic_hash": "15788eb7b605bf88726604af1e985e2b"
   },
   "output/overlay.py": {
-    "mtime": 1783400031.7898762,
-    "ast_hash": "bdb113e87aef3f5bcbe44bf2ad9adc79",
-    "semantic_hash": "bdb113e87aef3f5bcbe44bf2ad9adc79"
+    "mtime": 1783404407.9742248,
+    "ast_hash": "ffe1160df447f5ab216fd0a2d0c38f0d",
+    "semantic_hash": ""
   },
   "storage/__init__.py": {
     "mtime": 1783399907.896672,
@@ -283,5 +283,80 @@
     "mtime": 1783400395.7689474,
     "ast_hash": "8d704776b2e386fa7ee754d6f7ad9a1b",
     "semantic_hash": "8d704776b2e386fa7ee754d6f7ad9a1b"
+  },
+  "config/modules.yaml": {
+    "mtime": 1783404357.6979797,
+    "ast_hash": "260139eea93991ed8440fa02966fe20c",
+    "semantic_hash": ""
+  },
+  "docs/RESEARCH.md": {
+    "mtime": 1783404596.5807588,
+    "ast_hash": "aaa9cfb0f0366d3a353230147454ebb6",
+    "semantic_hash": ""
+  },
+  "CLAUDE.md": {
+    "mtime": 1783397186.2578602,
+    "ast_hash": "8a6643a420fdad6bfb583523bc6cef16",
+    "semantic_hash": "8a6643a420fdad6bfb583523bc6cef16"
+  },
+  "README.md": {
+    "mtime": 1783404587.9918616,
+    "ast_hash": "944ae5cfd6498d6baa1e51cc7e3983f8",
+    "semantic_hash": ""
+  },
+  "detectionList.md": {
+    "mtime": 1783397513.1758962,
+    "ast_hash": "83acf430957322140d36d0cf7dbcbe2a",
+    "semantic_hash": "83acf430957322140d36d0cf7dbcbe2a"
+  },
+  "requirements.txt": {
+    "mtime": 1783399480.959242,
+    "ast_hash": "f5e8728ff30d86e027a799992885bfae",
+    "semantic_hash": "f5e8728ff30d86e027a799992885bfae"
+  },
+  "research.md": {
+    "mtime": 1783399390.5717518,
+    "ast_hash": "ee83b6c786ce98908ec60357fd30a4bb",
+    "semantic_hash": "ee83b6c786ce98908ec60357fd30a4bb"
+  },
+  "modules/rppg_backends/__init__.py": {
+    "mtime": 1783404082.0576377,
+    "ast_hash": "2d1e5ff163750e61cbee44615e5d9a85",
+    "semantic_hash": ""
+  },
+  "modules/rppg_backends/base.py": {
+    "mtime": 1783404088.4979873,
+    "ast_hash": "6a2cd5099e6ecebda7f2f0d139e6a075",
+    "semantic_hash": ""
+  },
+  "modules/rppg_backends/classical.py": {
+    "mtime": 1783404096.6763644,
+    "ast_hash": "dfa429a5f9b3537acdaacb3f69f52728",
+    "semantic_hash": ""
+  },
+  "modules/rppg_backends/openrppg.py": {
+    "mtime": 1783405302.08236,
+    "ast_hash": "cf14d9cbc4e51689b7ee90253add397d",
+    "semantic_hash": ""
+  },
+  "output/dashboard.py": {
+    "mtime": 1783404392.2631266,
+    "ast_hash": "e43b72050f0141de15345a559feb1669",
+    "semantic_hash": ""
+  },
+  "tests/hr_backends_test.py": {
+    "mtime": 1783404480.8455744,
+    "ast_hash": "5562b7767f7403f1151a5f21cc656e15",
+    "semantic_hash": ""
+  },
+  "requirements-openrppg.txt": {
+    "mtime": 1783404472.5296624,
+    "ast_hash": "15818d9f7650485d0bbb43b33756c057",
+    "semantic_hash": ""
+  },
+  "docs/dashboard_preview.png": {
+    "mtime": 1783404547.2279544,
+    "ast_hash": "892cb4c9a2aadd063c9628831fb578f0",
+    "semantic_hash": ""
   }
 }

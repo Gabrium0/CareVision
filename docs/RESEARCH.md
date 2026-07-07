@@ -19,8 +19,8 @@ once by three extractors, so nothing runs a detector twice:
 | # | Detection | Module | Method | Feasibility |
 |---|-----------|--------|--------|-------------|
 | **Vitals** |
-| 1 | Heart rate | `heart_rate` | rPPG: forehead green-channel mean, bandpass 0.7–3 Hz, FFT dominant peak | 🟡 lighting/motion sensitive |
-| 2 | HRV (RMSSD) | `heart_rate` | inter-beat intervals of the filtered rPPG waveform | 🔴 needs clean pulse |
+| 1 | Heart rate | `heart_rate` | Two selectable backends run side by side: **classical** (forehead green-channel, bandpass 0.7–3 Hz, FFT peak) and **open-rppg** (neural: FacePhys/PhysMamba/PhysFormer via JAX). | 🟡 classical / 🟢 open-rppg |
+| 2 | HRV (RMSSD, SDNN) | `heart_rate` | classical: inter-beat intervals of the filtered waveform (RMSSD + SDNN). open-rppg: RMSSD/SDNN/pNN50/LF-HF from its BVP. | 🔴 classical / 🟡 open-rppg |
 | 3 | Respiratory rate | `respiration` | shoulder vertical oscillation, bandpass 0.1–0.5 Hz | 🟡 needs still torso |
 | **Skin & face** |
 | 4 | Pallor | `skin_color` | cheek normalized-chroma redness below personal baseline | 🔴 white-balance dependent |

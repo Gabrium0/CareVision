@@ -5,3 +5,5 @@ models/*.task
 models/*.onnx
 tests/synthetic_clip.mp4
 .venv/
+.env
+

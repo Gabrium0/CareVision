@@ -42,14 +42,14 @@ def load_config():
         return yaml.safe_load(f)
 
 
-def build_pipeline(source, config):
+def build_pipeline(source, config, camera_opts=None):
     discover("modules")
     modules = build_enabled(config)
     print(f"[main] enabled modules: {', '.join(m.name for m in modules)}")
     extractors = [FaceExtractor(), PoseExtractor(), MotionExtractor()]
     scheduler = Scheduler(modules)
     aggregator = Aggregator()
-    camera = Camera(source=source)
+    camera = Camera(source=source, **(camera_opts or {}))
     pipeline = Pipeline(camera, extractors, scheduler, aggregator)
     return pipeline, aggregator
 
@@ -60,10 +60,23 @@ def main():
     ap.add_argument("--headless", action="store_true", help="no display window")
     ap.add_argument("--name", default="there", help="person's name for greetings")
     ap.add_argument("--max-frames", type=int, default=None)
+    ap.add_argument("--combined", action="store_true",
+                    help="draw all text over the camera feed instead of a "
+                         "separate data window")
+    ap.add_argument("--no-lock", action="store_true",
+                    help="keep camera auto-exposure/white-balance on "
+                         "(default locks them for stable rPPG/skin color)")
+    ap.add_argument("--exposure", type=float, default=None,
+                    help="manual exposure value (camera-specific; try -6 to -4)")
+    ap.add_argument("--fps", type=float, default=30.0,
+                    help="requested capture fps (default 30)")
     args = ap.parse_args()
 
+    camera_opts = {"lock": not args.no_lock, "exposure": args.exposure,
+                   "request_fps": args.fps}
+
     config = load_config()
-    pipeline, aggregator = build_pipeline(args.source, config)
+    pipeline, aggregator = build_pipeline(args.source, config, camera_opts)
     greeter = GreetingEngine(name=args.name)
 
     display = not args.headless
@@ -71,15 +84,17 @@ def main():
     if display:
         import cv2 as _cv2
         cv2 = _cv2
-        from output import overlay
+        from output import overlay, dashboard
 
     force_greet = {"v": False}
     last_alert_print = {"t": 0.0}
+    last_greeting = {"text": None}
 
     def on_frame(ctx, results):
         greeting = greeter.maybe_greet(aggregator, force=force_greet["v"])
         force_greet["v"] = False
         if greeting:
+            last_greeting["text"] = greeting
             print("\n" + "=" * 50 + f"\n{greeting}\n" + "=" * 50)
 
         # surface alerts promptly even without an arrival
@@ -90,8 +105,17 @@ def main():
             last_alert_print["t"] = time.time()
 
         if display:
-            frame = overlay.draw(ctx.frame.copy(), ctx, aggregator.snapshot(), ctx.fps)
-            cv2.imshow("Humanoid Camera — detections", frame)
+            snapshot = aggregator.snapshot()
+            if args.combined:
+                frame = overlay.draw(ctx.frame.copy(), ctx, snapshot, ctx.fps)
+                cv2.imshow("Humanoid Camera — detections", frame)
+            else:
+                # camera window: video + boxes only
+                cam = overlay.draw_boxes(ctx.frame.copy(), ctx, ctx.fps)
+                cv2.imshow("Camera", cam)
+                # separate, readable data window
+                panel = dashboard.render(snapshot, ctx.fps, last_greeting["text"])
+                cv2.imshow("Detections — Data", panel)
             key = cv2.waitKey(1) & 0xFF
             if key == ord("q"):
                 return False
