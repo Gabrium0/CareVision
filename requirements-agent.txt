@@ -1,0 +1,9 @@
+# Voice agent + caregiver alerting (optional). Install with:
+#   pip install -r requirements-agent.txt
+# The agent falls back to templated speech if google-genai / the key are absent,
+# and alert channels self-disable if their env creds are missing.
+google-genai>=0.3        # Gemini NLG (key from .env: GEMINI_API_KEY)
+python-dotenv>=1.0       # load .env
+pyttsx3>=2.90            # offline text-to-speech
+twilio>=8.0              # optional: SMS alert channel
+requests>=2.31           # optional: webhook alert channel

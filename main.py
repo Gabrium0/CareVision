@@ -36,14 +36,24 @@ from extractors.face import FaceExtractor
 from extractors.pose import PoseExtractor
 from extractors.motion import MotionExtractor
 from output.aggregator import Aggregator
-from output.greeting_engine import GreetingEngine
+from alerts.manager import AlertManager
+from agent.voice_agent import VoiceAgent
+from agent.env import load_env
 
 CONFIG = Path(__file__).resolve().parent / "config" / "modules.yaml"
+ALERTS_CONFIG = Path(__file__).resolve().parent / "config" / "alerts.yaml"
 
 
 def load_config():
     with open(CONFIG, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
+
+
+def load_alerts_config():
+    if ALERTS_CONFIG.exists():
+        with open(ALERTS_CONFIG, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+    return {}
 
 
 def build_pipeline(source, config, camera_opts=None):
@@ -86,9 +96,14 @@ def main():
                     help="disable DeepFace subprocess backend for this run")
     ap.add_argument("--debug-modules", default="",
                     help="comma-separated debug logs: openrppg,clothing,deepface,drowsiness,weather or all")
+    ap.add_argument("--no-voice", action="store_true",
+                    help="disable the spoken voice agent (still prints its lines)")
+    ap.add_argument("--voice-model", default="gemini-2.5-flash",
+                    help="Gemini model for the voice agent (key from .env)")
     args = ap.parse_args()
     if args.debug_modules:
         os.environ["APP_DEBUG_MODULES"] = args.debug_modules
+    load_env()   # make .env keys (GEMINI_API_KEY, alert creds) available
 
     camera_opts = {"lock": not args.no_lock, "exposure": args.exposure,
                    "request_fps": args.fps, "request_size": (args.width, args.height),
@@ -99,7 +114,11 @@ def main():
         emotion = config.get("modules", {}).get("emotion", {})
         emotion["backends"] = [b for b in emotion.get("backends", []) if b != "deepface"]
     pipeline, aggregator = build_pipeline(args.source, config, camera_opts)
-    greeter = GreetingEngine(name=args.name)
+
+    alerts_cfg = load_alerts_config()
+    alert_mgr = AlertManager.from_config(alerts_cfg) if alerts_cfg.get("enabled", True) else None
+    voice_agent = VoiceAgent(name=args.name, speak=not args.no_voice,
+                             model=args.voice_model)
 
     display = not args.headless
     cv2 = None
@@ -127,23 +146,21 @@ def main():
         print("[vitals] " + " | ".join(parts))
 
     def on_frame(ctx, results):
-        greeting = greeter.maybe_greet(aggregator, force=force_greet["v"])
-        force_greet["v"] = False
-        if greeting:
-            last_greeting["text"] = greeting
-            print("\n" + "=" * 50 + f"\n{greeting}\n" + "=" * 50)
-
-        # surface alerts promptly even without an arrival
         snapshot = aggregator.snapshot()
-        print_vitals(snapshot)
 
-        alerts = greeter.alerts(snapshot)
-        now = time.time()
-        due = [a for a in alerts if now - last_alert_print.get(a, 0.0) >= args.alert_cooldown]
-        if due:
-            for a in due:
-                print(f"[ALERT] {a}")
-                last_alert_print[a] = now
+        # deterministic caregiver alerting (independent of the LLM)
+        if alert_mgr is not None:
+            alert_mgr.evaluate(snapshot)
+
+        # conversational voice agent: greets, small-talks, raises salient things
+        if force_greet["v"]:
+            voice_agent.policy._last_spoken = 0.0   # let 'g' force a line now
+            force_greet["v"] = False
+        utterance = voice_agent.tick(snapshot)
+        if utterance:
+            last_greeting["text"] = utterance
+
+        print_vitals(snapshot)
 
         if display:
             if args.combined:
@@ -169,6 +186,7 @@ def main():
     except KeyboardInterrupt:
         print("\n[main] stopped.")
     finally:
+        voice_agent.close()
         if display and cv2 is not None:
             cv2.destroyAllWindows()
 
