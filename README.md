@@ -33,9 +33,33 @@ section shows both heart-rate backends side by side:
 ### Heart rate: two backends, compared live
 The `heart_rate` module runs one or more rPPG backends and reports each one's
 numbers so you can compare them:
-- **classical** — forehead green-channel bandpass + FFT (numpy/scipy only).
+- **classical** — forehead+cheek multi-ROI CHROM/POS chrominance + FFT
+  (numpy/scipy only; illumination-robust, `classical_method: chrom|pos|green`
+  in config). Reported bpm is median-smoothed over the last
+  `classical_smoothing_window` raw picks (default 5), same as open-rppg below.
 - **open-rppg** — neural models ([KegangWangCCNU/open-rppg](https://github.com/KegangWangCCNU/open-rppg),
   JAX); gives HR, RMSSD, SDNN, and breathing rate. Auto-disables if not installed.
+
+**Accuracy vs. a wearable (Apple Watch, chest strap, pulse oximeter):** camera
+rPPG measures a ~0.5-2% skin-color change from a webcam and is inherently
+noisier than a wearable's direct-contact PPG sensor — this is true of any
+rPPG algorithm, including trained neural models like open-rppg, not just the
+classical backend here. To get close to wearable accuracy: sit ~40-60cm from
+the camera, face it directly, use steady indirect light (avoid backlighting
+or flicker), and hold still without talking for the ~10-30s the backend needs
+to fill its buffer — the same movement that trips `facial_asymmetry` or
+`drowsiness` alerts is exactly the kind of motion that degrades rPPG signal
+quality, independent of algorithm choice. A single live reading compared
+against a watch during normal activity is not a reliable accuracy check; use
+`tests/benchmark_rppg_models.py` (below) against a recorded clip with a known
+reference bpm to actually measure MAE.
+
+If readings still look wrong (jumping between backends, low confidence) on a
+live webcam specifically, the vitals "fast path" that feeds the buffers from
+the camera's reader thread can be starved if the heavy per-frame detection
+loop falls behind — run with `--debug-modules pipeline` to see a periodic
+`[pipeline/debug]` summary of how often fresh face geometry is published vs.
+how many fast-path frames were fed/rejected as stale.
 
 Select in `config/modules.yaml`:
 ```yaml
@@ -57,7 +81,7 @@ status; unavailable metrics display `...` until enough clean signal is available
 The terminal also prints periodic vitals summaries; tune with
 `--vitals-log-every` or disable with `--vitals-log-every 0`.
 For focused diagnostics, use throttled module debug logs, e.g.
-`python main.py --debug-modules openrppg,clothing,drowsiness,deepface,weather`.
+`python main.py --debug-modules pipeline,openrppg,clothing,drowsiness,deepface,weather`.
 
 For accuracy testing, record the same clean clip while wearing a pulse oximeter,
 watch, or chest strap, then benchmark candidate models:

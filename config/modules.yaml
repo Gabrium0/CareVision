@@ -9,7 +9,10 @@ modules:
     window_seconds: 30        # longer rPPG buffer improves HRV/breathing reliability
     backends: [classical, openrppg]   # run both and show numbers side by side;
                                        # openrppg auto-disables if `rppg`/jax missing
+    classical_method: chrom           # chrom | pos | green (green = legacy, for A/B)
+    classical_smoothing_window: 5     # median-smooth last N raw FFT bpm picks (parity w/ openrppg)
     openrppg_model: null              # null = open-rppg default; try physformer/efficientphys
+    openrppg_brightness_normalize: true  # lift dark face crops toward the model's training range
     openrppg_infer_every: 5.0       # CPU-only JAX is heavy; same 30s window, fewer freezes
     openrppg_min_seconds: 10.0
     openrppg_hrv_min_seconds: 30.0    # HRV/breathing need longer clean windows than HR
@@ -30,6 +33,10 @@ modules:
     refresh_seconds: 600
   clothing:
     enabled: true
+    interval: 3.0                   # zero-shot classifier is expensive; its only consumer
+                                     # (clothing_advice) runs at 5s anyway, and per-frame
+                                     # updates were the heavy loop's main bottleneck, which
+                                     # widened the vitals fast-path's staleness window
     backend: owlvit                 # "none" disables clothing; else uses `recognizer`
     recognizer: clip                # clip (FashionCLIP, fast) | owlvit (detection)
     model: null                     # null = auto (FashionCLIP for clip / OWLv2 for owlvit)

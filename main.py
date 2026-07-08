@@ -60,7 +60,7 @@ def load_alerts_config():
     return {}
 
 
-def build_pipeline(source, config, camera_opts=None):
+def build_pipeline(source, config, camera_opts=None, max_staleness: float = 0.25):
     """Discover modules and assemble the full processing pipeline."""
     discover("modules")
     modules = build_enabled(config)
@@ -70,7 +70,8 @@ def build_pipeline(source, config, camera_opts=None):
     aggregator = Aggregator()
     advisor_engine = AdvisorEngine.from_config(config.get("advice"))
     camera = Camera(source=source, **(camera_opts or {}))
-    pipeline = Pipeline(camera, extractors, scheduler, aggregator, advisor_engine)
+    pipeline = Pipeline(camera, extractors, scheduler, aggregator, advisor_engine,
+                        max_staleness=max_staleness)
     return pipeline, aggregator
 
 
@@ -89,6 +90,16 @@ def main():
                          "(default locks them for stable rPPG/skin color)")
     ap.add_argument("--exposure", type=float, default=None,
                     help="manual exposure value (camera-specific; try -6 to -4)")
+    ap.add_argument("--target-brightness", type=float, default=90.0,
+                    help="mean luminance (0-255) to reach by raising exposure/gain "
+                         "before locking; higher = brighter (default 90)")
+    ap.add_argument("--no-gain-boost", action="store_true",
+                    help="only raise exposure (not sensor gain) when brightening a "
+                         "dark scene; gain adds noise")
+    ap.add_argument("--vitals-max-staleness", type=float, default=0.25,
+                    help="max seconds the vitals fast-path may reuse a detected face "
+                         "bbox before pausing rather than sampling a stale ROI "
+                         "(default 0.25)")
     ap.add_argument("--fps", type=float, default=30.0,
                     help="requested capture fps (default 30)")
     ap.add_argument("--width", type=int, default=640,
@@ -119,13 +130,16 @@ def main():
 
     camera_opts = {"lock": not args.no_lock, "exposure": args.exposure,
                    "request_fps": args.fps, "request_size": (args.width, args.height),
-                   "target_width": args.width}
+                   "target_width": args.width,
+                   "target_brightness": args.target_brightness,
+                   "allow_gain_boost": not args.no_gain_boost}
 
     config = load_config()
     if args.no_deepface:
         emotion = config.get("modules", {}).get("emotion", {})
         emotion["backends"] = [b for b in emotion.get("backends", []) if b != "deepface"]
-    pipeline, aggregator = build_pipeline(args.source, config, camera_opts)
+    pipeline, aggregator = build_pipeline(args.source, config, camera_opts,
+                                          max_staleness=args.vitals_max_staleness)
 
     alerts_cfg = load_alerts_config()
     alert_mgr = AlertManager.from_config(alerts_cfg) if alerts_cfg.get("enabled", True) else None

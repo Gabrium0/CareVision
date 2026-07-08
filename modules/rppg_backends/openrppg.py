@@ -24,6 +24,7 @@ from __future__ import annotations
 import time
 import os
 import sys
+import threading
 import warnings
 from concurrent.futures import Future, ThreadPoolExecutor
 from collections import deque
@@ -34,6 +35,7 @@ import numpy as np
 
 from core.context import FrameContext
 from core.debug import log as debug_log
+from modules._util import patch_brightness
 from .base import RPPGBackend
 
 
@@ -47,8 +49,12 @@ class OpenRPPGBackend(RPPGBackend):
                  hrv_min_seconds: float = 30.0, min_confidence: float = 0.35,
                  smoothing_window: int = 5, motion_threshold: float | None = 35.0,
                  face_jitter_threshold: float | None = 0.25,
-                 async_inference: bool = True):
+                 async_inference: bool = True,
+                 brightness_normalize: bool = True,
+                 brightness_target: float = 110.0):
         self.window_seconds = window_seconds
+        self.brightness_normalize = brightness_normalize
+        self.brightness_target = brightness_target
         self.infer_every = infer_every
         self.min_seconds = min_seconds
         self.hrv_min_seconds = hrv_min_seconds
@@ -63,6 +69,9 @@ class OpenRPPGBackend(RPPGBackend):
         self.model = None
         self._cv2 = None
         self._get_prv = None
+        # update() (writer) and compute() (reader) can run on different
+        # threads when fed via the camera's fast path (see core/pipeline.py).
+        self._lock = threading.Lock()
         self.ts: deque[float] = deque()
         self.crops: deque[np.ndarray] = deque()
         self._bpm_history: deque[float] = deque(maxlen=self.smoothing_window)
@@ -70,6 +79,7 @@ class OpenRPPGBackend(RPPGBackend):
         self._last_infer = 0.0
         self._cached: dict | None = None
         self._status = "starting"
+        self._low_light = False
         self._accepted = 0
         self._reject_motion = 0
         self._reject_jitter = 0
@@ -113,12 +123,15 @@ class OpenRPPGBackend(RPPGBackend):
         if crop is None or crop.size == 0:
             return
         face128 = self._cv2.resize(crop, (128, 128))   # BGR uint8
-        self.ts.append(ctx.timestamp)
-        self.crops.append(face128)
-        self._accepted += 1
-        while self.ts and ctx.timestamp - self.ts[0] > self.window_seconds:
-            self.ts.popleft()
-            self.crops.popleft()
+        if self.brightness_normalize:
+            face128 = self._boost_brightness(face128)
+        with self._lock:
+            self.ts.append(ctx.timestamp)
+            self.crops.append(face128)
+            self._accepted += 1
+            while self.ts and ctx.timestamp - self.ts[0] > self.window_seconds:
+                self.ts.popleft()
+                self.crops.popleft()
 
     def _stable_face(self, bbox: tuple) -> bool:
         if self.face_jitter_threshold is None or self._last_bbox is None:
@@ -138,6 +151,23 @@ class OpenRPPGBackend(RPPGBackend):
             self._last_bbox = bbox
         return stable
 
+    def _boost_brightness(self, crop: np.ndarray) -> np.ndarray:
+        """Lift a dark face crop toward the model's expected brightness.
+
+        Open-RPPG was trained on reasonably-lit faces; a dark crop is out of
+        distribution and yields low SQI. A conservative, highlight-safe gain
+        toward `brightness_target` is a distribution fix (not an SNR fix), so
+        unlike the classical FFT path it can genuinely raise the neural SQI.
+        """
+        bright = patch_brightness(crop)
+        self._low_light = bright < 25.0
+        if bright < 1.0 or bright >= self.brightness_target:
+            return crop
+        gain = min(self.brightness_target / bright, 3.0)   # cap avoids noise blow-up
+        if gain <= 1.02:
+            return crop
+        return self._cv2.convertScaleAbs(crop, alpha=gain, beta=0.0)
+
     def _infer(self, tensor_rgb: np.ndarray, fps: float):
         """One inference pass -> (hr_dict, bvp_array, bvp_ts). Mirrors
         process_faces_tensor but also returns the BVP waveform."""
@@ -155,13 +185,17 @@ class OpenRPPGBackend(RPPGBackend):
         if not self.available:
             return None
         now = time.time()
-        span = (self.ts[-1] - self.ts[0]) if len(self.ts) > 1 else 0.0
-        debug_log("openrppg", f"buffered={len(self.crops)} span={span:.1f}s accepted={self._accepted} "
+        with self._lock:
+            n = len(self.ts)
+            span = (self.ts[-1] - self.ts[0]) if n > 1 else 0.0
+        debug_log("openrppg", f"buffered={n} span={span:.1f}s accepted={self._accepted} "
                               f"reject_motion={self._reject_motion} reject_jitter={self._reject_jitter} "
                               f"reject_no_face={self._reject_no_face} pending={self._pending is not None} "
                               f"status={self._status} latency_ms={self._last_latency_ms:.0f}")
-        if len(self.crops) < 16 or span < self.min_seconds:
+        if n < 16 or span < self.min_seconds:
             self._status = f"warming up {span:.0f}/{self.min_seconds:.0f}s"
+            if self._low_light:
+                self._status += " (low light)"
             return self._cached
 
         if self._pending is not None:
@@ -180,8 +214,14 @@ class OpenRPPGBackend(RPPGBackend):
         self._last_infer = now
         self._status = "inferring"
 
-        fps = len(self.ts) / max(span, 1e-6)
-        tensor_bgr = np.stack(list(self.crops))
+        # Re-snapshot right before building the inference tensor for the
+        # freshest window; copying under the lock keeps the (slow) tensor
+        # stack/inference off the writer thread's critical section.
+        with self._lock:
+            n = len(self.ts)
+            span = (self.ts[-1] - self.ts[0]) if n > 1 else 0.0
+            tensor_bgr = np.stack(list(self.crops))
+        fps = n / max(span, 1e-6)
         tensor_rgb = np.ascontiguousarray(tensor_bgr[..., ::-1], dtype=np.uint8)
         if not self.async_inference:
             self._cached = self._compute_tensor(tensor_rgb, float(fps), span)
