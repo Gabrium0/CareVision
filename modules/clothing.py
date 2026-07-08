@@ -129,6 +129,7 @@ class Clothing(DetectionModule):
                 if sw < 8:                     # shoulders too collapsed to trust
                     sw = 0.25 * ctx.w
                 sh_y = (ly + ry) / 2.0
+                # Scale the crop from shoulder width so it stays stable at different camera distances.
                 x1 = min(lx, rx) - 0.6 * sw
                 x2 = max(lx, rx) + 0.6 * sw
                 y1 = sh_y - 0.5 * sw           # up to collar / neck
@@ -207,7 +208,7 @@ class Clothing(DetectionModule):
                 dists.append(float(np.linalg.norm(self._chroma(arm) - skin)))
         if not dists:
             return None
-        # nearest arm to skin tone decides (a bare arm is the strong signal)
+        # Use the arm closest to face chroma; one bare arm is enough evidence for short sleeves.
         return "bare" if min(dists) < 0.05 else "covered"
 
     # ---- inference --------------------------------------------------------
@@ -233,6 +234,7 @@ class Clothing(DetectionModule):
             return ranked
         adj = []
         for label, score in ranked:
+            # Sleeve evidence is only a bias; the model score still decides after re-ranking.
             if sleeve == "bare":
                 score *= 1.6 if label in _SHORT_SLEEVE else 0.5
             else:  # covered
@@ -299,6 +301,7 @@ class Clothing(DetectionModule):
                                     "status": "no person in frame"}
         elif now - self._last_infer >= self.infer_every and self._pending is None:
             self._last_infer = now
+            # Keep the camera loop responsive by running model inference off-frame and reusing the cache.
             self._pending = self._executor.submit(
                 self._detect, self._resize_crop(crop.copy()), sleeve)
 

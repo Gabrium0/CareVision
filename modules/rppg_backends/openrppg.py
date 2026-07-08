@@ -131,6 +131,7 @@ class OpenRPPGBackend(RPPGBackend):
         center_delta = (((x1 + x2 - lx1 - lx2) / 2.0) ** 2 +
                         ((y1 + y2 - ly1 - ly2) / 2.0) ** 2) ** 0.5
         scale_delta = max(abs(w - lw) / lw, abs(h - lh) / lh)
+        # Normalize motion by face size so the same threshold works near and far from the camera.
         norm_delta = center_delta / max(w, h, 1)
         stable = norm_delta <= self.face_jitter_threshold and scale_delta <= self.face_jitter_threshold
         if stable:
@@ -205,6 +206,7 @@ class OpenRPPGBackend(RPPGBackend):
         bpm = float(median(self._bpm_history))
         if len(self._bpm_history) >= 3:
             jitter = float(np.std(np.asarray(self._bpm_history, dtype=np.float64)))
+            # Penalize unstable recent HR estimates without fully discarding a usable SQI reading.
             sqi *= max(0.5, 1.0 - jitter / 20.0)
         confidence = round(max(0.0, min(1.0, sqi)), 2)
         out = {"bpm": round(bpm, 1), "confidence": confidence}

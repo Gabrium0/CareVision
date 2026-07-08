@@ -44,7 +44,11 @@ def _best_numeric(snapshot: list[Result], module: str, key_prefix: str,
 
 @dataclass
 class VitalsAdvisor:
-    """Conservative cross-signal vitals advice."""
+    """Conservative cross-signal vitals advice.
+
+    The thresholds intentionally produce gentle check-in prompts rather than
+    diagnoses; deterministic caregiver escalation remains in alerts/.
+    """
 
     enabled: bool = True
     interval: float = 8.0
@@ -128,6 +132,7 @@ class VitalsAdvisor:
         if not observations or severity == Severity.INFO:
             return []
 
+        # Mention at most two signals to keep spoken advice short and non-alarming.
         if severity == Severity.WARNING:
             advice = "I noticed " + ", and ".join(observations[:2]) + ". Consider checking in or resting for a moment."
         else:
@@ -169,6 +174,7 @@ class AdvisorEngine:
         if not self.enabled:
             return []
         now = time.time() if now is None else now
+        # Advice should not recursively react to advice it emitted in earlier frames.
         detector_snapshot = [r for r in snapshot if not r.module.endswith("_advice")]
         out: list[Result] = []
         for advisor in self.advisors:

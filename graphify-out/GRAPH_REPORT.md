@@ -1,16 +1,16 @@
 # Graph Report - proj  (2026-07-08)
 
 ## Corpus Check
-- 114 files · ~49,499 words
+- 114 files · ~49,700 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 944 nodes · 1850 edges · 134 communities (70 shown, 64 thin omitted)
+- 948 nodes · 1854 edges · 129 communities (65 shown, 64 thin omitted)
 - Extraction: 92% EXTRACTED · 8% INFERRED · 0% AMBIGUOUS · INFERRED: 156 edges (avg confidence: 0.51)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `5010d695`
+- Built from commit: `104d1c31`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -124,12 +124,8 @@
 - [[_COMMUNITY_UtteranceBus|UtteranceBus]]
 - [[_COMMUNITY_HeuristicEmotionBackend|HeuristicEmotionBackend]]
 - [[_COMMUNITY_Emotion|Emotion]]
-- [[_COMMUNITY_env.py|env.py]]
-- [[_COMMUNITY_GeminiClient|GeminiClient]]
-- [[_COMMUNITY_Pipeline|Pipeline]]
 - [[_COMMUNITY_FerPlusBackend|FerPlusBackend]]
 - [[_COMMUNITY_HSEmotionBackend|HSEmotionBackend]]
-- [[_COMMUNITY_voice_agent.py|voice_agent.py]]
 - [[_COMMUNITY_AgeEstimation|AgeEstimation]]
 - [[_COMMUNITY_Balance|Balance]]
 - [[_COMMUNITY_Bradykinesia|Bradykinesia]]
@@ -139,7 +135,6 @@
 - [[_COMMUNITY_MaskedFace|MaskedFace]]
 - [[_COMMUNITY_Respiration|Respiration]]
 - [[_COMMUNITY_Sweating|Sweating]]
-- [[_COMMUNITY_Tremor|Tremor]]
 - [[_COMMUNITY_Unresponsive|Unresponsive]]
 - [[_COMMUNITY_Wandering|Wandering]]
 - [[_COMMUNITY_.close|.close]]
@@ -158,45 +153,45 @@
 10. `Clothing` - 17 edges
 
 ## Surprising Connections (you probably didn't know these)
+- `VitalsAdvisor` --uses--> `Result`  [INFERRED]
+  agent/advisor_engine.py → core/events.py
 - `VitalsAdvisor` --uses--> `Severity`  [INFERRED]
+  agent/advisor_engine.py → core/events.py
+- `AdvisorEngine` --uses--> `Result`  [INFERRED]
   agent/advisor_engine.py → core/events.py
 - `AdvisorEngine` --uses--> `Severity`  [INFERRED]
   agent/advisor_engine.py → core/events.py
 - `Intent` --uses--> `Severity`  [INFERRED]
   agent/policy.py → core/events.py
-- `Policy` --uses--> `Severity`  [INFERRED]
-  agent/policy.py → core/events.py
-- `ObservationMemory` --uses--> `Result`  [INFERRED]
-  agent/state.py → core/events.py
 
 ## Import Cycles
 - None detected.
 
-## Communities (134 total, 64 thin omitted)
+## Communities (129 total, 64 thin omitted)
 
 ### Community 0 - "Core Pipeline & Camera"
 Cohesion: 0.12
 Nodes (15): Architecture, Core abstractions, Data flow, Entry points & config, Package map, Threading model (important), Verification & docs guardrail, 1. Add a detection module (+7 more)
 
 ### Community 1 - "Framework & Context Core"
-Cohesion: 0.06
-Nodes (75): Per-frame shared state passed to every module.  Expensive extraction (face mes, enabled(), log(), Small opt-in debug logger for noisy live modules., Print a debug line for a module when its debug flag is enabled., Unified result schema emitted by every detection module., Severity levels that control how the aggregator, greeting, and alerting treat a, Severity (+67 more)
+Cohesion: 0.05
+Nodes (80): Per-frame shared state passed to every module.  Expensive extraction (face mes, enabled(), log(), Small opt-in debug logger for noisy live modules., Print a debug line for a module when its debug flag is enabled., Unified result schema emitted by every detection module., Severity levels that control how the aggregator, greeting, and alerting treat a, Severity (+72 more)
 
 ### Community 2 - "Motor & Gaze Detection"
-Cohesion: 0.18
-Nodes (6): Agitation, Agitation / restlessness screening., Run this detector on the current frame; return Result(s) or None., Rolling (timestamp, value) buffer with a fixed time horizon., Uniformly resample values at fs Hz; returns (signal, fs) or None., TimedBuffer
+Cohesion: 0.16
+Nodes (8): Hand/limb tremor detection via wrist oscillation spectrum., Tremor, Rolling (timestamp, value) buffer with a fixed time horizon., Append one sample and discard anything older than the time horizon., Time covered by the current buffer, in seconds., Return timestamps and values as float arrays for signal processing., Uniformly resample values at fs Hz; returns (signal, fs) or None., TimedBuffer
 
 ### Community 4 - "Longitudinal Behavior Storage"
-Cohesion: 0.16
-Nodes (10): Companion web display: shows the voice agent's spoken lines as large text on a b, CompanionServer, _lan_ips(), _make_handler(), Tiny stdlib web server that broadcasts the voice agent's utterances.  No third, Local web server: companion text at / and full telemetry at /data., Start the HTTP server on a background daemon thread., Publish a new item to connected subscribers. (+2 more)
+Cohesion: 0.06
+Nodes (23): R(), Demo launcher for the companion + data web pages (for previewing).      python -, Companion web display: shows the voice agent's spoken lines as large text on a b, CompanionServer, DataBus, _lan_ips(), _make_handler(), Tiny stdlib web server that broadcasts the voice agent's utterances.  No third (+15 more)
 
 ### Community 5 - "Context & Safety Modules"
-Cohesion: 0.15
-Nodes (9): FrameContext, ndarray, Per-frame shared state passed to every module (frame + extractor outputs + scrat, Face landmarks in pixel coordinates, shape (478, 2)., Pose landmarks in pixel coordinates, shape (33, 2)., Run this detector on the current frame; return Result(s) or None., EyeRedness, Eye redness / conjunctivitis screening from the sclera region. (+1 more)
+Cohesion: 0.13
+Nodes (10): FrameContext, ndarray, Per-frame shared state passed to every module (frame + extractor outputs + scrat, Face landmarks in pixel coordinates, shape (478, 2)., Pose landmarks in pixel coordinates, shape (33, 2)., Run this detector on the current frame; return Result(s) or None., EyeRedness, Eye redness / conjunctivitis screening from the sclera region. (+2 more)
 
 ### Community 6 - "Skin Color Analysis"
-Cohesion: 0.05
-Nodes (34): AdvisorEngine, _best_numeric(), _numeric(), Any, Post-aggregation advice rules.  Advisors consume the latest aggregated detecto, Runs post-aggregation advisors over the snapshot and emits advice results., Build an instance from its config dict., Evaluate the latest snapshot and act on it. (+26 more)
+Cohesion: 0.14
+Nodes (15): AdvisorEngine, _best_numeric(), _numeric(), Any, Post-aggregation advice rules.  Advisors consume the latest aggregated detecto, Runs post-aggregation advisors over the snapshot and emits advice results., Build an instance from its config dict., Evaluate the latest snapshot and act on it. (+7 more)
 
 ### Community 7 - "Landmark Pixel Helpers"
 Cohesion: 0.08
@@ -211,12 +206,12 @@ Cohesion: 0.08
 Nodes (24): For /graphify add and --watch, For /graphify query, For the commit hook and native CLAUDE.md integration, For --update and --cluster-only, /graphify, Honesty Rules, Interpreter guard for subcommands, Part A - Structural extraction for code files (+16 more)
 
 ### Community 11 - "Backend"
-Cohesion: 0.21
-Nodes (8): Orchestrates memory -> policy -> Gemini -> speech., Advance one step: update state and act if warranted., Release any resources (models, threads, sockets) held here., VoiceAgent, main(), R(), Voice agent + caregiver alerting test (no camera, offline-deterministic).  Force, Recorder
+Cohesion: 0.16
+Nodes (10): AlertManager, _AlertState, AlertManager: turn ALERT-severity detections into caregiver notifications with, Turns ALERT results into caregiver notifications with confirm/dedupe/escalate., Build an instance from its config dict., Evaluate the latest snapshot and act on it., main(), R() (+2 more)
 
 ### Community 12 - "emotion.py"
-Cohesion: 0.17
-Nodes (10): ObservationMemory, The agent's evolving knowledge of the person, accumulated over time., Merge new results into the current person-state., Return the latest result for (module, key), or a default., Return the latest value for (module, key), or a default., True if this (module,key,value) first appeared within `within` sec., Return 'morning' / 'afternoon' / 'evening' for now., Return the first available value among <base>_<backend> keys. (+2 more)
+Cohesion: 0.05
+Nodes (34): gemini_api_key(), Return the Gemini API key from the environment, or None., GeminiClient, Gemini natural-language generation for the voice agent.  Turns an utterance in, Gemini NLG wrapper for the voice agent, with an offline templated fallback., Generate one short spoken line, or None if unavailable., Intent, Policy (+26 more)
 
 ### Community 13 - "Pain Expression Module"
 Cohesion: 0.18
@@ -227,36 +222,36 @@ Cohesion: 0.33
 Nodes (4): Drowsiness, _ear(), Drowsiness: eye-aspect-ratio, PERCLOS, blink rate, microsleep., Run this detector on the current frame; return Result(s) or None.
 
 ### Community 15 - "FerPlusBackend"
-Cohesion: 0.07
-Nodes (24): AlertManager, _AlertState, AlertManager: turn ALERT-severity detections into caregiver notifications with, Turns ALERT results into caregiver notifications with confirm/dedupe/escalate., Build an instance from its config dict., Evaluate the latest snapshot and act on it., build_channels(), Channel (+16 more)
+Cohesion: 0.11
+Nodes (15): build_channels(), Channel, ConsoleChannel, EmailChannel, Pluggable notification channels for caregiver alerts.  Each channel self-disab, Send the alert via this channel; return True on success., Instantiate the named channels; drop any whose creds are missing., Base class for a caregiver notification channel. (+7 more)
 
 ### Community 16 - "Gait"
-Cohesion: 0.15
-Nodes (13): MotionExtractor, Frame-difference motion energy, shared by activity/agitation/unresponsive., Frame-difference motion-energy extractor; fills ctx.motion_energy., Extract features from the frame and populate the shared context., build_pipeline(), load_alerts_config(), load_config(), main() (+5 more)
+Cohesion: 0.13
+Nodes (16): load_env(), Environment / secrets loading for the agent (keys come from .env)., Load .env into os.environ once (no-op if python-dotenv is absent)., MotionExtractor, Frame-difference motion energy, shared by activity/agitation/unresponsive., Frame-difference motion-energy extractor; fills ctx.motion_energy., Extract features from the frame and populate the shared context., build_pipeline() (+8 more)
 
 ### Community 17 - "Camera"
-Cohesion: 0.16
-Nodes (8): Camera, Frame source abstraction: webcam index, video file, or RTSP URL.  For a live w, Release the capture device., Frame source abstraction over a webcam, video file, or stream., Request resolution/fps and (optionally) lock auto controls., Open the underlying capture source., Yield a FrameContext per captured frame., Pipeline: capture -> shared extractors -> scheduled modules -> aggregator.
+Cohesion: 0.22
+Nodes (6): Camera, Release the capture device., Frame source abstraction over a webcam, video file, or stream., Request resolution/fps and (optionally) lock auto controls., Open the underlying capture source., Yield a FrameContext per captured frame.
 
 ### Community 18 - "OneEuroArray"
-Cohesion: 0.47
-Nodes (4): _alpha(), _alpha_vec(), ndarray, Vectorized One-Euro filter for landmark de-jittering.  One-Euro (Casiez et al.
+Cohesion: 0.15
+Nodes (7): A single detection outcome.      module:     registered module name (e.g. "hea, Result, Run this detector on the current frame; return Result(s) or None., Merge new results into the current person-state., Return the current list of live (non-expired) results., Return live results at or above a severity, most-severe first., Return the latest result for (module, key), or a default.
 
 ### Community 19 - "HistoryStore"
 Cohesion: 0.10
-Nodes (13): ActivityLevel, Activity-level tracking and inactivity trend (longitudinal)., Run this detector on the current frame; return Result(s) or None., Presence, Presence tracking and greeting trigger., Run this detector on the current frame; return Result(s) or None., HistoryStore, Persistent longitudinal store (SQLite).  Longitudinal modules (activity trends (+5 more)
+Nodes (12): ActivityLevel, Activity-level tracking and inactivity trend (longitudinal)., Run this detector on the current frame; return Result(s) or None., Presence, Presence tracking and greeting trigger., Run this detector on the current frame; return Result(s) or None., HistoryStore, SQLite store of timestamped longitudinal samples. (+4 more)
 
 ### Community 20 - "graphify reference: extra exports and benchmark"
 Cohesion: 0.22
 Nodes (8): graphify reference: extra exports and benchmark, Step 6b - Wiki (only if --wiki flag), Step 7 - Neo4j export (only if --neo4j or --neo4j-push flag), Step 7a - FalkorDB export (only if --falkordb or --falkordb-push flag), Step 7b - SVG export (only if --svg flag), Step 7c - GraphML export (only if --graphml flag), Step 7d - MCP server (only if --mcp flag), Step 8 - Token reduction benchmark (only if total_words > 5000)
 
 ### Community 21 - "FacialSwelling"
-Cohesion: 0.21
-Nodes (11): all_registered(), build_enabled(), discover(), Import every submodule of `modules/` so @register decorators run., Instantiate modules enabled in config, passing their params., Return a copy of the name -> module-class registry., Generate a short synthetic clip with a moving face+body to exercise the real Cam, main() (+3 more)
+Cohesion: 0.13
+Nodes (19): all_registered(), build_enabled(), discover(), Import every submodule of `modules/` so @register decorators run., Instantiate modules enabled in config, passing their params., Return a copy of the name -> module-class registry., Aggregator, Aggregator: keeps the latest non-expired Result per (module, key).  Provides a (+11 more)
 
 ### Community 22 - "FacialAsymmetry"
-Cohesion: 0.14
-Nodes (12): FaceData, Per-frame face landmarks, bounding box, and crop., FaceExtractor, Shared face extractor: MediaPipe Tasks FaceLandmarker (478 landmarks including, MediaPipe FaceLandmarker extractor; fills ctx.face once per frame., Extract features from the frame and populate the shared context., Release any resources (models, threads, sockets) held here., OneEuroArray (+4 more)
+Cohesion: 0.11
+Nodes (16): FaceData, Per-frame face landmarks, bounding box, and crop., FaceExtractor, Shared face extractor: MediaPipe Tasks FaceLandmarker (478 landmarks including, MediaPipe FaceLandmarker extractor; fills ctx.face once per frame., Extract features from the frame and populate the shared context., Release any resources (models, threads, sockets) held here., _alpha() (+8 more)
 
 ### Community 23 - "Clothing"
 Cohesion: 0.18
@@ -267,8 +262,8 @@ Cohesion: 0.33
 Nodes (5): For /graphify explain, For /graphify path, graphify reference: query, path, explain, Step 0 — Constrained query expansion (REQUIRED before traversal), Step 1 — Traversal
 
 ### Community 25 - "pipeline.py"
-Cohesion: 0.17
-Nodes (9): Cadence-aware scheduler.  Each module declares:   interval: minimum seconds b, Runs each module at its declared cadence when its required inputs are present., Advance one step: update state and act if warranted., Scheduler, Path, main(), Exercise pose-dependent modules by injecting synthetic pose landmarks.  The synt, 33x4 pose landmarks; add a fast wrist tremor + walking ankle motion. (+1 more)
+Cohesion: 0.13
+Nodes (10): Frame source abstraction: webcam index, video file, or RTSP URL.  For a live w, Pipeline, Pipeline: capture -> shared extractors -> scheduled modules -> aggregator., Orchestrates capture -> extractors -> scheduler -> aggregator -> advisor each fr, Run extractors, modules, and the advisor for one frame., on_frame(ctx, results) -> bool; return False to stop., Cadence-aware scheduler.  Each module declares:   interval: minimum seconds b, Runs each module at its declared cadence when its required inputs are present. (+2 more)
 
 ### Community 31 - ".face_px"
 Cohesion: 0.31
@@ -287,8 +282,8 @@ Cohesion: 0.40
 Nodes (3): Fall, Fall detection from body pose., Run this detector on the current frame; return Result(s) or None.
 
 ### Community 84 - "EyeRedness"
-Cohesion: 0.12
-Nodes (10): HeartRate, Release any resources (models, threads, sockets) held here., Remote photoplethysmography (rPPG) heart rate + HRV., Run this detector on the current frame; return Result(s) or None., ClassicalBackend, Classical rPPG backend: forehead green-channel band-pass + FFT., Feed one frame's data into the backend's rolling state., Current weather from Open-Meteo for clothing recommendations. (+2 more)
+Cohesion: 0.16
+Nodes (8): HeartRate, Release any resources (models, threads, sockets) held here., Remote photoplethysmography (rPPG) heart rate + HRV., Run this detector on the current frame; return Result(s) or None., ClassicalBackend, Classical rPPG backend: forehead green-channel band-pass + FFT., Feed one frame's data into the backend's rolling state., Return the backend's current reading dict, or None if not ready.
 
 ### Community 85 - "graphify reference: add a URL and watch a folder"
 Cohesion: 0.50
@@ -315,16 +310,16 @@ Cohesion: 0.40
 Nodes (3): BodyEstimate, Rough body-build proxy (shoulder-to-hip / width-to-height)., Run this detector on the current frame; return Result(s) or None.
 
 ### Community 102 - "benchmark_rppg_models.py"
-Cohesion: 0.09
-Nodes (22): Return the backend's current reading dict, or None if not ready., _finite(), _hrv_from_bvp(), OpenRPPGBackend, ndarray, Neural rPPG backend using the open-rppg toolbox (KegangWangCCNU/open-rppg).  R, One inference pass -> (hr_dict, bvp_array, bvp_ts). Mirrors         process_fac, Return the backend's current reading dict, or None if not ready. (+14 more)
+Cohesion: 0.10
+Nodes (21): _finite(), _hrv_from_bvp(), OpenRPPGBackend, ndarray, Neural rPPG backend using the open-rppg toolbox (KegangWangCCNU/open-rppg).  R, One inference pass -> (hr_dict, bvp_array, bvp_ts). Mirrors         process_fac, Return the backend's current reading dict, or None if not ready., Release any resources (models, threads, sockets) held here. (+13 more)
 
 ### Community 103 - "FacialSwelling"
 Cohesion: 0.40
 Nodes (3): FacialSwelling, Facial / eyelid swelling (edema) screening via slow contour drift., Run this detector on the current frame; return Result(s) or None.
 
 ### Community 104 - "EyeRedness"
-Cohesion: 0.18
-Nodes (8): _Baseline, _norm_chroma(), ndarray, Mean normalized (r,g,b) chromaticity of a set of BGR pixels., Feed one frame's data into the backend's rolling state., Skin color screening: pallor, flushing, cyanosis, jaundice., Run this detector on the current frame; return Result(s) or None., SkinColor
+Cohesion: 0.20
+Nodes (6): _Baseline, _norm_chroma(), ndarray, Mean normalized (r,g,b) chromaticity of a set of BGR pixels., Feed one frame's data into the backend's rolling state., Run this detector on the current frame; return Result(s) or None.
 
 ### Community 105 - "HeadNod"
 Cohesion: 0.40
@@ -335,24 +330,24 @@ Cohesion: 0.40
 Nodes (3): Yawning detection and frequency (fatigue indicator)., Run this detector on the current frame; return Result(s) or None., Yawn
 
 ### Community 107 - "DataBus"
-Cohesion: 0.17
-Nodes (6): DataBus, Holds the latest full-telemetry payload (one snapshot) for /data., Publish a new item to connected subscribers., Return the latest (seq, payload) pair., Block until newer items arrive or the timeout elapses., Block until there are items newer than last_seq (or timeout).
+Cohesion: 0.21
+Nodes (6): GreetingEngine, Rule-based greeting + recommendation engine.  Consumes the aggregator snapshot, Rule-based greeting/recommendation composer (superseded by agent/)., Return the ALERT-severity messages in the snapshot., Return a greeting string if a person just arrived (or forced)., Compose a greeting/recommendation string from the snapshot.
 
 ### Community 108 - "Policy"
-Cohesion: 0.27
-Nodes (6): Intent, Policy, Pick the highest-priority thing to say now, or None., Record that an intent was spoken (for no-repeat/cadence)., One thing the agent could say now, with priority and a templated fallback., Decides when and what the voice agent says (event-driven + timed, no-repeat).
+Cohesion: 0.38
+Nodes (3): Current weather from Open-Meteo for clothing recommendations., Run this detector on the current frame; return Result(s) or None., Weather
 
 ### Community 109 - "Speaker"
-Cohesion: 0.22
-Nodes (5): Offline text-to-speech — the agent's mouth.  Uses pyttsx3 (offline, cross-plat, Offline text-to-speech worker on its own thread (the agent's voice)., Queue a line to be spoken (non-blocking)., Release any resources (models, threads, sockets) held here., Speaker
+Cohesion: 0.40
+Nodes (3): POST to ALERT_WEBHOOK_URL (Slack/Discord/custom). Uses requests., Send the alert via this channel; return True on success., WebhookChannel
 
 ### Community 110 - "PoseExtractor"
 Cohesion: 0.25
 Nodes (6): PoseData, Per-frame body-pose landmarks and bounding box., PoseExtractor, MediaPipe PoseLandmarker extractor; fills ctx.pose once per frame., Extract features from the frame and populate the shared context., Release any resources (models, threads, sockets) held here.
 
 ### Community 111 - "UtteranceBus"
-Cohesion: 0.22
-Nodes (5): Thread-safe pub/sub of agent lines with a small replay buffer., Publish a new item to connected subscribers., Return items newer than the given sequence number., Return the latest sequence number., UtteranceBus
+Cohesion: 0.40
+Nodes (3): Agitation, Agitation / restlessness screening., Run this detector on the current frame; return Result(s) or None.
 
 ### Community 112 - "HeuristicEmotionBackend"
 Cohesion: 0.25
@@ -362,18 +357,6 @@ Nodes (4): HeuristicEmotionBackend, Landmark-geometry emotion heuristic (offline
 Cohesion: 0.32
 Nodes (4): Emotion, Emotion / mood recognition — multi-backend., Run this detector on the current frame; return Result(s) or None., Release any resources (models, threads, sockets) held here.
 
-### Community 114 - "env.py"
-Cohesion: 0.33
-Nodes (5): gemini_api_key(), load_env(), Environment / secrets loading for the agent (keys come from .env)., Load .env into os.environ once (no-op if python-dotenv is absent)., Return the Gemini API key from the environment, or None.
-
-### Community 115 - "GeminiClient"
-Cohesion: 0.29
-Nodes (4): GeminiClient, Gemini natural-language generation for the voice agent.  Turns an utterance in, Gemini NLG wrapper for the voice agent, with an offline templated fallback., Generate one short spoken line, or None if unavailable.
-
-### Community 116 - "Pipeline"
-Cohesion: 0.33
-Nodes (4): Pipeline, Orchestrates capture -> extractors -> scheduler -> aggregator -> advisor each fr, Run extractors, modules, and the advisor for one frame., on_frame(ctx, results) -> bool; return False to stop.
-
 ### Community 117 - "FerPlusBackend"
 Cohesion: 0.29
 Nodes (4): FerPlusBackend, FER+ ONNX emotion backend (optional)., Feed one frame's data into the backend's rolling state., Return the backend's current reading dict, or None if not ready.
@@ -381,10 +364,6 @@ Nodes (4): FerPlusBackend, FER+ ONNX emotion backend (optional)., Feed one frame
 ### Community 118 - "HSEmotionBackend"
 Cohesion: 0.29
 Nodes (4): HSEmotionBackend, HSEmotion (AffectNet) emotion + valence backend., Feed one frame's data into the backend's rolling state., Return the backend's current reading dict, or None if not ready.
-
-### Community 119 - "voice_agent.py"
-Cohesion: 0.40
-Nodes (3): Conversation policy: decide WHEN and WHAT the agent says.  Event-driven + time, ObservationMemory: the agent's evolving knowledge of the person.  Ingests the, VoiceAgent: orchestrates memory -> policy -> Gemini -> speech.  Call `tick(sna
 
 ### Community 120 - "AgeEstimation"
 Cohesion: 0.40
@@ -422,10 +401,6 @@ Nodes (3): Respiratory rate from shoulder vertical oscillation., Run this detect
 Cohesion: 0.40
 Nodes (3): Perspiration screening from forehead specular highlights., Run this detector on the current frame; return Result(s) or None., Sweating
 
-### Community 129 - "Tremor"
-Cohesion: 0.40
-Nodes (3): Hand/limb tremor detection via wrist oscillation spectrum., Run this detector on the current frame; return Result(s) or None., Tremor
-
 ### Community 130 - "Unresponsive"
 Cohesion: 0.40
 Nodes (3): Prolonged immobility / unresponsiveness detection., Run this detector on the current frame; return Result(s) or None., Unresponsive
@@ -442,11 +417,11 @@ Nodes (3): Wandering / pacing detection (disorientation, agitation)., Run this d
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `FrameContext` connect `Context & Safety Modules` to `Sweating`, `Framework & Context Core`, `Motor & Gaze Detection`, `Tremor`, `Unresponsive`, `.update`, `Skin Color Analysis`, `Wandering`, `Emotion`, `Age Estimation Module`, `Gait`, `Camera`, `HistoryStore`, `FacialSwelling`, `FacialAsymmetry`, `Clothing`, `pipeline.py`, `Weather`, `Fall`, `EyeRedness`, `Pain`, `Agitation`, `BodyEstimate`, `benchmark_rppg_models.py`, `FacialSwelling`, `EyeRedness`, `HeadNod`, `Yawn`, `PoseExtractor`, `HeuristicEmotionBackend`, `Emotion`, `Pipeline`, `FerPlusBackend`, `HSEmotionBackend`, `AgeEstimation`, `Balance`, `Bradykinesia`, `FacialAsymmetry`, `Gait`, `HazardZones`, `MaskedFace`, `Respiration`?**
+- **Why does `FrameContext` connect `Context & Safety Modules` to `Sweating`, `Framework & Context Core`, `Motor & Gaze Detection`, `Unresponsive`, `Wandering`, `.update`, `Emotion`, `Age Estimation Module`, `Gait`, `Camera`, `OneEuroArray`, `HistoryStore`, `FacialSwelling`, `FacialAsymmetry`, `Clothing`, `pipeline.py`, `Weather`, `Fall`, `EyeRedness`, `Pain`, `Agitation`, `BodyEstimate`, `benchmark_rppg_models.py`, `FacialSwelling`, `EyeRedness`, `HeadNod`, `Yawn`, `Policy`, `PoseExtractor`, `UtteranceBus`, `HeuristicEmotionBackend`, `Emotion`, `FerPlusBackend`, `HSEmotionBackend`, `AgeEstimation`, `Balance`, `Bradykinesia`, `FacialAsymmetry`, `Gait`, `HazardZones`, `MaskedFace`, `Respiration`?**
   _High betweenness centrality (0.264) - this node is a cross-community bridge._
-- **Why does `Severity` connect `Framework & Context Core` to `Sweating`, `Tremor`, `Motor & Gaze Detection`, `Unresponsive`, `Wandering`, `Context & Safety Modules`, `Skin Color Analysis`, `Backend`, `emotion.py`, `Age Estimation Module`, `FerPlusBackend`, `HistoryStore`, `Clothing`, `.face_px`, `Weather`, `overlay.py`, `Fall`, `EyeRedness`, `Pain`, `BodyEstimate`, `FacialSwelling`, `EyeRedness`, `HeadNod`, `Yawn`, `Policy`, `Emotion`, `voice_agent.py`, `AgeEstimation`, `Balance`, `Bradykinesia`, `FacialAsymmetry`, `Gait`, `HazardZones`, `MaskedFace`, `Respiration`?**
+- **Why does `Severity` connect `Framework & Context Core` to `Sweating`, `Motor & Gaze Detection`, `Unresponsive`, `Wandering`, `Context & Safety Modules`, `Skin Color Analysis`, `Longitudinal Behavior Storage`, `Backend`, `emotion.py`, `Age Estimation Module`, `OneEuroArray`, `HistoryStore`, `FacialSwelling`, `Clothing`, `.face_px`, `Weather`, `overlay.py`, `Fall`, `EyeRedness`, `Pain`, `BodyEstimate`, `FacialSwelling`, `EyeRedness`, `HeadNod`, `Yawn`, `DataBus`, `Policy`, `UtteranceBus`, `Emotion`, `AgeEstimation`, `Balance`, `Bradykinesia`, `FacialAsymmetry`, `Gait`, `HazardZones`, `MaskedFace`, `Respiration`?**
   _High betweenness centrality (0.157) - this node is a cross-community bridge._
-- **Why does `Result` connect `Skin Color Analysis` to `Framework & Context Core`, `Backend`, `emotion.py`, `FerPlusBackend`, `Camera`, `Pipeline`, `voice_agent.py`, `pipeline.py`?**
+- **Why does `Result` connect `OneEuroArray` to `Framework & Context Core`, `Longitudinal Behavior Storage`, `Skin Color Analysis`, `Backend`, `emotion.py`, `DataBus`, `FacialSwelling`, `pipeline.py`?**
   _High betweenness centrality (0.045) - this node is a cross-community bridge._
 - **Are the 48 inferred relationships involving `FrameContext` (e.g. with `Camera` and `Pipeline`) actually correct?**
   _`FrameContext` has 48 INFERRED edges - model-reasoned connections that need verification._

@@ -20,7 +20,7 @@ class TimedBuffer:
         self.v: deque = deque()
 
     def push(self, timestamp: float, value) -> None:
-        """Push."""
+        """Append one sample and discard anything older than the time horizon."""
         self.t.append(timestamp)
         self.v.append(value)
         while self.t and timestamp - self.t[0] > self.seconds:
@@ -31,11 +31,11 @@ class TimedBuffer:
         return len(self.t)
 
     def span(self) -> float:
-        """Span."""
+        """Time covered by the current buffer, in seconds."""
         return (self.t[-1] - self.t[0]) if len(self.t) > 1 else 0.0
 
     def arrays(self) -> tuple[np.ndarray, np.ndarray]:
-        """Arrays."""
+        """Return timestamps and values as float arrays for signal processing."""
         return np.asarray(self.t, dtype=np.float64), np.asarray(self.v, dtype=np.float64)
 
     def resampled(self, fs: float) -> tuple[np.ndarray, float] | None:
@@ -60,6 +60,7 @@ def dominant_frequency(signal: np.ndarray, fs: float,
     n = len(sig)
     if n < 16:
         return None
+    # Windowing reduces FFT edge artifacts on short rolling buffers.
     window = np.hanning(n)
     spectrum = np.abs(np.fft.rfft(sig * window)) ** 2
     freqs = np.fft.rfftfreq(n, d=1.0 / fs)
@@ -68,6 +69,7 @@ def dominant_frequency(signal: np.ndarray, fs: float,
         return None
     band_power = spectrum[band]
     peak_idx = int(np.argmax(band_power))
+    # Treat one sharp spectral peak as higher quality than diffuse band energy.
     prominence = float(band_power[peak_idx] / band_power.sum())
     return float(freqs[band][peak_idx]), prominence
 
@@ -76,6 +78,7 @@ def bandpass(signal: np.ndarray, fs: float, fmin: float, fmax: float,
              order: int = 3) -> np.ndarray | None:
     """Butterworth band-pass filter a 1-D signal (or None if too short)."""
     nyq = fs / 2.0
+    # filtfilt needs enough samples for padding; returning None avoids noisy startup values.
     if fmax >= nyq or len(signal) < 3 * (order + 1):
         return None
     b, a = butter(order, [fmin / nyq, fmax / nyq], btype="band")
@@ -85,6 +88,7 @@ def bandpass(signal: np.ndarray, fs: float, fmin: float, fmax: float,
 def peak_intervals(signal: np.ndarray, fs: float,
                    min_distance_s: float) -> np.ndarray:
     """Inter-peak intervals in seconds (for HRV from a pulse waveform)."""
+    # min_distance_s encodes the fastest plausible beat rate and suppresses double counts.
     peaks, _ = find_peaks(signal, distance=max(1, int(min_distance_s * fs)))
     if len(peaks) < 3:
         return np.array([])

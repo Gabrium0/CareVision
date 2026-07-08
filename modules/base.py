@@ -44,7 +44,7 @@ class DetectionModule(ABC):
     def result(self, key: str, value: Any, confidence: float = 0.5,
                severity: Severity = Severity.INFO, message: str = "",
                ttl: float = 10.0) -> Result:
-        """Result."""
+        """Build a Result using this module's registered name."""
         return Result(module=self.name, key=key, value=value,
                       confidence=confidence, severity=severity,
                       message=message, ttl=ttl)
