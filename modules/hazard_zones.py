@@ -21,6 +21,7 @@ from extractors import pose as P
 
 @register("hazard_zones")
 class HazardZones(DetectionModule):
+    """Hazard-zone entry detection (stove, stairs, doorway)."""
     interval = 0.3
     requires = ("pose",)
     zones = []          # [{name, polygon:[[x,y],...] normalized}]
@@ -32,6 +33,7 @@ class HazardZones(DetectionModule):
         self._inside = set()
 
     def process(self, ctx: FrameContext):
+        """Run this detector on the current frame; return Result(s) or None."""
         if not self._polys:
             return None
         lm = ctx.pose.landmarks

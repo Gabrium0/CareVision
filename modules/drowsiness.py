@@ -30,6 +30,7 @@ def _ear(px, idx):
 
 @register("drowsiness")
 class Drowsiness(DetectionModule):
+    """Drowsiness: eye-aspect-ratio, PERCLOS, blink rate, microsleep."""
     interval = 0.0
     requires = ("face",)
     perclos_window_seconds = 60.0
@@ -49,6 +50,7 @@ class Drowsiness(DetectionModule):
         self._closed_since = None
 
     def process(self, ctx: FrameContext):
+        """Run this detector on the current frame; return Result(s) or None."""
         px = ctx.face_px()
         ear = 0.5 * (_ear(px, FL.LEFT_EYE_EAR) + _ear(px, FL.RIGHT_EYE_EAR))
         results = [self.result("ear", round(float(ear), 3), 0.7, Severity.INFO, "", ttl=4.0)]

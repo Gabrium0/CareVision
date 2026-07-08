@@ -16,6 +16,7 @@ from core.context import FrameContext
 
 
 class Backend(ABC):
+    """Common interface for a detector backend: update() per frame, compute() a reading."""
     label: str = "backend"
     available: bool = True
 
@@ -28,4 +29,5 @@ class Backend(ABC):
         """Return a reading dict, or None if not ready this call."""
 
     def close(self) -> None:        # optional cleanup (release models)
+        """Release any resources (models, threads, sockets) held here."""
         pass

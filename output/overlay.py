@@ -28,6 +28,7 @@ def draw_boxes(frame, ctx, fps: float):
 
 
 def draw(frame, ctx, snapshot, fps: float):
+    """Draw the detections overlay onto the frame."""
     if ctx.face is not None:
         x1, y1, x2, y2 = ctx.face.bbox
         cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 220, 0), 1)

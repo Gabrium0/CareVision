@@ -32,6 +32,7 @@ class _AlertState:
 
 @dataclass
 class AlertManager:
+    """Turns ALERT results into caregiver notifications with confirm/dedupe/escalate."""
     channels: list = field(default_factory=lambda: build_channels(["console"]))
     confirm_seconds: float = 3.0          # must persist this long before firing
     cooldown_seconds: float = 120.0       # min gap between repeats of one alert
@@ -42,6 +43,7 @@ class AlertManager:
 
     @classmethod
     def from_config(cls, cfg: dict):
+        """Build an instance from its config dict."""
         cfg = cfg or {}
         qh = cfg.get("quiet_hours")
         return cls(
@@ -65,6 +67,7 @@ class AlertManager:
             ch.send(subject, body)
 
     def evaluate(self, snapshot: list[Result], now: float | None = None) -> None:
+        """Evaluate the latest snapshot and act on it."""
         now = time.time() if now is None else now
         active = {(r.module, r.key): r for r in snapshot
                   if r.severity == Severity.ALERT}

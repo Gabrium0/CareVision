@@ -18,6 +18,7 @@ from storage.history_store import HistoryStore
 
 @register("activity_level")
 class ActivityLevel(DetectionModule):
+    """Activity-level tracking and inactivity trend (longitudinal)."""
     interval = 5.0
     requires = ("person",)
 
@@ -26,6 +27,7 @@ class ActivityLevel(DetectionModule):
         self.store = HistoryStore.instance()
 
     def process(self, ctx: FrameContext):
+        """Run this detector on the current frame; return Result(s) or None."""
         self.store.add("activity_level", "motion", ctx.motion_energy, ctx.timestamp)
         recent = self.store.mean_since("activity_level", "motion", 10 * 60)
         baseline = self.store.mean_since("activity_level", "motion", 60 * 60)

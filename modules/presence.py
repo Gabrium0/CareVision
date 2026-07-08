@@ -18,6 +18,7 @@ from storage.history_store import HistoryStore
 
 @register("presence")
 class Presence(DetectionModule):
+    """Presence tracking and greeting trigger."""
     interval = 0.5
     absence_seconds = 15.0
 
@@ -28,6 +29,7 @@ class Presence(DetectionModule):
         self._last_seen = None
 
     def process(self, ctx: FrameContext):
+        """Run this detector on the current frame; return Result(s) or None."""
         now = ctx.timestamp
         if ctx.person_present:
             newly = (not self._present and

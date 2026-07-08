@@ -34,6 +34,7 @@ class OneEuroArray:
         self._t_prev: float | None = None
 
     def reset(self) -> None:
+        """Reset internal state so the next call starts fresh."""
         self._x_prev = self._dx_prev = self._t_prev = None
 
     def __call__(self, x: np.ndarray, t: float) -> np.ndarray:

@@ -16,12 +16,14 @@ from core.events import Result, Severity
 
 @dataclass
 class ObservationMemory:
+    """The agent's evolving knowledge of the person, accumulated over time."""
     name: str = "there"
     latest: dict = field(default_factory=dict)        # (module,key) -> Result
     first_seen: dict = field(default_factory=dict)    # (module,key,value) -> ts
     arrived_at: float | None = None
 
     def ingest(self, snapshot: list[Result], now: float | None = None) -> None:
+        """Merge new results into the current person-state."""
         now = time.time() if now is None else now
         for r in snapshot:
             self.latest[(r.module, r.key)] = r
@@ -35,9 +37,11 @@ class ObservationMemory:
             self.arrived_at = None
 
     def get(self, module: str, key: str) -> Result | None:
+        """Return the latest result for (module, key), or a default."""
         return self.latest.get((module, key))
 
     def get_val(self, module: str, key: str, default=None):
+        """Return the latest value for (module, key), or a default."""
         r = self.latest.get((module, key))
         return r.value if r is not None else default
 
@@ -50,6 +54,7 @@ class ObservationMemory:
 
     @staticmethod
     def time_of_day() -> str:
+        """Return 'morning' / 'afternoon' / 'evening' for now."""
         h = time.localtime().tm_hour
         return "morning" if h < 12 else ("afternoon" if h < 18 else "evening")
 
@@ -61,6 +66,7 @@ class ObservationMemory:
         return None
 
     def mood(self) -> str | None:
+        """Return a coarse mood label from the latest emotion/valence."""
         val = self._first_present_backend("valence")
         if val is not None:
             v = float(val.value)

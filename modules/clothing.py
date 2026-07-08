@@ -60,6 +60,7 @@ _MIN_CROP_PX = 160          # upscale crops smaller than this on the short side
 
 @register("clothing")
 class Clothing(DetectionModule):
+    """Upper-body clothing detection for weather-aware recommendations."""
     interval = 0.0
     requires = ("face",)
     backend = "owlvit"              # kept for back-compat; "none" disables
@@ -276,6 +277,7 @@ class Clothing(DetectionModule):
 
     # ---- per-frame --------------------------------------------------------
     def process(self, ctx: FrameContext):
+        """Run this detector on the current frame; return Result(s) or None."""
         crop = self._torso_crop(ctx)
         sleeve = self._sleeve_state(ctx)
         self._last_sleeve = sleeve
@@ -323,4 +325,5 @@ class Clothing(DetectionModule):
         return results
 
     def close(self) -> None:
+        """Release any resources (models, threads, sockets) held here."""
         self._executor.shutdown(wait=True, cancel_futures=True)

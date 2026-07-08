@@ -20,6 +20,7 @@ from extractors import face_landmarks as FL
 
 @register("head_nod")
 class HeadNod(DetectionModule):
+    """Head nodding / drooping detection (drowsiness, loss of tone)."""
     interval = 0.0
     requires = ("face",)
     window_seconds = 6.0
@@ -35,6 +36,7 @@ class HeadNod(DetectionModule):
         self._was_nodding = False
 
     def process(self, ctx: FrameContext):
+        """Run this detector on the current frame; return Result(s) or None."""
         px = ctx.face_px()
         eye_mid = (px[159] + px[386]) / 2.0
         face_h = np.linalg.norm(px[FL.FOREHEAD_TOP] - px[FL.CHIN]) + 1e-6

@@ -27,5 +27,6 @@ def load_env() -> None:
 
 
 def gemini_api_key() -> str | None:
+    """Return the Gemini API key from the environment, or None."""
     load_env()
     return os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")

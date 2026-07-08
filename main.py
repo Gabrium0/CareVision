@@ -47,11 +47,13 @@ ALERTS_CONFIG = Path(__file__).resolve().parent / "config" / "alerts.yaml"
 
 
 def load_config():
+    """Load the module configuration YAML."""
     with open(CONFIG, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
 def load_alerts_config():
+    """Load the caregiver-alerts YAML (empty dict if absent)."""
     if ALERTS_CONFIG.exists():
         with open(ALERTS_CONFIG, "r", encoding="utf-8") as f:
             return yaml.safe_load(f) or {}
@@ -59,6 +61,7 @@ def load_alerts_config():
 
 
 def build_pipeline(source, config, camera_opts=None):
+    """Discover modules and assemble the full processing pipeline."""
     discover("modules")
     modules = build_enabled(config)
     print(f"[main] enabled modules: {', '.join(m.name for m in modules)}")
@@ -72,6 +75,7 @@ def build_pipeline(source, config, camera_opts=None):
 
 
 def main():
+    """Parse CLI args and run the live detection pipeline."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--source", default="0", help="camera index, file path, or URL")
     ap.add_argument("--headless", action="store_true", help="no display window")

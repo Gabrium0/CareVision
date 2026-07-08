@@ -21,6 +21,7 @@ from extractors import face_landmarks as FL
 
 @register("eye_redness")
 class EyeRedness(DetectionModule):
+    """Eye redness / conjunctivitis screening from the sclera region."""
     interval = 1.5
     requires = ("face",)
 
@@ -38,6 +39,7 @@ class EyeRedness(DetectionModule):
         return float(lab[:, :, 1][sclera].mean())       # a-channel; 128=neutral
 
     def process(self, ctx: FrameContext):
+        """Run this detector on the current frame; return Result(s) or None."""
         vals = [self._sclera_redness(ctx, r)
                 for r in (FL.LEFT_EYE_RING, FL.RIGHT_EYE_RING)]
         vals = [v for v in vals if v is not None]

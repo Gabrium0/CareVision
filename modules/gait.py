@@ -22,6 +22,7 @@ from extractors import pose as P
 
 @register("gait")
 class Gait(DetectionModule):
+    """Gait analysis: cadence and left/right symmetry from ankle motion."""
     interval = 0.0
     requires = ("pose",)
     window_seconds = 8.0
@@ -32,6 +33,7 @@ class Gait(DetectionModule):
         self.right = TimedBuffer(self.window_seconds)
 
     def process(self, ctx: FrameContext):
+        """Run this detector on the current frame; return Result(s) or None."""
         lm = ctx.pose.landmarks
         for idx in (P.L_ANKLE, P.R_ANKLE, P.L_HIP, P.R_HIP):
             if lm[idx, 3] < 0.5:

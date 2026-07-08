@@ -21,6 +21,7 @@ from extractors import face_landmarks as FL
 
 @register("eye_movement")
 class EyeMovement(DetectionModule):
+    """Gaze direction and involuntary eye oscillation (nystagmus) screening."""
     interval = 0.0
     requires = ("face",)
     window_seconds = 4.0
@@ -35,6 +36,7 @@ class EyeMovement(DetectionModule):
         return (px[iris_c] - eye_c) / width      # (dx, dy) normalized
 
     def process(self, ctx: FrameContext):
+        """Run this detector on the current frame; return Result(s) or None."""
         if not ctx.face.has_iris:
             return None
         px = ctx.face_px()

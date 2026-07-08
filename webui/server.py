@@ -28,16 +28,19 @@ class DataBus:
         self._payload: dict | None = None
 
     def publish(self, payload: dict) -> None:
+        """Publish a new item to connected subscribers."""
         with self._cond:
             self._seq += 1
             self._payload = payload
             self._cond.notify_all()
 
     def current(self) -> tuple[int, dict | None]:
+        """Return the latest (seq, payload) pair."""
         with self._cond:
             return self._seq, self._payload
 
     def wait(self, last_seq: int, timeout: float) -> tuple[int, dict | None]:
+        """Block until newer items arrive or the timeout elapses."""
         with self._cond:
             if self._seq <= last_seq:
                 self._cond.wait(timeout)
@@ -53,6 +56,7 @@ class UtteranceBus:
         self._items: deque[dict] = deque(maxlen=history)
 
     def publish(self, text: str) -> None:
+        """Publish a new item to connected subscribers."""
         text = (text or "").strip()
         if not text:
             return
@@ -62,10 +66,12 @@ class UtteranceBus:
             self._cond.notify_all()
 
     def since(self, seq: int) -> list[dict]:
+        """Return items newer than the given sequence number."""
         with self._cond:
             return [it for it in self._items if it["seq"] > seq]
 
     def current_seq(self) -> int:
+        """Return the latest sequence number."""
         with self._cond:
             return self._seq
 
@@ -195,6 +201,7 @@ def _lan_ips() -> list[str]:
 
 
 class CompanionServer:
+    """Local web server: companion text at / and full telemetry at /data."""
     def __init__(self, port: int = 8770, host: str = "0.0.0.0",
                  data_hz: float = 2.0):
         self.port = port
@@ -207,6 +214,7 @@ class CompanionServer:
         self._thread: threading.Thread | None = None
 
     def start(self) -> None:
+        """Start the HTTP server on a background daemon thread."""
         self._httpd = ThreadingHTTPServer((self.host, self.port),
                                           _make_handler(self.bus, self.data_bus))
         self._httpd.daemon_threads = True
@@ -221,6 +229,7 @@ class CompanionServer:
             print(f"[webui]   {u}/data    (all detections — for a caregiver)")
 
     def publish(self, text: str) -> None:
+        """Publish a new item to connected subscribers."""
         self.bus.publish(text)
 
     def publish_data(self, snapshot, fps: float = 0.0, greeting: str | None = None) -> None:
@@ -233,6 +242,7 @@ class CompanionServer:
         self.data_bus.publish(dashboard.to_payload(snapshot, fps, greeting))
 
     def stop(self) -> None:
+        """Shut the server down and release its socket."""
         if self._httpd is not None:
             self._httpd.shutdown()
             self._httpd.server_close()

@@ -15,6 +15,7 @@ _DB_PATH = Path(__file__).resolve().parent.parent / "data" / "history.db"
 
 
 class HistoryStore:
+    """SQLite store of timestamped longitudinal samples."""
     _instance = None
 
     def __init__(self, path: Path = _DB_PATH):
@@ -29,16 +30,19 @@ class HistoryStore:
 
     @classmethod
     def instance(cls) -> "HistoryStore":
+        """Return the process-wide singleton, creating it on first use."""
         if cls._instance is None:
             cls._instance = cls()
         return cls._instance
 
     def add(self, module: str, key: str, value: float, ts: float | None = None):
+        """Append a timestamped sample to the store."""
         self.conn.execute("INSERT INTO samples VALUES (?,?,?,?)",
                           (ts or time.time(), module, key, float(value)))
         self.conn.commit()
 
     def recent(self, module: str, key: str, seconds: float):
+        """Return recent (timestamp, value) samples within a time window."""
         cutoff = time.time() - seconds
         cur = self.conn.execute(
             "SELECT ts, value FROM samples WHERE module=? AND key=? AND ts>=? "
@@ -46,6 +50,7 @@ class HistoryStore:
         return cur.fetchall()
 
     def mean_since(self, module: str, key: str, seconds: float):
+        """Return the mean value over the trailing time window."""
         cutoff = time.time() - seconds
         cur = self.conn.execute(
             "SELECT AVG(value) FROM samples WHERE module=? AND key=? AND ts>=?",

@@ -20,6 +20,7 @@ class TimedBuffer:
         self.v: deque = deque()
 
     def push(self, timestamp: float, value) -> None:
+        """Push."""
         self.t.append(timestamp)
         self.v.append(value)
         while self.t and timestamp - self.t[0] > self.seconds:
@@ -30,9 +31,11 @@ class TimedBuffer:
         return len(self.t)
 
     def span(self) -> float:
+        """Span."""
         return (self.t[-1] - self.t[0]) if len(self.t) > 1 else 0.0
 
     def arrays(self) -> tuple[np.ndarray, np.ndarray]:
+        """Arrays."""
         return np.asarray(self.t, dtype=np.float64), np.asarray(self.v, dtype=np.float64)
 
     def resampled(self, fs: float) -> tuple[np.ndarray, float] | None:
@@ -71,6 +74,7 @@ def dominant_frequency(signal: np.ndarray, fs: float,
 
 def bandpass(signal: np.ndarray, fs: float, fmin: float, fmax: float,
              order: int = 3) -> np.ndarray | None:
+    """Butterworth band-pass filter a 1-D signal (or None if too short)."""
     nyq = fs / 2.0
     if fmax >= nyq or len(signal) < 3 * (order + 1):
         return None

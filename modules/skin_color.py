@@ -43,6 +43,7 @@ class _Baseline:
         self.t0 = None
 
     def update(self, sample, timestamp):
+        """Feed one frame's data into the backend's rolling state."""
         if self.t0 is None:
             self.t0, self.mean = timestamp, sample.copy()
             return False
@@ -54,6 +55,7 @@ class _Baseline:
 
 @register("skin_color")
 class SkinColor(DetectionModule):
+    """Skin color screening: pallor, flushing, cyanosis, jaundice."""
     interval = 1.0
     requires = ("face",)
 
@@ -62,6 +64,7 @@ class SkinColor(DetectionModule):
         self.base = _Baseline()
 
     def process(self, ctx: FrameContext):
+        """Run this detector on the current frame; return Result(s) or None."""
         mask = face_skin_mask(ctx)
         if mask is None or mask.sum() < 500:
             return None

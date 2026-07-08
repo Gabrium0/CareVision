@@ -19,6 +19,7 @@ from modules.base import DetectionModule
 
 @register("unresponsive")
 class Unresponsive(DetectionModule):
+    """Prolonged immobility / unresponsiveness detection."""
     interval = 1.0
     requires = ("person",)
     threshold_minutes = 3.0
@@ -29,6 +30,7 @@ class Unresponsive(DetectionModule):
         self._alerted = False
 
     def process(self, ctx: FrameContext):
+        """Run this detector on the current frame; return Result(s) or None."""
         moving = ctx.motion_energy > 0.5
         if moving:
             self._still_since = None

@@ -70,8 +70,8 @@
     "semantic_hash": "dc8ef7df56c875e0c58d66181415e175"
   },
   "main.py": {
-    "mtime": 1783426266.842135,
-    "ast_hash": "f42587d7d631ff1c68e63eec8943da8d",
+    "mtime": 1783486448.8555748,
+    "ast_hash": "d8fc5d49f13385a3060754db028c41db",
     "semantic_hash": ""
   },
   "modules/__init__.py": {
@@ -340,8 +340,8 @@
     "semantic_hash": ""
   },
   "output/dashboard.py": {
-    "mtime": 1783420394.0879102,
-    "ast_hash": "3ebf0ebe22003833e1cb5d71c8f35651",
+    "mtime": 1783486335.6812804,
+    "ast_hash": "856daff8582c9a7b46ead9a0a4b3bc6e",
     "semantic_hash": ""
   },
   "tests/hr_backends_test.py": {
@@ -565,8 +565,8 @@
     "semantic_hash": ""
   },
   "webui/server.py": {
-    "mtime": 1783423843.1424007,
-    "ast_hash": "e80c55696f8754ee119facbb4050ba3e",
+    "mtime": 1783486431.1201863,
+    "ast_hash": "99abca64f539bb55539b1e6f6fe31da6",
     "semantic_hash": ""
   },
   "webui/page.html": {
@@ -582,6 +582,21 @@
   "tests/advisor_engine_test.py": {
     "mtime": 1783426158.5174966,
     "ast_hash": "084cc4a290ff87b21e79dd6bff16a41c",
+    "semantic_hash": ""
+  },
+  ".claude/launch.json": {
+    "mtime": 1783486649.1036377,
+    "ast_hash": "fca6355fafecf4423ecc47053a232059",
+    "semantic_hash": ""
+  },
+  "webui/_demo.py": {
+    "mtime": 1783486623.2732306,
+    "ast_hash": "f26355a9c947226b833d798d66af1558",
+    "semantic_hash": ""
+  },
+  "webui/data.html": {
+    "mtime": 1783486490.1381395,
+    "ast_hash": "a3ff40400e746e0a91cf8dcdcc2c9f68",
     "semantic_hash": ""
   }
 }

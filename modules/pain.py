@@ -21,6 +21,7 @@ from extractors import face_landmarks as FL
 
 @register("pain")
 class Pain(DetectionModule):
+    """Pain expression / grimacing screening (action-unit proxies)."""
     interval = 0.5
     requires = ("face",)
 
@@ -40,6 +41,7 @@ class Pain(DetectionModule):
         return np.array([brow, eye, upper_lip])
 
     def process(self, ctx: FrameContext):
+        """Run this detector on the current frame; return Result(s) or None."""
         f = self._aus(ctx)
         if self.t0 is None:
             self.t0, self.base = ctx.timestamp, f

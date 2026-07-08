@@ -14,6 +14,7 @@ _HEAVY = {"jacket", "raincoat", "coat"}
 
 @register("clothing_advice")
 class ClothingAdvice(DetectionModule):
+    """Weather-aware clothing recommendations."""
     interval = 5.0
     cold_c = 8.0
     cool_c = 15.0
@@ -24,6 +25,7 @@ class ClothingAdvice(DetectionModule):
     uv_high = 6.0
 
     def process(self, ctx: FrameContext):
+        """Run this detector on the current frame; return Result(s) or None."""
         weather = ctx.extras.get("weather") or {}
         clothing = ctx.extras.get("clothing") or {}
         temp = weather.get("feels_like_c", weather.get("temperature_c"))

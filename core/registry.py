@@ -44,4 +44,5 @@ def build_enabled(config: dict) -> list:
 
 
 def all_registered() -> dict[str, Type]:
+    """Return a copy of the name -> module-class registry."""
     return dict(_REGISTRY)

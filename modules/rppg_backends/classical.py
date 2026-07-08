@@ -19,6 +19,7 @@ from .base import RPPGBackend
 
 
 class ClassicalBackend(RPPGBackend):
+    """Classical rPPG backend: forehead green-channel band-pass + FFT."""
     label = "classical"
     available = True
 
@@ -27,11 +28,13 @@ class ClassicalBackend(RPPGBackend):
         self.buf = TimedBuffer(window_seconds)
 
     def update(self, ctx: FrameContext) -> None:
+        """Feed one frame's data into the backend's rolling state."""
         patch = roi_patch(ctx, FL.FOREHEAD_TOP, radius_frac=0.10)
         if patch is not None and patch.size:
             self.buf.push(ctx.timestamp, float(patch[:, :, 1].mean()))  # green
 
     def compute(self) -> dict | None:
+        """Return the backend's current reading dict, or None if not ready."""
         rs = self.buf.resampled(fs=30.0)
         if rs is None or self.buf.span() < 6.0:
             return None

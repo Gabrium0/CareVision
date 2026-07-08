@@ -168,6 +168,7 @@ def _render_clothing_weather(img, snapshot, y: int) -> int:
 
 
 def render(snapshot, fps: float, greeting: str | None = None):
+    """Render the data window image for the snapshot."""
     MAX_H = 920
     img = np.full((MAX_H, _W, 3), _BG, np.uint8)
     _text(img, "ELDERLY CARE MONITOR — LIVE DATA", 16, 30, 0.62, (255, 255, 255), 2)

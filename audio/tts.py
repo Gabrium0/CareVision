@@ -11,6 +11,7 @@ import threading
 
 
 class Speaker:
+    """Offline text-to-speech worker on its own thread (the agent's voice)."""
     def __init__(self, rate: int = 165, volume: float = 1.0, enabled: bool = True):
         self.enabled = enabled
         self._engine = None
@@ -41,6 +42,7 @@ class Speaker:
                 print(f"[tts] speak failed: {e}")
 
     def say(self, text: str) -> None:
+        """Queue a line to be spoken (non-blocking)."""
         if not text:
             return
         print(f"[agent speaks] {text}")
@@ -48,5 +50,6 @@ class Speaker:
             self._q.put(text)
 
     def close(self) -> None:
+        """Release any resources (models, threads, sockets) held here."""
         if self._thread is not None:
             self._q.put(None)

@@ -20,6 +20,7 @@ from extractors import pose as P
 
 @register("wandering")
 class Wandering(DetectionModule):
+    """Wandering / pacing detection (disorientation, agitation)."""
     interval = 0.5
     requires = ("pose",)
 
@@ -28,6 +29,7 @@ class Wandering(DetectionModule):
         self.buf = TimedBuffer(120.0)
 
     def process(self, ctx: FrameContext):
+        """Run this detector on the current frame; return Result(s) or None."""
         lm = ctx.pose.landmarks
         if lm[P.L_HIP, 3] < 0.4 or lm[P.R_HIP, 3] < 0.4:
             return None

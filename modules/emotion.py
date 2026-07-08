@@ -32,6 +32,7 @@ _BACKENDS = {
 
 @register("emotion")
 class Emotion(DetectionModule):
+    """Emotion / mood recognition — multi-backend."""
     interval = 0.4
     requires = ("face",)
     backends = ["heuristic"]          # overridden by config
@@ -57,6 +58,7 @@ class Emotion(DetectionModule):
         return self.result(f"backend_status_{label}", value, 0.0, Severity.INFO, "", ttl=3.0)
 
     def process(self, ctx: FrameContext):
+        """Run this detector on the current frame; return Result(s) or None."""
         results = []
         for be in self._backends:
             be.update(ctx)
@@ -85,5 +87,6 @@ class Emotion(DetectionModule):
         return results or None
 
     def close(self):
+        """Release any resources (models, threads, sockets) held here."""
         for be in self._backends:
             be.close()

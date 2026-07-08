@@ -13,6 +13,7 @@ import numpy as np
 
 @dataclass
 class FaceData:
+    """Per-frame face landmarks, bounding box, and crop."""
     landmarks: np.ndarray          # (478, 3) normalized face-mesh landmarks
     bbox: tuple                    # (x1, y1, x2, y2) pixel coords
     crop: np.ndarray               # BGR face crop
@@ -21,12 +22,14 @@ class FaceData:
 
 @dataclass
 class PoseData:
+    """Per-frame body-pose landmarks and bounding box."""
     landmarks: np.ndarray          # (33, 4) normalized pose landmarks (x, y, z, visibility)
     bbox: tuple                    # (x1, y1, x2, y2) pixel coords of person
 
 
 @dataclass
 class FrameContext:
+    """Per-frame shared state passed to every module (frame + extractor outputs + scratch)."""
     frame: np.ndarray              # BGR frame
     timestamp: float               # capture time (time.time())
     frame_index: int

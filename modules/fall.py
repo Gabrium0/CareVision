@@ -23,6 +23,7 @@ from extractors import pose as P
 
 @register("fall")
 class Fall(DetectionModule):
+    """Fall detection from body pose."""
     interval = 0.0
     requires = ("pose",)
 
@@ -39,6 +40,7 @@ class Fall(DetectionModule):
         return float(np.degrees(np.arctan2(abs(v[0]), abs(v[1]) + 1e-6)))
 
     def process(self, ctx: FrameContext):
+        """Run this detector on the current frame; return Result(s) or None."""
         lm = ctx.pose.landmarks
         for idx in (P.L_SHOULDER, P.R_SHOULDER, P.L_HIP, P.R_HIP):
             if lm[idx, 3] < 0.4:

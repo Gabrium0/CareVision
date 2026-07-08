@@ -21,6 +21,7 @@ from extractors import face_landmarks as FL
 
 @register("yawn")
 class Yawn(DetectionModule):
+    """Yawning detection and frequency (fatigue indicator)."""
     interval = 0.0
     requires = ("face",)
     mar_threshold = 0.60
@@ -33,6 +34,7 @@ class Yawn(DetectionModule):
         self._open_since = None
 
     def process(self, ctx: FrameContext):
+        """Run this detector on the current frame; return Result(s) or None."""
         px = ctx.face_px()
         w = np.linalg.norm(px[FL.MOUTH_LEFT] - px[FL.MOUTH_RIGHT]) + 1e-6
         h = np.linalg.norm(px[FL.MOUTH_TOP_INNER] - px[FL.MOUTH_BOTTOM_INNER])

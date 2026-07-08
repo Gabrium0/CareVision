@@ -8,6 +8,7 @@ from typing import Any
 
 
 class Severity(Enum):
+    """Severity levels that control how the aggregator, greeting, and alerting treat a result."""
     INFO = "info"          # normal observation (emotion, heart rate in range)
     NOTICE = "notice"      # worth mentioning in a greeting/recommendation
     WARNING = "warning"    # possible health indicator, suggest attention

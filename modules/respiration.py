@@ -18,6 +18,7 @@ from extractors import pose as P
 
 @register("respiration")
 class Respiration(DetectionModule):
+    """Respiratory rate from shoulder vertical oscillation."""
     interval = 0.0
     requires = ("pose",)
     window_seconds = 25.0
@@ -27,6 +28,7 @@ class Respiration(DetectionModule):
         self.buf = TimedBuffer(self.window_seconds)
 
     def process(self, ctx: FrameContext):
+        """Run this detector on the current frame; return Result(s) or None."""
         lm = ctx.pose.landmarks
         if lm[P.L_SHOULDER, 3] < 0.5 or lm[P.R_SHOULDER, 3] < 0.5:
             return None

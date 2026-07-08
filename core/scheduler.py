@@ -17,6 +17,7 @@ from .events import Result
 
 
 class Scheduler:
+    """Runs each module at its declared cadence when its required inputs are present."""
     def __init__(self, modules: list):
         self.modules = modules
         self._last_run: dict[str, float] = {}
@@ -33,6 +34,7 @@ class Scheduler:
         return True
 
     def tick(self, ctx: FrameContext) -> list[Result]:
+        """Advance one step: update state and act if warranted."""
         results: list[Result] = []
         for module in self.modules:
             interval = getattr(module, "interval", 0.0)

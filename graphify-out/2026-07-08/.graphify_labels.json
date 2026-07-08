@@ -82,6 +82,7 @@
   "80": "OpenFace (Facial Action Units)",
   "81": "Ultralytics YOLO (YOLOv8/YOLOv11)",
   "82": "overlay.py",
+  "83": "Fall",
   "84": "EyeRedness",
   "85": "graphify reference: add a URL and watch a folder",
   "86": "graphify reference: commit hook and native CLAUDE.md integration",
@@ -98,6 +99,11 @@
   "97": "Pain",
   "98": "__init__.py",
   "99": "__init__.py",
+  "100": "Agitation",
+  "101": "BodyEstimate",
   "102": "benchmark_rppg_models.py",
-  "103": "FacialSwelling"
+  "103": "FacialSwelling",
+  "104": "EyeRedness",
+  "105": "HeadNod",
+  "106": "Yawn"
 }

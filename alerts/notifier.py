@@ -14,18 +14,22 @@ from email.message import EmailMessage
 
 
 class Channel(ABC):
+    """Base class for a caregiver notification channel."""
     name = "channel"
     available = True
 
     @abstractmethod
     def send(self, subject: str, body: str) -> bool:
+        """Send the alert via this channel; return True on success."""
         ...
 
 
 class ConsoleChannel(Channel):
+    """Prints the alert to the console (always available)."""
     name = "console"
 
     def send(self, subject: str, body: str) -> bool:
+        """Send the alert via this channel; return True on success."""
         print(f"\n*** CAREGIVER ALERT: {subject} ***\n{body}\n", flush=True)
         return True
 
@@ -43,6 +47,7 @@ class EmailChannel(Channel):
         self.available = all([self.host, self.user, self.password, self.to])
 
     def send(self, subject: str, body: str) -> bool:
+        """Send the alert via this channel; return True on success."""
         if not self.available:
             return False
         try:
@@ -70,6 +75,7 @@ class WebhookChannel(Channel):
         self.available = bool(self.url)
 
     def send(self, subject: str, body: str) -> bool:
+        """Send the alert via this channel; return True on success."""
         if not self.available:
             return False
         try:
@@ -101,6 +107,7 @@ class SmsChannel(Channel):
                 self.available = False
 
     def send(self, subject: str, body: str) -> bool:
+        """Send the alert via this channel; return True on success."""
         if not self.available or self._client is None:
             return False
         try:

@@ -22,6 +22,7 @@ from extractors import face_landmarks as FL
 
 @register("masked_face")
 class MaskedFace(DetectionModule):
+    """Reduced facial expressiveness (masked / flat affect) over time."""
     interval = 0.3
     requires = ("face",)
     window_seconds = 20.0
@@ -31,6 +32,7 @@ class MaskedFace(DetectionModule):
         self.buf = TimedBuffer(self.window_seconds)
 
     def process(self, ctx: FrameContext):
+        """Run this detector on the current frame; return Result(s) or None."""
         px = ctx.face_px()
         fw = np.linalg.norm(px[FL.LEFT_FACE_EDGE] - px[FL.RIGHT_FACE_EDGE]) + 1e-6
         brow = np.linalg.norm(px[FL.LEFT_BROW[2]] - px[159]) / fw

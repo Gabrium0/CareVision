@@ -16,6 +16,7 @@ from audio.tts import Speaker
 
 
 class VoiceAgent:
+    """Orchestrates memory -> policy -> Gemini -> speech."""
     def __init__(self, name: str = "there", speak: bool = True,
                  model: str = "gemini-2.5-flash", **policy_kwargs):
         self.memory = ObservationMemory(name=name)
@@ -27,6 +28,7 @@ class VoiceAgent:
         print(f"[agent] voice agent ready (name={name}, speech={mode})")
 
     def tick(self, snapshot, now: float | None = None) -> str | None:
+        """Advance one step: update state and act if warranted."""
         now = time.time() if now is None else now
         self.memory.ingest(snapshot, now)
         intent = self.policy.next_intent(self.memory, now)
@@ -40,4 +42,5 @@ class VoiceAgent:
         return text
 
     def close(self) -> None:
+        """Release any resources (models, threads, sockets) held here."""
         self.speaker.close()

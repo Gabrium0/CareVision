@@ -23,6 +23,7 @@ from .context import FrameContext
 
 
 class Camera:
+    """Frame source abstraction over a webcam, video file, or stream."""
     def __init__(self, source: int | str = 0, target_width: int = 960,
                  lock: bool = True, exposure: float | None = None,
                  request_fps: float = 30.0, request_size: tuple = (1280, 720),
@@ -73,6 +74,7 @@ class Camera:
               f"requested {w}x{h}@{self.request_fps:.0f}fps")
 
     def open(self) -> None:
+        """Open the underlying capture source."""
         if isinstance(self.source, str) and self.source.isdigit():
             self.source = int(self.source)
         backend = cv2.CAP_DSHOW if self._is_webcam() else cv2.CAP_ANY
@@ -92,6 +94,7 @@ class Camera:
             self._fps_warned = True
 
     def frames(self) -> Iterator[FrameContext]:
+        """Yield a FrameContext per captured frame."""
         if self.cap is None:
             self.open()
         idx = 0
@@ -114,6 +117,7 @@ class Camera:
             idx += 1
 
     def release(self) -> None:
+        """Release the capture device."""
         if self.cap is not None:
             self.cap.release()
             self.cap = None

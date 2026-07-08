@@ -20,6 +20,7 @@ from extractors import face_landmarks as FL
 
 @register("facial_swelling")
 class FacialSwelling(DetectionModule):
+    """Facial / eyelid swelling (edema) screening via slow contour drift."""
     interval = 2.0
     requires = ("face",)
 
@@ -37,6 +38,7 @@ class FacialSwelling(DetectionModule):
         return np.array([(eye_l + eye_r) / 2.0, cheek_w])
 
     def process(self, ctx: FrameContext):
+        """Run this detector on the current frame; return Result(s) or None."""
         f = self._features(ctx)
         if self.t0 is None:
             self.t0, self.base = ctx.timestamp, f

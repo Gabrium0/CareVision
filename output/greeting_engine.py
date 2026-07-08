@@ -19,6 +19,7 @@ _CONF_FLOOR = 0.35
 
 
 class GreetingEngine:
+    """Rule-based greeting/recommendation composer (superseded by agent/)."""
     def __init__(self, name: str = "there", cooldown_s: float = 30.0):
         self.name = name
         self.cooldown_s = cooldown_s
@@ -33,6 +34,7 @@ class GreetingEngine:
         return "Good evening"
 
     def alerts(self, snapshot: list[Result]) -> list[str]:
+        """Return the ALERT-severity messages in the snapshot."""
         return [r.message for r in snapshot
                 if r.severity == Severity.ALERT and r.message]
 
@@ -49,6 +51,7 @@ class GreetingEngine:
         return self.compose(aggregator.snapshot())
 
     def compose(self, snapshot: list[Result]) -> str:
+        """Compose a greeting/recommendation string from the snapshot."""
         by = {(r.module, r.key): r for r in snapshot}
         lines: list[str] = [f"{self._time_of_day()}, {self.name}!"]
 

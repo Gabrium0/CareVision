@@ -20,6 +20,7 @@ from modules.base import DetectionModule
 
 @register("weather")
 class Weather(DetectionModule):
+    """Current weather from Open-Meteo for clothing recommendations."""
     interval = 0.0
     latitude = None
     longitude = None
@@ -78,6 +79,7 @@ class Weather(DetectionModule):
         return self._cached
 
     def process(self, ctx: FrameContext):
+        """Run this detector on the current frame; return Result(s) or None."""
         now = time.time()
         if self._cached is None or now - self._last_fetch >= self.refresh_seconds:
             self._last_fetch = now

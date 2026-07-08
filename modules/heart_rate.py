@@ -35,6 +35,7 @@ _BACKENDS = {
 
 @register("heart_rate")
 class HeartRate(DetectionModule):
+    """Remote photoplethysmography (rPPG) heart rate + HRV."""
     interval = 0.0
     requires = ("face",)
     window_seconds = 12.0
@@ -89,6 +90,7 @@ class HeartRate(DetectionModule):
         return self.result(self._key("status", label), value, 0.0, Severity.INFO, "", ttl=8.0)
 
     def process(self, ctx: FrameContext):
+        """Run this detector on the current frame; return Result(s) or None."""
         results = []
         for be in self._backends:
             be.update(ctx)
@@ -139,5 +141,6 @@ class HeartRate(DetectionModule):
         return results or None
 
     def close(self):
+        """Release any resources (models, threads, sockets) held here."""
         for be in self._backends:
             be.close()

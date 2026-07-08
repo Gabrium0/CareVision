@@ -19,6 +19,7 @@ _PERSONA = (
 
 
 class GeminiClient:
+    """Gemini NLG wrapper for the voice agent, with an offline templated fallback."""
     def __init__(self, model: str = "gemini-2.5-flash"):
         self.model = model
         self.available = False
@@ -37,6 +38,7 @@ class GeminiClient:
                   "using templated speech")
 
     def generate(self, intent: str, context: str, detail: str = "") -> str | None:
+        """Generate one short spoken line, or None if unavailable."""
         if not self.available:
             return None
         prompt = (f"{_PERSONA}\n\nWhat you know right now: {context}\n\n"

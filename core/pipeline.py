@@ -8,6 +8,7 @@ from .scheduler import Scheduler
 
 
 class Pipeline:
+    """Orchestrates capture -> extractors -> scheduler -> aggregator -> advisor each frame."""
     def __init__(self, camera: Camera, extractors: list, scheduler: Scheduler,
                  aggregator, advisor_engine=None):
         self.camera = camera
@@ -17,6 +18,7 @@ class Pipeline:
         self.advisor_engine = advisor_engine
 
     def process_frame(self, ctx: FrameContext) -> list[Result]:
+        """Run extractors, modules, and the advisor for one frame."""
         for ex in self.extractors:
             ex.extract(ctx)
         results = self.scheduler.tick(ctx)

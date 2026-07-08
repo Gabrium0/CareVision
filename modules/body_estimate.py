@@ -22,6 +22,7 @@ from extractors import pose as P
 
 @register("body_estimate")
 class BodyEstimate(DetectionModule):
+    """Rough body-build proxy (shoulder-to-hip / width-to-height)."""
     interval = 2.0
     requires = ("pose",)
 
@@ -30,6 +31,7 @@ class BodyEstimate(DetectionModule):
         self.buf = TimedBuffer(20.0)
 
     def process(self, ctx: FrameContext):
+        """Run this detector on the current frame; return Result(s) or None."""
         lm = ctx.pose.landmarks
         for idx in (P.L_SHOULDER, P.R_SHOULDER, P.L_HIP, P.R_HIP, P.L_ANKLE):
             if lm[idx, 3] < 0.5:

@@ -22,6 +22,7 @@ _MODEL = Path(__file__).resolve().parent.parent / "models" / "face_landmarker.ta
 
 
 class FaceExtractor:
+    """MediaPipe FaceLandmarker extractor; fills ctx.face once per frame."""
     def __init__(self, smooth: bool = True):
         # One-Euro de-jitter on face landmarks steadies emotion/asymmetry/EAR;
         # face motion is low-frequency so this does not blur any measured signal.
@@ -41,6 +42,7 @@ class FaceExtractor:
         self.landmarker = vision.FaceLandmarker.create_from_options(opts)
 
     def extract(self, ctx: FrameContext) -> None:
+        """Extract features from the frame and populate the shared context."""
         rgb = np.ascontiguousarray(ctx.frame[:, :, ::-1])
         mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
         ts_ms = int(ctx.timestamp * 1000)
@@ -67,4 +69,5 @@ class FaceExtractor:
         ctx.person_present = True
 
     def close(self) -> None:
+        """Release any resources (models, threads, sockets) held here."""
         self.landmarker.close()

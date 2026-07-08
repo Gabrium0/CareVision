@@ -25,6 +25,7 @@ _NEG = {"anger": 1.0, "sadness": 1.0, "fear": 1.0, "disgust": 1.0, "contempt": 0
 
 
 class HSEmotionBackend(Backend):
+    """HSEmotion (AffectNet) emotion + valence backend."""
     label = "hsemotion"
 
     def __init__(self, model_name: str = "enet_b2_8", infer_every: float = 1.0):
@@ -49,12 +50,14 @@ class HSEmotionBackend(Backend):
             print(f"[emotion/hsemotion] unavailable ({type(e).__name__}: {e})")
 
     def update(self, ctx: FrameContext) -> None:
+        """Feed one frame's data into the backend's rolling state."""
         if self.available and ctx.face is not None:
             crop = ctx.face.crop
             if crop is not None and crop.size:
                 self._crop = crop
 
     def compute(self) -> dict | None:
+        """Return the backend's current reading dict, or None if not ready."""
         if not self.available or self._crop is None:
             return self._cached
         now = time.time()

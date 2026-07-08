@@ -27,6 +27,7 @@ L_ANKLE, R_ANKLE = 27, 28
 
 
 class PoseExtractor:
+    """MediaPipe PoseLandmarker extractor; fills ctx.pose once per frame."""
     def __init__(self):
         if not _MODEL.exists():
             raise FileNotFoundError(
@@ -43,6 +44,7 @@ class PoseExtractor:
         self.landmarker = vision.PoseLandmarker.create_from_options(opts)
 
     def extract(self, ctx: FrameContext) -> None:
+        """Extract features from the frame and populate the shared context."""
         rgb = np.ascontiguousarray(ctx.frame[:, :, ::-1])
         mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
         ts_ms = int(ctx.timestamp * 1000)
@@ -63,4 +65,5 @@ class PoseExtractor:
         ctx.person_present = True
 
     def close(self) -> None:
+        """Release any resources (models, threads, sockets) held here."""
         self.landmarker.close()

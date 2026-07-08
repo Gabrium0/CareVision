@@ -14,6 +14,7 @@ from extractors import face_landmarks as FL
 
 
 class HeuristicEmotionBackend(Backend):
+    """Landmark-geometry emotion heuristic (offline baseline)."""
     label = "heuristic"
     available = True
 
@@ -21,9 +22,11 @@ class HeuristicEmotionBackend(Backend):
         self._ctx: FrameContext | None = None
 
     def update(self, ctx: FrameContext) -> None:
+        """Feed one frame's data into the backend's rolling state."""
         self._ctx = ctx
 
     def compute(self) -> dict | None:
+        """Return the backend's current reading dict, or None if not ready."""
         ctx = self._ctx
         if ctx is None or ctx.face is None:
             return None

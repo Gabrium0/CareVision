@@ -26,6 +26,7 @@ from core.events import Result, Severity
 
 
 class DetectionModule(ABC):
+    """Base class every detection module implements."""
     name: str = "unnamed"          # set by @register
     interval: float = 0.0          # min seconds between runs; 0 = every frame
     requires: tuple = ()           # subset of ("face", "pose", "person")
@@ -37,11 +38,13 @@ class DetectionModule(ABC):
 
     @abstractmethod
     def process(self, ctx: FrameContext) -> Optional[Result | list[Result]]:
+        """Run this detector on the current frame; return Result(s) or None."""
         ...
 
     def result(self, key: str, value: Any, confidence: float = 0.5,
                severity: Severity = Severity.INFO, message: str = "",
                ttl: float = 10.0) -> Result:
+        """Result."""
         return Result(module=self.name, key=key, value=value,
                       confidence=confidence, severity=severity,
                       message=message, ttl=ttl)

@@ -22,6 +22,7 @@ from extractors import pose as P
 
 @register("tremor")
 class Tremor(DetectionModule):
+    """Hand/limb tremor detection via wrist oscillation spectrum."""
     interval = 0.0
     requires = ("pose",)
     window_seconds = 5.0
@@ -32,6 +33,7 @@ class Tremor(DetectionModule):
                      "right": TimedBuffer(self.window_seconds)}
 
     def process(self, ctx: FrameContext):
+        """Run this detector on the current frame; return Result(s) or None."""
         lm = ctx.pose.landmarks
         sw = abs(lm[P.L_SHOULDER, 0] - lm[P.R_SHOULDER, 0]) + 1e-6
         results = []

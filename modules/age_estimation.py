@@ -26,6 +26,7 @@ _MEAN = (78.4263377603, 87.7689143744, 114.895847746)
 
 @register("age_estimation")
 class AgeEstimation(DetectionModule):
+    """Age estimation (optional ONNX model)."""
     interval = 5.0
     requires = ("face",)
 
@@ -45,6 +46,7 @@ class AgeEstimation(DetectionModule):
             print("[age_estimation] no model at models/age_googlenet.onnx; disabled")
 
     def process(self, ctx: FrameContext):
+        """Run this detector on the current frame; return Result(s) or None."""
         if self.session is None or self._emitted:
             return None
         x1, y1, x2, y2 = ctx.face.bbox

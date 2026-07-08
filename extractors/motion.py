@@ -8,10 +8,12 @@ from core.context import FrameContext
 
 
 class MotionExtractor:
+    """Frame-difference motion-energy extractor; fills ctx.motion_energy."""
     def __init__(self):
         self._prev: np.ndarray | None = None
 
     def extract(self, ctx: FrameContext) -> None:
+        """Extract features from the frame and populate the shared context."""
         small = cv2.resize(ctx.frame, (160, 120))
         gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
         gray = cv2.GaussianBlur(gray, (5, 5), 0)

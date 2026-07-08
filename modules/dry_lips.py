@@ -21,10 +21,12 @@ from extractors import face_landmarks as FL
 
 @register("dry_lips")
 class DryLips(DetectionModule):
+    """Dry / cracked lips screening (dehydration proxy)."""
     interval = 3.0
     requires = ("face",)
 
     def process(self, ctx: FrameContext):
+        """Run this detector on the current frame; return Result(s) or None."""
         px = ctx.face_px()
         mask = polygon_mask(ctx.frame.shape, px[FL.OUTER_LIPS])
         if mask.sum() < 120:

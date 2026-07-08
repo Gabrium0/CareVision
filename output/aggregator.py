@@ -16,6 +16,7 @@ from core.events import Result, Severity
 
 
 class Aggregator:
+    """Keeps the latest non-expired result per (module, key) with rolling-median smoothing."""
     def __init__(self, smooth_window: int = 5):
         self.state: dict[tuple[str, str], Result] = {}
         self.smooth_window = smooth_window
@@ -33,6 +34,7 @@ class Aggregator:
         return r
 
     def ingest(self, results: list[Result]) -> None:
+        """Merge new results into the current person-state."""
         for r in results:
             self.state[(r.module, r.key)] = self._smooth(r)
         # drop expired, and forget history for keys no longer present
@@ -42,9 +44,11 @@ class Aggregator:
                 self._hist.pop(k, None)
 
     def snapshot(self) -> list[Result]:
+        """Return the current list of live (non-expired) results."""
         return list(self.state.values())
 
     def by_severity(self, minimum: Severity) -> list[Result]:
+        """Return live results at or above a severity, most-severe first."""
         order = {Severity.INFO: 0, Severity.NOTICE: 1,
                  Severity.WARNING: 2, Severity.ALERT: 3}
         cutoff = order[minimum]
@@ -52,5 +56,6 @@ class Aggregator:
                       key=lambda r: (order[r.severity], r.confidence), reverse=True)
 
     def get(self, module: str, key: str) -> Result | None:
+        """Return the latest result for (module, key), or a default."""
         r = self.state.get((module, key))
         return r if (r and not r.expired) else None

@@ -22,10 +22,12 @@ from modules._util import face_skin_mask
 
 @register("rash")
 class Rash(DetectionModule):
+    """Rash / skin eruption screening on facial skin."""
     interval = 2.0
     requires = ("face",)
 
     def process(self, ctx: FrameContext):
+        """Run this detector on the current frame; return Result(s) or None."""
         mask = face_skin_mask(ctx)
         if mask is None or mask.sum() < 800:
             return None

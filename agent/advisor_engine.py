@@ -59,6 +59,7 @@ class VitalsAdvisor:
     _last_run: float = field(default=-1e9, init=False)
 
     def evaluate(self, snapshot: list[Result], now: float) -> list[Result]:
+        """Evaluate the latest snapshot and act on it."""
         if not self.enabled or now - self._last_run < self.interval:
             return []
         self._last_run = now
@@ -143,12 +144,14 @@ class VitalsAdvisor:
 
 
 class AdvisorEngine:
+    """Runs post-aggregation advisors over the snapshot and emits advice results."""
     def __init__(self, advisors: list[Any] | None = None, enabled: bool = True):
         self.enabled = enabled
         self.advisors = advisors or []
 
     @classmethod
     def from_config(cls, cfg: dict | None):
+        """Build an instance from its config dict."""
         if cfg is None:
             return cls(enabled=False)
         if not cfg.get("enabled", True):
@@ -162,6 +165,7 @@ class AdvisorEngine:
         return cls(advisors=advisors)
 
     def evaluate(self, snapshot: list[Result], now: float | None = None) -> list[Result]:
+        """Evaluate the latest snapshot and act on it."""
         if not self.enabled:
             return []
         now = time.time() if now is None else now

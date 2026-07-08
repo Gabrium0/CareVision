@@ -24,6 +24,7 @@ from extractors import face_landmarks as FL
 
 @register("facial_asymmetry")
 class FacialAsymmetry(DetectionModule):
+    """Facial asymmetry / droop screening (stroke-relevant, FAST 'F')."""
     interval = 0.5
     requires = ("face",)
     learning_seconds = 20.0
@@ -38,6 +39,7 @@ class FacialAsymmetry(DetectionModule):
         self._hits = 0
 
     def process(self, ctx: FrameContext):
+        """Run this detector on the current frame; return Result(s) or None."""
         px = ctx.face_px()
         nose = px[FL.NOSE_TIP]
         chin = px[FL.CHIN]

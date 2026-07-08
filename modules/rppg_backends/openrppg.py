@@ -38,6 +38,7 @@ from .base import RPPGBackend
 
 
 class OpenRPPGBackend(RPPGBackend):
+    """Neural rPPG backend using the open-rppg toolbox (HR/HRV/breathing)."""
     label = "open-rppg"
     _diagnostics_logged = False
 
@@ -94,6 +95,7 @@ class OpenRPPGBackend(RPPGBackend):
                   "falling back to classical only")
 
     def update(self, ctx: FrameContext) -> None:
+        """Feed one frame's data into the backend's rolling state."""
         if not self.available:
             return
         if ctx.face is None:
@@ -148,6 +150,7 @@ class OpenRPPGBackend(RPPGBackend):
         return res, np.asarray(bvp), bts
 
     def compute(self) -> dict | None:
+        """Return the backend's current reading dict, or None if not ready."""
         if not self.available:
             return None
         now = time.time()
@@ -287,6 +290,7 @@ class OpenRPPGBackend(RPPGBackend):
             print(f"[open-rppg] could not inspect JAX devices ({type(e).__name__}: {e})")
 
     def close(self) -> None:
+        """Release any resources (models, threads, sockets) held here."""
         if self._pending is not None:
             try:
                 self._pending.result(timeout=10.0)

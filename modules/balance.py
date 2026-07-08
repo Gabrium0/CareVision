@@ -20,6 +20,7 @@ from extractors import pose as P
 
 @register("balance")
 class Balance(DetectionModule):
+    """Standing balance / postural sway."""
     interval = 0.0
     requires = ("pose",)
     window_seconds = 8.0
@@ -29,6 +30,7 @@ class Balance(DetectionModule):
         self.buf = TimedBuffer(self.window_seconds)
 
     def process(self, ctx: FrameContext):
+        """Run this detector on the current frame; return Result(s) or None."""
         lm = ctx.pose.landmarks
         if lm[P.L_HIP, 3] < 0.5 or lm[P.R_HIP, 3] < 0.5:
             return None

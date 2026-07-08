@@ -21,6 +21,7 @@ from extractors import face_landmarks as FL
 
 @register("sweating")
 class Sweating(DetectionModule):
+    """Perspiration screening from forehead specular highlights."""
     interval = 1.5
     requires = ("face",)
 
@@ -29,6 +30,7 @@ class Sweating(DetectionModule):
         self.baseline = None
 
     def process(self, ctx: FrameContext):
+        """Run this detector on the current frame; return Result(s) or None."""
         patch = roi_patch(ctx, FL.FOREHEAD_TOP, radius_frac=0.12)
         if patch is None or patch.size == 0:
             return None

@@ -21,6 +21,7 @@ from extractors import pose as P
 
 @register("bradykinesia")
 class Bradykinesia(DetectionModule):
+    """Bradykinesia (slowness of movement) screening."""
     interval = 0.0
     requires = ("pose",)
     window_seconds = 6.0
@@ -31,6 +32,7 @@ class Bradykinesia(DetectionModule):
         self._prev = None
 
     def process(self, ctx: FrameContext):
+        """Run this detector on the current frame; return Result(s) or None."""
         lm = ctx.pose.landmarks
         sw = abs(lm[P.L_SHOULDER, 0] - lm[P.R_SHOULDER, 0]) + 1e-6
         pts = lm[[P.L_WRIST, P.R_WRIST, P.L_ELBOW, P.R_ELBOW], :2]

@@ -22,6 +22,7 @@ _ORDER = {Severity.INFO: 0, Severity.NOTICE: 1, Severity.WARNING: 2, Severity.AL
 
 @dataclass
 class Intent:
+    """One thing the agent could say now, with priority and a templated fallback."""
     kind: str            # greeting | observation | small_talk
     signature: str       # for no-repeat bookkeeping
     llm_intent: str      # instruction to the LLM
@@ -38,6 +39,7 @@ _SMALL_TALK = [
 
 
 class Policy:
+    """Decides when and what the voice agent says (event-driven + timed, no-repeat)."""
     def __init__(self, min_gap: float = 8.0, small_talk_interval: float = 45.0,
                  repeat_cooldown: float = 600.0):
         self.min_gap = min_gap
@@ -118,6 +120,7 @@ class Policy:
         return cands
 
     def next_intent(self, mem: ObservationMemory, now: float | None = None) -> Intent | None:
+        """Pick the highest-priority thing to say now, or None."""
         now = time.time() if now is None else now
         if now - self._last_spoken < self.min_gap:
             return None
@@ -128,6 +131,7 @@ class Policy:
         return max(cands, key=lambda c: c.priority)
 
     def mark_spoken(self, intent: Intent, now: float | None = None) -> None:
+        """Record that an intent was spoken (for no-repeat/cadence)."""
         now = time.time() if now is None else now
         self._last_spoken = now
         self._spoken[intent.signature] = now

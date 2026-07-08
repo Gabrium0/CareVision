@@ -18,6 +18,7 @@ _FERPLUS = ["neutral", "happy", "surprise", "sad", "angry", "disgust", "fear", "
 
 
 class FerPlusBackend(Backend):
+    """FER+ ONNX emotion backend (optional)."""
     label = "ferplus"
 
     def __init__(self):
@@ -36,11 +37,13 @@ class FerPlusBackend(Backend):
                 print(f"[emotion/ferplus] ONNX load failed ({e}); disabled")
 
     def update(self, ctx: FrameContext) -> None:
+        """Feed one frame's data into the backend's rolling state."""
         if self.available and ctx.face is not None:
             x1, y1, x2, y2 = ctx.face.bbox
             self._crop = ctx.frame[y1:y2, x1:x2]
 
     def compute(self) -> dict | None:
+        """Return the backend's current reading dict, or None if not ready."""
         if not self.available or self._crop is None or self._crop.size == 0:
             return None
         gray = cv2.cvtColor(self._crop, cv2.COLOR_BGR2GRAY)

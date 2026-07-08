@@ -1,0 +1,17 @@
+# Project tooling config. The app itself is run via `python main.py` (see
+# README) — this file currently only configures the docstring-coverage guardrail.
+
+[tool.interrogate]
+# Require docstrings on public modules, classes, functions, and methods so the
+# codebase stays self-documenting. Run:  interrogate -c pyproject.toml .
+fail-under = 95
+ignore-init-method = true        # constructors are self-evident
+ignore-init-module = true        # package __init__ files
+ignore-magic = true              # __repr__ etc.
+ignore-private = true            # _helpers (documented by convention, not gated)
+ignore-semiprivate = true
+ignore-property-decorators = true
+ignore-nested-functions = true
+exclude = ["tests", "webui/_demo.py"]
+verbose = 1
+color = true
