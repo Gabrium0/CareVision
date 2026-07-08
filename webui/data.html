@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Care Monitor — Data</title>
+<style>
+  :root { --bg:#0f1113; --panel:#16191c; --fg:#e9edf1; --dim:#8a929b; --line:#2a2f34;
+    --info:#c8ccd0; --notice:#39c6ff; --warning:#ff9e40; --alert:#ff5a5a; --accent:#7fd0ff; }
+  * { box-sizing:border-box; -webkit-text-size-adjust:100%; }
+  body { margin:0; background:var(--bg); color:var(--fg); font-size:15px;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif; }
+  .wrap { max-width:1000px; margin:0 auto; padding:18px 20px 60px; }
+  header { display:flex; align-items:baseline; justify-content:space-between; gap:12px;
+    border-bottom:1px solid var(--line); padding-bottom:10px; margin-bottom:8px; }
+  header h1 { font-size:20px; margin:0; font-weight:700; }
+  header .meta { color:var(--dim); font-size:13px; }
+  .dot { width:9px; height:9px; border-radius:50%; background:var(--dim); display:inline-block; margin-right:6px; }
+  .live .dot { background:#57d977; box-shadow:0 0 8px #57d977; }
+  h2 { font-size:13px; letter-spacing:.5px; text-transform:uppercase; color:var(--accent);
+    margin:22px 0 8px; }
+  .cmp { display:flex; flex-wrap:wrap; align-items:baseline; gap:6px 18px; padding:6px 0;
+    border-bottom:1px solid var(--line); }
+  .cmp .name { width:150px; color:var(--fg); font-weight:600; }
+  .cmp .cell { color:var(--dim); font-size:13px; }
+  .cmp .cell b { font-weight:700; font-size:16px; margin:0 4px; }
+  .cmp .cell .c { color:var(--dim); font-size:12px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:4px 16px; }
+  .kv { display:flex; justify-content:space-between; gap:8px; padding:3px 0; border-bottom:1px solid #1c2024; }
+  .kv .k { color:var(--dim); font-size:13px; }
+  .kv .v { font-weight:600; }
+  .advice { margin-top:8px; color:var(--notice); font-size:14px; }
+  .sig { display:flex; gap:10px; padding:4px 0; border-bottom:1px solid #1c2024; }
+  .sig .conf { color:var(--dim); width:52px; font-variant-numeric:tabular-nums; }
+  .greeting { margin-top:20px; padding-top:10px; border-top:1px solid var(--line); color:#bfe3bf; }
+  .s-info{color:var(--info)} .s-notice{color:var(--notice)} .s-warning{color:var(--warning)} .s-alert{color:var(--alert);font-weight:700}
+  .empty { color:var(--dim); font-style:italic; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Care Monitor — Live Data</h1>
+    <span class="meta"><span id="conn"><span class="dot"></span><span id="cl">connecting…</span></span>
+      · <span id="fps">– fps</span> · <span id="count">0</span> signals</span>
+  </header>
+  <div id="root"><p class="empty">waiting for data…</p></div>
+</div>
+<script>
+(function(){
+  const root = document.getElementById('root');
+  const connEl = document.getElementById('conn'), clEl = document.getElementById('cl');
+  const fpsEl = document.getElementById('fps'), countEl = document.getElementById('count');
+
+  function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+  function conn(on){ connEl.classList.toggle('live', on); clEl.textContent = on?'connected':'connecting…'; }
+
+  function render(d){
+    if(!d){ return; }
+    fpsEl.textContent = (d.fps ?? '–') + ' fps';
+    countEl.textContent = d.count ?? 0;
+    const H = [];
+
+    // COMPARISON
+    H.push('<h2>Comparison — heuristic vs tested models</h2>');
+    if(!d.comparison || !d.comparison.length){ H.push('<p class="empty">warming up…</p>'); }
+    else for(const m of d.comparison){
+      const cells = m.backends.map(b =>
+        `<span class="cell">${esc(b.backend)}:<b class="s-${b.severity}">${esc(b.value)}</b>`
+        + `<span class="c">${b.conf.toFixed(2)}</span></span>`).join('');
+      H.push(`<div class="cmp"><span class="name">${esc(m.name)}</span>${cells}</div>`);
+    }
+
+    // CLOTHING / WEATHER
+    H.push('<h2>Clothing / Weather</h2><div class="grid">');
+    for(const r of (d.clothing_weather||[]))
+      H.push(`<div class="kv"><span class="k">${esc(r.label)}</span><span class="v s-${r.severity}">${esc(r.value)}</span></div>`);
+    H.push('</div>');
+    if(d.advice) H.push(`<div class="advice">${esc(d.advice)}</div>`);
+
+    // FATIGUE
+    H.push('<h2>Drowsiness / Fatigue stats</h2><div class="grid">');
+    for(const r of (d.fatigue||[]))
+      H.push(`<div class="kv"><span class="k">${esc(r.label)}</span><span class="v s-${r.severity}">${esc(r.value)}</span></div>`);
+    H.push('</div>');
+
+    // SIGNALS
+    H.push('<h2>Signals</h2>');
+    if(!d.signals || !d.signals.length){ H.push('<p class="empty">none</p>'); }
+    else for(const s of d.signals)
+      H.push(`<div class="sig"><span class="conf">[${s.conf.toFixed(2)}]</span><span class="s-${s.severity}">${esc(s.message)}</span></div>`);
+
+    if(d.greeting) H.push(`<div class="greeting">🗣 ${esc(d.greeting)}</div>`);
+    root.innerHTML = H.join('');
+  }
+
+  function startSSE(){
+    try{
+      const es = new EventSource('/data-events');
+      es.onopen = ()=>conn(true);
+      es.onmessage = e=>{ conn(true); try{ render(JSON.parse(e.data)); }catch(_){} };
+      es.onerror = ()=>conn(false);
+    }catch(_){ startPoll(); }
+  }
+  function startPoll(){
+    setInterval(async ()=>{
+      try{ const r = await fetch('/data-latest',{cache:'no-store'}); const d = await r.json();
+        conn(true); render(d.payload); }catch(_){ conn(false); }
+    }, 1000);
+  }
+  if(window.EventSource) startSSE(); else startPoll();
+})();
+</script>
+</body>
+</html>

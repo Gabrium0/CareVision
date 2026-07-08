@@ -243,3 +243,63 @@ def render(snapshot, fps: float, greeting: str | None = None):
         y += 24
 
     return img[:y + 8, :]
+
+
+def to_payload(snapshot, fps: float = 0.0, greeting: str | None = None) -> dict:
+    """JSON-safe dict mirroring the rendered window, for the /data web endpoint.
+
+    Reuses the same grouping helpers as render() so the web view matches the
+    window exactly (single source of truth)."""
+    groups = _parse_comparisons(snapshot)
+    compared_keys = {(m, f"{metric}_{b}")
+                     for (m, metric), bes in groups.items() for b in bes}
+
+    def gkey(item):
+        (module, metric) = item[0]
+        mo = _METRIC_ORDER.index(metric) if metric in _METRIC_ORDER else 99
+        return (module != "heart_rate", module, mo, metric)
+
+    comparison = []
+    for (module, metric), bes in sorted(groups.items(), key=gkey):
+        cells = []
+        for b in sorted(bes, key=lambda k: _BACKENDS.index(k) if k in _BACKENDS else 99):
+            r = bes[b]
+            cells.append({"backend": b, "value": _fmt(r.value),
+                          "conf": round(float(r.confidence), 2),
+                          "severity": r.severity.value})
+        comparison.append({"metric": metric,
+                           "name": _METRIC_NAMES.get(metric, metric),
+                           "backends": cells})
+
+    by_key = {(r.module, r.key): r for r in snapshot}
+
+    def stat_rows(defs):
+        out = []
+        for module, key, label in defs:
+            r = by_key.get((module, key))
+            out.append({"label": label,
+                        "value": _fmt(r.value) if r else "...",
+                        "severity": r.severity.value if r else "info"})
+        return out
+
+    clothing_weather = stat_rows([(m, k, l) for (m, k, l) in _CLOTHING_WEATHER_STATS
+                                  if k != "recommendation"])
+    advice_r = by_key.get(("clothing_advice", "recommendation"))
+    fatigue = stat_rows(_FATIGUE_STATS)
+
+    rows = [r for r in snapshot
+            if r.message and (r.module, r.key) not in compared_keys]
+    rows.sort(key=lambda r: (_SEV_ORDER[r.severity], r.confidence), reverse=True)
+    signals = [{"conf": round(float(r.confidence), 2), "message": r.message,
+                "severity": r.severity.value} for r in rows]
+
+    return {
+        "fps": round(float(fps), 1),
+        "count": len(snapshot),
+        "greeting": (greeting.split("\n")[0] if greeting else None),
+        "comparison": comparison,
+        "clothing_weather": clothing_weather,
+        "advice": (str(advice_r.value) if advice_r else None),
+        "fatigue": fatigue,
+        "signals": signals,
+    }

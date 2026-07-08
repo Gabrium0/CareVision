@@ -75,6 +75,16 @@ class Policy:
                     "versus the weather and offer a suggestion.",
                     str(adv.value), str(adv.value), 60))
 
+        vitals = mem.get("vitals_advice", "recommendation")
+        if vitals is not None and _ORDER[vitals.severity] >= _ORDER[Severity.NOTICE]:
+            sig = f"vitals:{vitals.value}"
+            if self._fresh(sig, now):
+                cands.append(Intent(
+                    "observation", sig,
+                    "Gently mention the health observation without diagnosing, "
+                    "and suggest a calm check-in or rest.",
+                    str(vitals.value), str(vitals.value), 65))
+
         # discomfort / pain
         pain = mem.get("pain", "pain")
         if pain is not None and pain.severity == Severity.WARNING and self._fresh("pain", now):

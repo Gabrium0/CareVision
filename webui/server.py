@@ -16,6 +16,32 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
 _PAGE = Path(__file__).resolve().parent / "page.html"
+_DATA_PAGE = Path(__file__).resolve().parent / "data.html"
+
+
+class DataBus:
+    """Holds the latest full-telemetry payload (one snapshot) for /data."""
+
+    def __init__(self):
+        self._cond = threading.Condition()
+        self._seq = 0
+        self._payload: dict | None = None
+
+    def publish(self, payload: dict) -> None:
+        with self._cond:
+            self._seq += 1
+            self._payload = payload
+            self._cond.notify_all()
+
+    def current(self) -> tuple[int, dict | None]:
+        with self._cond:
+            return self._seq, self._payload
+
+    def wait(self, last_seq: int, timeout: float) -> tuple[int, dict | None]:
+        with self._cond:
+            if self._seq <= last_seq:
+                self._cond.wait(timeout)
+            return self._seq, self._payload
 
 
 class UtteranceBus:
@@ -51,7 +77,7 @@ class UtteranceBus:
             return [it for it in self._items if it["seq"] > last_seq]
 
 
-def _make_handler(bus: UtteranceBus):
+def _make_handler(bus: UtteranceBus, data_bus: DataBus):
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
 
@@ -86,6 +112,19 @@ def _make_handler(bus: UtteranceBus):
                            extra={"Cache-Control": "no-store"})
             elif path == "/events":
                 self._stream_events()
+            elif path == "/data":
+                try:
+                    html = _DATA_PAGE.read_bytes()
+                except OSError:
+                    html = b"<h1>data.html missing</h1>"
+                self._send(body=html)
+            elif path == "/data-latest":
+                seq, payload = data_bus.current()
+                self._send(ctype="application/json",
+                           body=json.dumps({"seq": seq, "payload": payload}).encode(),
+                           extra={"Cache-Control": "no-store"})
+            elif path == "/data-events":
+                self._stream_data()
             else:
                 self._send(code=404, body=b"not found")
 
@@ -116,6 +155,25 @@ def _make_handler(bus: UtteranceBus):
         def _write_event(self, item: dict):
             self.wfile.write(f"data: {json.dumps(item)}\n\n".encode())
 
+        def _stream_data(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Connection", "keep-alive")
+            self.end_headers()
+            last = -1
+            try:
+                while True:
+                    seq, payload = data_bus.wait(last, timeout=15.0)
+                    if seq != last and payload is not None:
+                        last = seq
+                        self.wfile.write(f"data: {json.dumps(payload)}\n\n".encode())
+                    else:
+                        self.wfile.write(b": keep-alive\n\n")
+                    self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                return
+
     return Handler
 
 
@@ -137,28 +195,42 @@ def _lan_ips() -> list[str]:
 
 
 class CompanionServer:
-    def __init__(self, port: int = 8770, host: str = "0.0.0.0"):
+    def __init__(self, port: int = 8770, host: str = "0.0.0.0",
+                 data_hz: float = 2.0):
         self.port = port
         self.host = host
         self.bus = UtteranceBus()
+        self.data_bus = DataBus()
+        self._data_min_gap = 1.0 / data_hz if data_hz > 0 else 0.0
+        self._last_data_push = 0.0
         self._httpd: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
 
     def start(self) -> None:
         self._httpd = ThreadingHTTPServer((self.host, self.port),
-                                          _make_handler(self.bus))
+                                          _make_handler(self.bus, self.data_bus))
         self._httpd.daemon_threads = True
         self._thread = threading.Thread(target=self._httpd.serve_forever,
                                         daemon=True)
         self._thread.start()
         urls = [f"http://{ip}:{self.port}" for ip in _lan_ips()] or \
                [f"http://localhost:{self.port}"]
-        print("[webui] companion display running — open on the iPad:")
+        print("[webui] companion display running:")
         for u in urls:
-            print(f"[webui]   {u}")
+            print(f"[webui]   {u}         (agent text — for the iPad)")
+            print(f"[webui]   {u}/data    (all detections — for a caregiver)")
 
     def publish(self, text: str) -> None:
         self.bus.publish(text)
+
+    def publish_data(self, snapshot, fps: float = 0.0, greeting: str | None = None) -> None:
+        """Push the full telemetry payload to /data, throttled to data_hz."""
+        now = time.time()
+        if now - self._last_data_push < self._data_min_gap:
+            return
+        self._last_data_push = now
+        from output import dashboard
+        self.data_bus.publish(dashboard.to_payload(snapshot, fps, greeting))
 
     def stop(self) -> None:
         if self._httpd is not None:

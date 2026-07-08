@@ -37,6 +37,7 @@ from extractors.pose import PoseExtractor
 from extractors.motion import MotionExtractor
 from output.aggregator import Aggregator
 from alerts.manager import AlertManager
+from agent.advisor_engine import AdvisorEngine
 from agent.voice_agent import VoiceAgent
 from agent.env import load_env
 from webui.server import CompanionServer
@@ -64,8 +65,9 @@ def build_pipeline(source, config, camera_opts=None):
     extractors = [FaceExtractor(), PoseExtractor(), MotionExtractor()]
     scheduler = Scheduler(modules)
     aggregator = Aggregator()
+    advisor_engine = AdvisorEngine.from_config(config.get("advice"))
     camera = Camera(source=source, **(camera_opts or {}))
-    pipeline = Pipeline(camera, extractors, scheduler, aggregator)
+    pipeline = Pipeline(camera, extractors, scheduler, aggregator, advisor_engine)
     return pipeline, aggregator
 
 
@@ -173,6 +175,10 @@ def main():
             if web is not None:
                 web.publish(utterance)
 
+        # mirror the full detections window to the /data web endpoint
+        if web is not None:
+            web.publish_data(snapshot, ctx.fps, last_greeting["text"])
+
         print_vitals(snapshot)
 
         if display:
@@ -200,8 +206,6 @@ def main():
         print("\n[main] stopped.")
     finally:
         voice_agent.close()
-        if web is not None:
-            web.stop()
         if display and cv2 is not None:
             cv2.destroyAllWindows()
 

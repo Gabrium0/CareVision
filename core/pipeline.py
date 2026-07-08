@@ -9,17 +9,23 @@ from .scheduler import Scheduler
 
 class Pipeline:
     def __init__(self, camera: Camera, extractors: list, scheduler: Scheduler,
-                 aggregator):
+                 aggregator, advisor_engine=None):
         self.camera = camera
         self.extractors = extractors
         self.scheduler = scheduler
         self.aggregator = aggregator
+        self.advisor_engine = advisor_engine
 
     def process_frame(self, ctx: FrameContext) -> list[Result]:
         for ex in self.extractors:
             ex.extract(ctx)
         results = self.scheduler.tick(ctx)
         self.aggregator.ingest(results)
+        if self.advisor_engine is not None:
+            advice = self.advisor_engine.evaluate(self.aggregator.snapshot())
+            if advice:
+                self.aggregator.ingest(advice)
+                results.extend(advice)
         return results
 
     def run(self, on_frame=None, max_frames: int | None = None) -> None:

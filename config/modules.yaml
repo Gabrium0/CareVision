@@ -137,3 +137,16 @@ modules:
     enabled: true             # auto-disables if models/age_googlenet.onnx missing
   body_estimate:              # rough build proxy; low precision by nature
     enabled: true
+
+advice:
+  enabled: true
+  vitals:
+    enabled: true
+    interval: 8.0
+    bpm_high: 100.0
+    bpm_warning: 120.0
+    bpm_low: 55.0
+    bpm_low_warning: 45.0
+    hrv_low: 20.0
+    resp_high: 24.0
+    min_confidence: 0.35
