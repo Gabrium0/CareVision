@@ -189,6 +189,20 @@ def roi_patch(ctx, center_idx: int, radius_frac: float = 0.04) -> np.ndarray | N
     return patch if patch.size else None
 
 
+def mouth_aspect_ratio(ctx) -> float | None:
+    """Mouth aspect ratio (inner-lip height / mouth width) from face landmarks;
+    same calculation modules/yawn.py uses to detect yawns. A rising or falling
+    delta between consecutive calls also flags talking (yawn.py distinguishes
+    the two by sustained-open duration; talking is comparatively fast/small)."""
+    from extractors import face_landmarks as FL
+    px = ctx.face_px()
+    if px is None:
+        return None
+    w = np.linalg.norm(px[FL.MOUTH_LEFT] - px[FL.MOUTH_RIGHT]) + 1e-6
+    h = np.linalg.norm(px[FL.MOUTH_TOP_INNER] - px[FL.MOUTH_BOTTOM_INNER])
+    return float(h / w)
+
+
 def polygon_mask(shape_hw: tuple, points_px: np.ndarray) -> np.ndarray:
     """Binary mask (uint8) of the polygon given by points_px."""
     mask = np.zeros(shape_hw[:2], dtype=np.uint8)

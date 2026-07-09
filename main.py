@@ -79,6 +79,10 @@ def main():
     """Parse CLI args and run the live detection pipeline."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--source", default="0", help="camera index, file path, or URL")
+    ap.add_argument("--alt-source", default="0",
+                    help="the other camera to toggle to with 'c' (default 0 = laptop cam)")
+    ap.add_argument("--list-cameras", action="store_true",
+                    help="probe camera indices, print index+resolution, and exit")
     ap.add_argument("--headless", action="store_true", help="no display window")
     ap.add_argument("--name", default="there", help="person's name for greetings")
     ap.add_argument("--max-frames", type=int, default=None)
@@ -124,6 +128,9 @@ def main():
     ap.add_argument("--webui-port", type=int, default=8770,
                     help="port for the companion web display (default 8770)")
     args = ap.parse_args()
+    if args.list_cameras:
+        Camera.list_devices()
+        return
     if args.debug_modules:
         os.environ["APP_DEBUG_MODULES"] = args.debug_modules
     load_env()   # make .env keys (GEMINI_API_KEY, alert creds) available
@@ -140,6 +147,10 @@ def main():
         emotion["backends"] = [b for b in emotion.get("backends", []) if b != "deepface"]
     pipeline, aggregator = build_pipeline(args.source, config, camera_opts,
                                           max_staleness=args.vitals_max_staleness)
+    # Runtime camera toggle ('c'): start on --source, swap to --alt-source and
+    # back. Both use the same camera_opts so the laptop view is unchanged.
+    primary_source, alt_source = args.source, args.alt_source
+    cam_state = {"current": primary_source}
 
     alerts_cfg = load_alerts_config()
     alert_mgr = AlertManager.from_config(alerts_cfg) if alerts_cfg.get("enabled", True) else None
@@ -215,9 +226,15 @@ def main():
                 return False
             if key == ord("g"):
                 force_greet["v"] = True
+            if key == ord("c") and primary_source != alt_source:
+                nxt = alt_source if cam_state["current"] == primary_source else primary_source
+                print(f"[camera] switching -> {nxt}")
+                pipeline.camera.switch_to(nxt, camera_opts)
+                cam_state["current"] = nxt
         return True
 
-    print("[main] starting; press 'q' in the window to quit (Ctrl+C in headless).")
+    print("[main] starting; press 'q' to quit, 'g' to greet, 'c' to switch camera "
+          "(Ctrl+C in headless).")
     try:
         pipeline.run(on_frame=on_frame, max_frames=args.max_frames)
     except KeyboardInterrupt:

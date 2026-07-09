@@ -21,6 +21,14 @@ penalized when those recent picks disagree a lot (same jitter-penalty shape
 as openrppg.py). This makes the two "side by side" backends' numbers directly
 comparable instead of one being smoothed and the other raw.
 
+Two of the three sampled ROIs are the cheeks, which move with speech (jaw/
+mouth motion drags adjacent skin), injecting non-cardiac motion straight into
+the chrominance signal. update() tracks the frame-to-frame mouth-aspect-ratio
+delta (not an absolute open/closed threshold -- yawn.py's own docs note MAR
+moves for both yawning and talking, and talking's swings are faster/smaller
+than a sustained yawn) and falls back to forehead-only sampling for a frame
+when that delta suggests active mouth movement.
+
 Reliability: medium; sensitive to lighting, motion, and skin tone.
 """
 from __future__ import annotations
@@ -33,7 +41,7 @@ import numpy as np
 from core.context import FrameContext
 from modules._util import (TimedBuffer, dominant_frequency, bandpass,
                            peak_intervals, roi_patch, patch_brightness,
-                           low_light_factor, chrom, pos)
+                           low_light_factor, chrom, pos, mouth_aspect_ratio)
 from extractors import face_landmarks as FL
 from .base import RPPGBackend
 
@@ -47,9 +55,10 @@ class ClassicalBackend(RPPGBackend):
     available = True
 
     def __init__(self, window_seconds: float = 12.0, method: str = "chrom",
-                 smoothing_window: int = 5):
+                 smoothing_window: int = 5, talk_delta_threshold: float = 0.05):
         self.window_seconds = window_seconds
         self.method = method if method in ("chrom", "pos", "green") else "chrom"
+        self.talk_delta_threshold = talk_delta_threshold
         self.buf = TimedBuffer(window_seconds)          # values are (R,G,B) means
         self._brightness = 128.0                        # EMA of ROI luminance
         # update() (writer) and compute() (reader) can run on different
@@ -58,11 +67,26 @@ class ClassicalBackend(RPPGBackend):
         # compute() only ever runs on the heavy-loop thread (see
         # modules/heart_rate.py), so this needs no lock of its own.
         self._bpm_history: deque[float] = deque(maxlen=max(1, int(smoothing_window)))
+        # update() only ever runs on one thread at a time (the reader thread
+        # once the fast path engages, else the heavy loop) -- same
+        # single-writer assumption openrppg.py's _stable_face()/_last_bbox
+        # already relies on, so this needs no lock either.
+        self._last_mar: float | None = None
 
     def update(self, ctx: FrameContext) -> None:
         """Feed one frame's data into the backend's rolling state."""
+        roi_landmarks = _ROI_LANDMARKS
+        mar = mouth_aspect_ratio(ctx)
+        if mar is not None:
+            if (self._last_mar is not None
+                    and abs(mar - self._last_mar) > self.talk_delta_threshold):
+                # Rapid mouth movement (talking) -- cheeks are moving, so
+                # drop them for this sample rather than let non-cardiac
+                # motion dilute the chrominance signal.
+                roi_landmarks = (FL.FOREHEAD_TOP,)
+            self._last_mar = mar
         pixels = []
-        for idx in _ROI_LANDMARKS:
+        for idx in roi_landmarks:
             patch = roi_patch(ctx, idx, radius_frac=0.10)
             if patch is not None and patch.size:
                 pixels.append(patch.reshape(-1, 3))

@@ -50,6 +50,7 @@ class HeartRate(DetectionModule):
     backends = ["classical"]          # overridden by config
     classical_method = "chrom"        # chrom | pos | green (green = legacy A/B)
     classical_smoothing_window = 5    # median-smooth the last N raw FFT bpm picks
+    classical_talk_delta_threshold = 0.05   # mouth-aspect-ratio delta that flags talking
     openrppg_model = None             # None = open-rppg package default
     openrppg_brightness_normalize = True   # lift dark crops toward training range
     openrppg_infer_every = 5.0
@@ -87,7 +88,8 @@ class HeartRate(DetectionModule):
             else:
                 inst = cls(window_seconds=self.window_seconds,
                            method=self.classical_method,
-                           smoothing_window=self.classical_smoothing_window)
+                           smoothing_window=self.classical_smoothing_window,
+                           talk_delta_threshold=self.classical_talk_delta_threshold)
             if getattr(inst, "available", True):
                 self._backends.append(inst)
         if not self._backends:

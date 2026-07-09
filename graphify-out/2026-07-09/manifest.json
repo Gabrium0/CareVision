@@ -80,8 +80,8 @@
     "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
   },
   "modules/_util.py": {
-    "mtime": 1783507065.6777356,
-    "ast_hash": "d931ef6c729e95e11d095676de462c6d",
+    "mtime": 1783513099.7567337,
+    "ast_hash": "c3a9ea135a8a38d5ad3004478147fb6b",
     "semantic_hash": ""
   },
   "modules/activity_level.py": {
@@ -180,8 +180,8 @@
     "semantic_hash": ""
   },
   "modules/heart_rate.py": {
-    "mtime": 1783511068.344573,
-    "ast_hash": "7663c0d1a63db29fa2b91e89c4a9afea",
+    "mtime": 1783513184.6362066,
+    "ast_hash": "53940f9dc1aa5e6fea38fb56abecba92",
     "semantic_hash": ""
   },
   "modules/masked_face.py": {
@@ -285,8 +285,8 @@
     "semantic_hash": ""
   },
   "config/modules.yaml": {
-    "mtime": 1783511082.4070463,
-    "ast_hash": "88e2e43ffab812a208261f51028832bf",
+    "mtime": 1783513197.4673338,
+    "ast_hash": "6816d212a37d1a0a594b47abff4ec697",
     "semantic_hash": ""
   },
   "docs/RESEARCH.md": {
@@ -330,8 +330,8 @@
     "semantic_hash": ""
   },
   "modules/rppg_backends/classical.py": {
-    "mtime": 1783511046.3092322,
-    "ast_hash": "68d158b0e906553e6a014446d130e5ac",
+    "mtime": 1783513142.956238,
+    "ast_hash": "5ab3cb4f9b89a0c808171be127f46267",
     "semantic_hash": ""
   },
   "modules/rppg_backends/openrppg.py": {
@@ -677,6 +677,21 @@
   "tests/classical_smoothing_test.py": {
     "mtime": 1783511180.4051814,
     "ast_hash": "9ce00afcd188563c4c98429fa89e4327",
+    "semantic_hash": ""
+  },
+  "tests/classical_talking_gate_test.py": {
+    "mtime": 1783513271.4441867,
+    "ast_hash": "728e6bbbd73ed4faf32e2236580d1b3c",
+    "semantic_hash": ""
+  },
+  "videocase2.mp4": {
+    "mtime": 1783512566.4410238,
+    "ast_hash": "df24d70cb2b8bb1087a6abd067dfc961",
+    "semantic_hash": ""
+  },
+  "videoshowcase1.mp4": {
+    "mtime": 1783511852.5571537,
+    "ast_hash": "23a11aa084bdeef43506bfce0869e8b5",
     "semantic_hash": ""
   }
 }

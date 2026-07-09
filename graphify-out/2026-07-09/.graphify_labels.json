@@ -115,7 +115,6 @@
   "113": "Emotion",
   "114": ".mood",
   "115": ".result",
-  "116": "PoseExtractor",
   "117": "FerPlusBackend",
   "118": "HSEmotionBackend",
   "119": "AGENTS.md",
@@ -130,13 +129,9 @@
   "128": "Sweating",
   "129": "AGENTS.md",
   "130": "Unresponsive",
-  "131": "classical_talking_gate_test.py",
-  "132": "dry_lips.py",
   "133": "agitation.py",
   "134": "EyeRedness",
   "135": "gait.py",
   "136": "yawn.py",
-  "137": "FakeCamera",
-  "138": "HeadNod",
-  "139": "cameratest.py"
+  "138": "HeadNod"
 }

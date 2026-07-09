@@ -11,6 +11,7 @@ modules:
                                        # openrppg auto-disables if `rppg`/jax missing
     classical_method: chrom           # chrom | pos | green (green = legacy, for A/B)
     classical_smoothing_window: 5     # median-smooth last N raw FFT bpm picks (parity w/ openrppg)
+    classical_talk_delta_threshold: 0.05  # mouth-aspect-ratio delta that flags talking; drops cheek ROIs for that sample
     openrppg_model: null              # null = open-rppg default; try physformer/efficientphys
     openrppg_brightness_normalize: true  # lift dark face crops toward the model's training range
     openrppg_infer_every: 5.0       # CPU-only JAX is heavy; same 30s window, fewer freezes
