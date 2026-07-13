@@ -144,6 +144,18 @@ class VoiceAgent:
         self.elicitation.begin("hold_still", _HOLD_STILL_SECONDS)
         self._test_requested = False
 
+    def reasoning_card(self) -> dict | None:
+        """A compact, non-diagnostic explanation for the showcase dashboard."""
+        active = [(topic, state) for topic, state in self.corroboration.topics.items()
+                  if state.status in ("flagged", "asked", "confirmed", "denied")]
+        if not active:
+            return None
+        topic, state = max(active, key=lambda item: item[1].flagged_at)
+        rule = self.corroboration.rules[topic]
+        suggestion = rule.conclusion if state.status == "confirmed" else None
+        return {"observed": topic.replace("_", " "), "question": rule.question,
+                "answer": state.status, "suggestion": suggestion}
+
     # ----------------------------------------------------------------- tick
 
     def tick(self, snapshot, now: float | None = None) -> str | None:

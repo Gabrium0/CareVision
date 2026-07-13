@@ -91,6 +91,14 @@
     else for(const s of d.signals)
       H.push(`<div class="sig"><span class="conf">[${s.conf.toFixed(2)}]</span><span class="s-${s.severity}">${esc(s.message)}</span></div>`);
 
+    if(d.reasoning){
+      H.push('<h2>Conversation reasoning</h2>');
+      H.push(`<div class="sig"><span class="conf">Observed</span>${esc(d.reasoning.observed)}</div>`);
+      H.push(`<div class="sig"><span class="conf">Question</span>${esc(d.reasoning.question)}</div>`);
+      H.push(`<div class="sig"><span class="conf">Answer</span>${esc(d.reasoning.answer)}</div>`);
+      if(d.reasoning.suggestion) H.push(`<div class="advice">${esc(d.reasoning.suggestion)}</div>`);
+    }
+
     if(d.greeting) H.push(`<div class="greeting">🗣 ${esc(d.greeting)}</div>`);
     root.innerHTML = H.join('');
   }

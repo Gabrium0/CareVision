@@ -32,6 +32,7 @@ import yaml
 from core.camera import Camera
 from core.camera_factory import make_camera
 from core.pipeline import Pipeline
+from core.showcase import ShowcaseGate
 from core.registry import discover, build_enabled
 from core.scheduler import Scheduler
 from extractors.face import FaceExtractor
@@ -73,7 +74,8 @@ def build_pipeline(source, config, camera_opts=None, max_staleness: float = 0.25
     advisor_engine = AdvisorEngine.from_config(config.get("advice"))
     camera = make_camera(source, camera_opts or {})
     pipeline = Pipeline(camera, extractors, scheduler, aggregator, advisor_engine,
-                        max_staleness=max_staleness)
+                        max_staleness=max_staleness,
+                        showcase_gate=ShowcaseGate.from_config(config))
     return pipeline, aggregator
 
 
@@ -237,7 +239,8 @@ def main():
 
         # mirror the full detections window to the /data web endpoint
         if web is not None:
-            web.publish_data(snapshot, ctx.fps, last_greeting["text"])
+            web.publish_data(snapshot, ctx.fps, last_greeting["text"],
+                             reasoning=voice_agent.reasoning_card())
 
         print_vitals(snapshot)
 
@@ -250,7 +253,8 @@ def main():
                 cam = overlay.draw_boxes(ctx.frame.copy(), ctx, ctx.fps)
                 cv2.imshow("Camera", cam)
                 # separate, readable data window
-                panel = dashboard.render(snapshot, ctx.fps, last_greeting["text"])
+                panel = dashboard.render(snapshot, ctx.fps, last_greeting["text"],
+                                         reasoning=voice_agent.reasoning_card())
                 cv2.imshow("Detections — Data", panel)
             key = cv2.waitKey(1) & 0xFF
             if key == ord("q"):

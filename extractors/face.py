@@ -35,7 +35,7 @@ class FaceExtractor:
         opts = vision.FaceLandmarkerOptions(
             base_options=mp_python.BaseOptions(model_asset_path=str(_MODEL)),
             running_mode=vision.RunningMode.VIDEO,
-            num_faces=1,
+            num_faces=2,
             min_face_detection_confidence=0.5,
             min_tracking_confidence=0.5,
         )
@@ -49,7 +49,12 @@ class FaceExtractor:
         out = self.landmarker.detect_for_video(mp_img, ts_ms)
         if not out.face_landmarks:
             return
-        lm = out.face_landmarks[0]
+        ctx.extras["face_count"] = len(out.face_landmarks)
+        # Select the closest-looking (largest image area) face, but preserve
+        # the count so the showcase gate can reject competing guests.
+        lm = max(out.face_landmarks,
+                 key=lambda pts: (max(p.x for p in pts) - min(p.x for p in pts)) *
+                                  (max(p.y for p in pts) - min(p.y for p in pts)))
         pts = np.array([[p.x, p.y, p.z] for p in lm], dtype=np.float32)
         if self._smoother is not None:
             pts = self._smoother(pts, ctx.timestamp).astype(np.float32)

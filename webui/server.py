@@ -232,14 +232,15 @@ class CompanionServer:
         """Publish a new item to connected subscribers."""
         self.bus.publish(text)
 
-    def publish_data(self, snapshot, fps: float = 0.0, greeting: str | None = None) -> None:
+    def publish_data(self, snapshot, fps: float = 0.0, greeting: str | None = None,
+                     reasoning: dict | None = None) -> None:
         """Push the full telemetry payload to /data, throttled to data_hz."""
         now = time.time()
         if now - self._last_data_push < self._data_min_gap:
             return
         self._last_data_push = now
         from output import dashboard
-        self.data_bus.publish(dashboard.to_payload(snapshot, fps, greeting))
+        self.data_bus.publish(dashboard.to_payload(snapshot, fps, greeting, reasoning))
 
     def stop(self) -> None:
         """Shut the server down and release its socket."""

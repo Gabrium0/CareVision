@@ -37,7 +37,7 @@ class PoseExtractor:
         opts = vision.PoseLandmarkerOptions(
             base_options=mp_python.BaseOptions(model_asset_path=str(_MODEL)),
             running_mode=vision.RunningMode.VIDEO,
-            num_poses=1,
+            num_poses=2,
             min_pose_detection_confidence=0.5,
             min_tracking_confidence=0.5,
         )
@@ -51,7 +51,10 @@ class PoseExtractor:
         out = self.landmarker.detect_for_video(mp_img, ts_ms)
         if not out.pose_landmarks:
             return
-        lm = out.pose_landmarks[0]
+        ctx.extras["pose_count"] = len(out.pose_landmarks)
+        lm = max(out.pose_landmarks,
+                 key=lambda pts: (max(p.x for p in pts) - min(p.x for p in pts)) *
+                                  (max(p.y for p in pts) - min(p.y for p in pts)))
         pts = np.array([[p.x, p.y, p.z, p.visibility] for p in lm],
                        dtype=np.float32)
         vis = pts[:, 3] > 0.5

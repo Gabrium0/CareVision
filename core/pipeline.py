@@ -46,22 +46,27 @@ from .context import FaceData, FrameContext
 from .debug import enabled as debug_enabled, log as debug_log
 from .events import Result
 from .scheduler import Scheduler
+from .showcase import ShowcaseGate
 
 
 class Pipeline:
     """Orchestrates capture -> extractors -> scheduler -> aggregator -> advisor each frame."""
     def __init__(self, camera: Camera, extractors: list, scheduler: Scheduler,
-                 aggregator, advisor_engine=None, max_staleness: float = 0.25):
+                 aggregator, advisor_engine=None, max_staleness: float = 0.25,
+                 showcase_gate: ShowcaseGate | None = None):
         self.camera = camera
         self.extractors = extractors
         self.scheduler = scheduler
         self.aggregator = aggregator
         self.advisor_engine = advisor_engine
         self.max_staleness = max_staleness   # seconds; see module docstring
+        self.showcase_gate = showcase_gate
         self._face_lock = threading.Lock()
         self._latest_face: FaceData | None = None
         self._latest_face_ts = 0.0
         self._motion_prev: np.ndarray | None = None   # reader-thread-only state
+        self._fast_capture_ready = showcase_gate is None
+        self._capture_was_ready = showcase_gate is None
         # Diagnostic counters (only accumulated when --debug-modules pipeline
         # is set, see _maybe_log_diag); reader-thread-only, no lock needed.
         self._diag_fed = 0
@@ -122,6 +127,8 @@ class Pipeline:
         the camera's full rate — but only while that geometry is still fresh
         enough to trust (see module docstring)."""
         motion = self._motion_energy(frame)
+        if not self._fast_capture_ready:
+            return
         with self._face_lock:
             face, face_ts = self._latest_face, self._latest_face_ts
         diag = debug_enabled("pipeline")
@@ -161,6 +168,15 @@ class Pipeline:
         """Run extractors, modules, and the advisor for one frame."""
         for ex in self.extractors:
             ex.extract(ctx)
+        showcase_results = self.showcase_gate.assess(ctx) if self.showcase_gate else []
+        if self.showcase_gate is not None:
+            self._fast_capture_ready = bool(ctx.extras["showcase"]["stable"])
+            if self._capture_was_ready and not self._fast_capture_ready:
+                for module in self._fast_modules:
+                    reset = getattr(module, "reset_capture", None)
+                    if reset is not None:
+                        reset()
+            self._capture_was_ready = self._fast_capture_ready
         if self._fast_modules and ctx.face is not None:
             with self._face_lock:
                 self._latest_face = ctx.face
@@ -168,6 +184,9 @@ class Pipeline:
             if debug_enabled("pipeline"):
                 self._diag_heavy_publishes += 1
         results = self.scheduler.tick(ctx)
+        if self.showcase_gate is not None:
+            results = [r for r in results if self.showcase_gate.allow(r.module, ctx)]
+        results = showcase_results + results
         self.aggregator.ingest(results)
         if self.advisor_engine is not None:
             advice = self.advisor_engine.evaluate(self.aggregator.snapshot())

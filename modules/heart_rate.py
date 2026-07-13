@@ -202,6 +202,25 @@ class HeartRate(DetectionModule):
         for be in self._backends:
             be.update(ctx)
 
+    def reset_capture(self) -> None:
+        """Discard samples after a showcase framing/quality failure.
+
+        A new stable-capture period must not calculate a pulse from frames
+        gathered while the guest was moving, out of position, or competing
+        with another person.  Backends intentionally expose simple rolling
+        buffers, so clearing the shared buffer/crop contracts is enough to
+        require a fresh window without rebuilding optional neural models.
+        """
+        self._last_bpm = None
+        for be in self._backends:
+            buf = getattr(be, "buf", None)
+            if buf is not None:
+                buf.t.clear()
+                buf.v.clear()
+            crops = getattr(be, "crops", None)
+            if crops is not None:
+                crops.clear()
+
     def process(self, ctx: FrameContext):
         """Run this detector on the current frame; return Result(s) or None."""
         results = []

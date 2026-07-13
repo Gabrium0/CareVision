@@ -167,7 +167,7 @@ def _render_clothing_weather(img, snapshot, y: int) -> int:
     return y + 4
 
 
-def render(snapshot, fps: float, greeting: str | None = None):
+def render(snapshot, fps: float, greeting: str | None = None, reasoning: dict | None = None):
     """Render the data window image for the snapshot."""
     MAX_H = 920
     img = np.full((MAX_H, _W, 3), _BG, np.uint8)
@@ -243,10 +243,22 @@ def render(snapshot, fps: float, greeting: str | None = None):
         _text(img, greeting.split("\n")[0][:78], 16, y, 0.5, (180, 230, 180))
         y += 24
 
+    if reasoning:
+        _text(img, f"Observed: {reasoning['observed']}", 16, y, 0.42, (150, 210, 255))
+        y += 18
+        _text(img, f"Question: {reasoning['question'][:78]}", 16, y, 0.40, (220, 220, 220))
+        y += 18
+        _text(img, f"Answer: {reasoning['answer']}", 16, y, 0.40, (180, 230, 180))
+        y += 18
+        if reasoning.get("suggestion"):
+            _text(img, f"Suggestion: {reasoning['suggestion'][:72]}", 16, y, 0.40, (180, 230, 180))
+            y += 18
+
     return img[:y + 8, :]
 
 
-def to_payload(snapshot, fps: float = 0.0, greeting: str | None = None) -> dict:
+def to_payload(snapshot, fps: float = 0.0, greeting: str | None = None,
+               reasoning: dict | None = None) -> dict:
     """JSON-safe dict mirroring the rendered window, for the /data web endpoint.
 
     Reuses the same grouping helpers as render() so the web view matches the
@@ -303,4 +315,5 @@ def to_payload(snapshot, fps: float = 0.0, greeting: str | None = None) -> dict:
         "advice": (str(advice_r.value) if advice_r else None),
         "fatigue": fatigue,
         "signals": signals,
+        "reasoning": reasoning,
     }
