@@ -42,6 +42,18 @@ def _best_numeric(snapshot: list[Result], module: str, key_prefix: str,
     return max(candidates, key=lambda r: r.confidence, default=None)
 
 
+def _preferred_bpm(snapshot: list[Result], min_confidence: float) -> Result | None:
+    canonical = next(
+        (r for r in snapshot
+         if r.module == "heart_rate"
+         and r.key == "bpm"
+         and r.confidence >= min_confidence
+         and _numeric(r.value) is not None),
+        None,
+    )
+    return canonical or _best_numeric(snapshot, "heart_rate", "bpm_", min_confidence)
+
+
 @dataclass
 class VitalsAdvisor:
     """Conservative cross-signal vitals advice.
@@ -72,7 +84,7 @@ class VitalsAdvisor:
         severity = Severity.INFO
         confidence = 0.0
 
-        bpm_r = _best_numeric(snapshot, "heart_rate", "bpm_", self.min_confidence)
+        bpm_r = _preferred_bpm(snapshot, self.min_confidence)
         bpm = _numeric(bpm_r.value) if bpm_r else None
         if bpm is not None:
             confidence = max(confidence, bpm_r.confidence)
@@ -148,6 +160,82 @@ class VitalsAdvisor:
         )]
 
 
+@dataclass
+class ColdSymptomAdvisor:
+    """Cold-symptom composite: behavior + color signals, none diagnostic alone.
+
+    Sneezes (modules/sneeze.py), nose/face-touch frequency
+    (modules/face_touch.py), facial flushing (modules/skin_color.py), and
+    drowsiness combine into a gentle "maybe a cold coming on" check-in.
+    Requiring at least two independent signals keeps a single false sneeze
+    or a warm room from triggering it.
+    """
+
+    enabled: bool = True
+    interval: float = 60.0            # a cold develops over minutes, not frames
+    sneeze_count: int = 2             # sneezes in the 10-min window that count alone
+    face_touch_count: int = 4         # touches in the window that count as a signal
+    min_confidence: float = 0.3
+    ttl: float = 120.0
+    _last_run: float = field(default=-1e9, init=False)
+
+    def evaluate(self, snapshot: list[Result], now: float) -> list[Result]:
+        """Evaluate the latest snapshot and act on it."""
+        if not self.enabled or now - self._last_run < self.interval:
+            return []
+        self._last_run = now
+
+        signals: list[str] = []
+        confidence = 0.0
+
+        sneezes = next((r for r in snapshot if r.module == "sneeze"
+                        and r.key == "sneeze_count_10min"), None)
+        n_sneeze = int(_numeric(sneezes.value) or 0) if sneezes else 0
+        if n_sneeze >= 1:
+            signals.append(f"{n_sneeze} sneeze{'s' if n_sneeze != 1 else ''} recently"
+                           if n_sneeze < self.sneeze_count
+                           else f"{n_sneeze} sneezes in the last few minutes")
+            confidence = max(confidence, sneezes.confidence)
+
+        touches = next((r for r in snapshot if r.module == "face_touch"
+                        and r.key == "face_touch_count_10min"), None)
+        n_touch = int(_numeric(touches.value) or 0) if touches else 0
+        if n_touch >= self.face_touch_count:
+            signals.append("frequent nose/face touching")
+            confidence = max(confidence, touches.confidence)
+
+        flush = next((r for r in snapshot if r.module == "skin_color"
+                      and r.key == "flushing"
+                      and r.confidence >= self.min_confidence), None)
+        if flush is not None:
+            signals.append("some facial flushing")
+            confidence = max(confidence, flush.confidence)
+
+        drowsy = next((r for r in snapshot if r.module == "drowsiness"
+                       and r.key == "perclos"
+                       and _ORDER[r.severity] >= _ORDER[Severity.NOTICE]), None)
+        if drowsy is not None:
+            signals.append("they seem tired")
+            confidence = max(confidence, drowsy.confidence)
+
+        # Two independent signals, or a run of sneezes on its own.
+        if len(signals) < 2 and n_sneeze < self.sneeze_count:
+            return []
+
+        advice = ("I noticed " + ", and ".join(signals[:3]) +
+                  " — could be a cold coming on. Maybe take it easy and "
+                  "drink something warm.")
+        return [Result(
+            module="wellness_advice",
+            key="cold_symptoms",
+            value=advice,
+            confidence=round(max(0.4, min(confidence, 0.75)), 2),
+            severity=Severity.NOTICE,
+            message=advice,
+            ttl=self.ttl,
+        )]
+
+
 class AdvisorEngine:
     """Runs post-aggregation advisors over the snapshot and emits advice results."""
     def __init__(self, advisors: list[Any] | None = None, enabled: bool = True):
@@ -167,6 +255,10 @@ class AdvisorEngine:
         if vitals_cfg.get("enabled", True):
             params = {k: v for k, v in vitals_cfg.items() if k != "enabled"}
             advisors.append(VitalsAdvisor(**params))
+        cold_cfg = cfg.get("cold", {}) or {}
+        if cold_cfg.get("enabled", True):
+            params = {k: v for k, v in cold_cfg.items() if k != "enabled"}
+            advisors.append(ColdSymptomAdvisor(**params))
         return cls(advisors=advisors)
 
     def evaluate(self, snapshot: list[Result], now: float | None = None) -> list[Result]:

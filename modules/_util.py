@@ -49,6 +49,24 @@ class TimedBuffer:
         return np.interp(t_uniform, t, v), fs
 
 
+def pooled_skin_sample(buffer: "TimedBuffer", sample: np.ndarray,
+                       timestamp: float) -> np.ndarray:
+    """Push `sample` into `buffer` and return its temporal mean over the
+    buffer's window, instead of the raw single-frame value.
+
+    A near-stationary subject's per-frame color sample is noisy after MJPEG
+    4:2:0 chroma subsampling (half the color resolution discarded before the
+    frame reaches this code); averaging over a short rolling window recovers
+    chroma signal-to-noise at the cost of a few seconds of lag. `sample` may
+    be scalar or a fixed-length vector (e.g. an (r,g,b) chromaticity triple).
+    """
+    buffer.push(timestamp, sample)
+    _, values = buffer.arrays()
+    if len(values) == 0:
+        return np.asarray(sample, dtype=np.float64)
+    return values.mean(axis=0)
+
+
 def dominant_frequency(signal: np.ndarray, fs: float,
                        fmin: float, fmax: float) -> tuple[float, float] | None:
     """Strongest frequency in [fmin, fmax] Hz.

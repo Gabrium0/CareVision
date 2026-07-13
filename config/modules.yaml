@@ -22,6 +22,7 @@ modules:
     openrppg_motion_threshold: 35.0
     openrppg_face_jitter_threshold: 0.25
     openrppg_async_inference: true     # keeps CPU-only Open-RPPG from freezing camera frames
+    debug_backend_values: true        # true shows raw per-backend vitals; false emits trusted canonical bpm
   respiration:
     enabled: true
     window_seconds: 25
@@ -125,6 +126,21 @@ modules:
     enabled: false            # needs per-room calibration; zones are
     zones: []                 # [{name: stove, polygon: [[x,y], ...]}] normalized 0..1
 
+  # --- Interaction (showcase conversation triggers) ---
+  attention:                  # eye contact / looking-at-robot + engagement
+    enabled: true
+  gesture:                    # MediaPipe GestureRecognizer + waving heuristic
+    enabled: true             # self-disables if models/gesture_recognizer.task missing
+
+  # --- Cold-symptom composite inputs (advice.cold combines them) ---
+  sneeze:
+    enabled: true
+  face_touch:                 # nose-wipe frequency (runny-nose behavioral proxy)
+    enabled: true
+
+  expressivity:               # flat-affect screen vs 30-day personal history
+    enabled: true
+
   # --- Emotion & cognition ---
   emotion:
     enabled: true
@@ -138,6 +154,13 @@ modules:
   activity_level:
     enabled: true
   presence:
+    enabled: true
+  grooming:                   # hair/facial-hair texture drift vs weekly baseline
+    enabled: true
+    rise_ratio: 1.5            # today's mean vs the trailing week's that flags a change
+
+  # --- Depth-only (RealSense D435i; scheduler skips these on RGB sources) ---
+  height_distance:            # metric height + distance via deprojection
     enabled: true
 
   # --- Demographics / context ---
@@ -158,3 +181,8 @@ advice:
     hrv_low: 20.0
     resp_high: 24.0
     min_confidence: 0.35
+  cold:                        # cold-symptom composite (sneeze + face_touch + flushing + fatigue)
+    enabled: true
+    interval: 60.0
+    sneeze_count: 2            # sneezes/10min that trigger alone
+    face_touch_count: 4        # touches/10min that count as a signal

@@ -37,6 +37,32 @@ class GeminiClient:
             print(f"[agent/gemini] unavailable ({type(e).__name__}: {e}); "
                   "using templated speech")
 
+    def classify_answer(self, question: str, answer: str) -> str | None:
+        """Classify a spoken reply to a yes/no health check-in.
+
+        Returns 'confirmed', 'denied', or 'unclear' — or None when the API
+        is unavailable/errors, so the caller falls back to keyword matching.
+        """
+        if not self.available:
+            return None
+        prompt = (
+            "A companion robot asked an elderly person a gentle yes/no "
+            f"check-in question: \"{question}\"\n"
+            f"The person replied: \"{answer}\"\n\n"
+            "Does the reply CONFIRM the concern, DENY it, or is it UNCLEAR? "
+            "Answer with exactly one word: confirmed, denied, or unclear.")
+        try:
+            resp = self._client.models.generate_content(
+                model=self.model, contents=prompt)
+            word = (getattr(resp, "text", "") or "").strip().lower()
+            for verdict in ("confirmed", "denied", "unclear"):
+                if verdict in word:
+                    return verdict
+            return None
+        except Exception as e:  # noqa: BLE001
+            print(f"[agent/gemini] classification failed: {e}")
+            return None
+
     def generate(self, intent: str, context: str, detail: str = "") -> str | None:
         """Generate one short spoken line, or None if unavailable."""
         if not self.available:

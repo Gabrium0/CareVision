@@ -15,8 +15,8 @@
     "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
   },
   "core/camera.py": {
-    "mtime": 1783508613.4105687,
-    "ast_hash": "bc14b493a7c4c2cb3acd3b1f1fa49411",
+    "mtime": 1783577285.1769392,
+    "ast_hash": "b035431c62f4a01dd0938706ddc1a91f",
     "semantic_hash": ""
   },
   "core/context.py": {
@@ -70,8 +70,8 @@
     "semantic_hash": ""
   },
   "main.py": {
-    "mtime": 1783509902.3666606,
-    "ast_hash": "48066121c2eff08ea81061553608490c",
+    "mtime": 1783577326.246105,
+    "ast_hash": "981cab77cfacf712a99c60a3b236ac80",
     "semantic_hash": ""
   },
   "modules/__init__.py": {
@@ -80,8 +80,8 @@
     "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
   },
   "modules/_util.py": {
-    "mtime": 1783513099.7567337,
-    "ast_hash": "c3a9ea135a8a38d5ad3004478147fb6b",
+    "mtime": 1783577800.9056602,
+    "ast_hash": "2d3aa19a2d547afb9fdc69cd2eb6a9ba",
     "semantic_hash": ""
   },
   "modules/activity_level.py": {
@@ -150,13 +150,13 @@
     "semantic_hash": ""
   },
   "modules/facial_asymmetry.py": {
-    "mtime": 1783488349.4299574,
-    "ast_hash": "5c05b44b39e3946805c941b3fcdbe811",
+    "mtime": 1783577628.4958358,
+    "ast_hash": "f1e2b0a903b52dcc5ed23f6c532ce422",
     "semantic_hash": ""
   },
   "modules/facial_swelling.py": {
-    "mtime": 1783488349.437431,
-    "ast_hash": "94dcabd0c875777420b6cca95fe63e2a",
+    "mtime": 1783578188.3041785,
+    "ast_hash": "5d1930d7ffd38cd176fb31bf35239ced",
     "semantic_hash": ""
   },
   "modules/fall.py": {
@@ -180,8 +180,8 @@
     "semantic_hash": ""
   },
   "modules/heart_rate.py": {
-    "mtime": 1783513184.6362066,
-    "ast_hash": "53940f9dc1aa5e6fea38fb56abecba92",
+    "mtime": 1783587309.2301252,
+    "ast_hash": "c64f16e51782d08337a991569bcfab72",
     "semantic_hash": ""
   },
   "modules/masked_face.py": {
@@ -210,8 +210,8 @@
     "semantic_hash": ""
   },
   "modules/skin_color.py": {
-    "mtime": 1783488349.470756,
-    "ast_hash": "c3d9f879422f667911218bbb165d284d",
+    "mtime": 1783577834.039796,
+    "ast_hash": "a3d27d16c5406b897410e27ce3b0d2df",
     "semantic_hash": ""
   },
   "modules/sweating.py": {
@@ -285,8 +285,8 @@
     "semantic_hash": ""
   },
   "config/modules.yaml": {
-    "mtime": 1783513197.4673338,
-    "ast_hash": "6816d212a37d1a0a594b47abff4ec697",
+    "mtime": 1783587309.2321339,
+    "ast_hash": "79a763c4ed2bf2216bd5cb32f59388b3",
     "semantic_hash": ""
   },
   "docs/RESEARCH.md": {
@@ -300,8 +300,8 @@
     "semantic_hash": "8a6643a420fdad6bfb583523bc6cef16"
   },
   "README.md": {
-    "mtime": 1783511344.0018446,
-    "ast_hash": "1c6b9bbeca9bd49035c95c67fe9fd4ed",
+    "mtime": 1783579117.8909295,
+    "ast_hash": "457887a4ca761d86bde84f9763ad3c1c",
     "semantic_hash": ""
   },
   "detectionList.md": {
@@ -335,8 +335,8 @@
     "semantic_hash": ""
   },
   "modules/rppg_backends/openrppg.py": {
-    "mtime": 1783508726.460137,
-    "ast_hash": "5df0786acc2b4d9aff6ca3f98a492fb6",
+    "mtime": 1783587309.2292693,
+    "ast_hash": "4a2c97bd876d2e5631a25ea6cac617d2",
     "semantic_hash": ""
   },
   "output/dashboard.py": {
@@ -510,8 +510,8 @@
     "semantic_hash": ""
   },
   "agent/state.py": {
-    "mtime": 1783488349.5031705,
-    "ast_hash": "414d120f9c185ef6ad166bd39bf334e6",
+    "mtime": 1783587327.2998114,
+    "ast_hash": "f82fefe5465a5f5980c0dc32e632ccfb",
     "semantic_hash": ""
   },
   "agent/voice_agent.py": {
@@ -575,13 +575,13 @@
     "semantic_hash": ""
   },
   "agent/advisor_engine.py": {
-    "mtime": 1783489330.5296881,
-    "ast_hash": "3f9a70952dc73a129c2787b2a467c002",
+    "mtime": 1783587327.3149154,
+    "ast_hash": "50cf0678db26bf9ce32a3fd2723b7b6c",
     "semantic_hash": ""
   },
   "tests/advisor_engine_test.py": {
-    "mtime": 1783426158.5174966,
-    "ast_hash": "084cc4a290ff87b21e79dd6bff16a41c",
+    "mtime": 1783587377.1555507,
+    "ast_hash": "a29e597c02ffb56b037165ed11d76a80",
     "semantic_hash": ""
   },
   ".claude/launch.json": {
@@ -692,6 +692,51 @@
   "videoshowcase1.mp4": {
     "mtime": 1783511852.5571537,
     "ast_hash": "23a11aa084bdeef43506bfce0869e8b5",
+    "semantic_hash": ""
+  },
+  "cameratest.py": {
+    "mtime": 1783574450.0903103,
+    "ast_hash": "efc0b3f0fb8e2683d63cfda5743446e0",
+    "semantic_hash": ""
+  },
+  "tests/camera_switch_test.py": {
+    "mtime": 1783575967.5463848,
+    "ast_hash": "a7a21202b23162bc0f20d1f2231b1998",
+    "semantic_hash": ""
+  },
+  "modules/grooming.py": {
+    "mtime": 1783578014.163463,
+    "ast_hash": "1c90f0efe15e131bef38ca330d73c708",
+    "semantic_hash": ""
+  },
+  "tests/color_pooling_test.py": {
+    "mtime": 1783577852.7316988,
+    "ast_hash": "5ef2c83d1f81aabda7ca28d2a9166d87",
+    "semantic_hash": ""
+  },
+  "tests/facial_asymmetry_regions_test.py": {
+    "mtime": 1783577714.4212978,
+    "ast_hash": "a580f425eba3b029868c16df147eaa72",
+    "semantic_hash": ""
+  },
+  "tests/facial_swelling_pooling_test.py": {
+    "mtime": 1783578352.43115,
+    "ast_hash": "f350972721a1df304f09f20d53019d86",
+    "semantic_hash": ""
+  },
+  "tests/grooming_test.py": {
+    "mtime": 1783578060.5282567,
+    "ast_hash": "7993b6e026e3bcedf72320d973fa6897",
+    "semantic_hash": ""
+  },
+  "tests/heart_rate_canonical_test.py": {
+    "mtime": 1783587399.9800441,
+    "ast_hash": "be77ecd5773d1233a496cb4d390a282b",
+    "semantic_hash": ""
+  },
+  "docs/REALSENSE_D435I.md": {
+    "mtime": 1783579033.2643664,
+    "ast_hash": "21f56d1eb237c9e480ef845a9f5ef6fc",
     "semantic_hash": ""
   }
 }

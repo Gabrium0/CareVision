@@ -249,10 +249,17 @@ class OpenRPPGBackend(RPPGBackend):
             # Penalize unstable recent HR estimates without fully discarding a usable SQI reading.
             sqi *= max(0.5, 1.0 - jitter / 20.0)
         confidence = round(max(0.0, min(1.0, sqi)), 2)
-        out = {"bpm": round(bpm, 1), "confidence": confidence}
+        out = {"raw_bpm": round(bpm, 1), "raw_confidence": confidence}
         hrv_required = self.hrv_min_seconds * 0.95
         out["status"] = ("ready" if span >= hrv_required
-                         else f"waiting for clean HRV window {span:.0f}/{self.hrv_min_seconds:.0f}s")
+                          else f"waiting for clean HRV window {span:.0f}/{self.hrv_min_seconds:.0f}s")
+        if confidence < self.min_confidence:
+            out["rejected_reason"] = f"low SQI {confidence:.2f}<{self.min_confidence:.2f}"
+            out["status"] = out["rejected_reason"]
+            return out
+
+        out["bpm"] = round(bpm, 1)
+        out["confidence"] = confidence
 
         # HRV: prefer open-rppg's gated dict; else run its own get_prv on the
         # neural BVP so SDNN/RMSSD/breathing show whenever beats are detectable.

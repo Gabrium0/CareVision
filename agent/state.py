@@ -21,6 +21,18 @@ class ObservationMemory:
     latest: dict = field(default_factory=dict)        # (module,key) -> Result
     first_seen: dict = field(default_factory=dict)    # (module,key,value) -> ts
     arrived_at: float | None = None
+    dialogue: list = field(default_factory=list)      # (speaker, text, ts)
+    dialogue_keep: int = 12                           # turns retained
+
+    def person_said(self, text: str, ts: float | None = None) -> None:
+        """Record something the person said (from the ASR listener)."""
+        self.dialogue.append(("them", text, time.time() if ts is None else ts))
+        del self.dialogue[:-self.dialogue_keep]
+
+    def agent_said(self, text: str, ts: float | None = None) -> None:
+        """Record something the agent spoke, so replies stay in context."""
+        self.dialogue.append(("you", text, time.time() if ts is None else ts))
+        del self.dialogue[:-self.dialogue_keep]
 
     def ingest(self, snapshot: list[Result], now: float | None = None) -> None:
         """Merge new results into the current person-state."""
@@ -87,11 +99,44 @@ class ObservationMemory:
                              self.get_val("weather", "temperature_c"))
         if feels is not None:
             bits.append(f"Weather feels like {float(feels):.0f}C.")
-        hr = self.get("heart_rate", "bpm_open_rppg") or self.get("heart_rate", "bpm_classical")
+        hr = (self.get("heart_rate", "bpm")
+              or self.get("heart_rate", "bpm_classical")
+              or self.get("heart_rate", "bpm_open_rppg"))
         if hr is not None and hr.confidence >= 0.4:
             bits.append(f"Heart rate about {float(hr.value):.0f} bpm.")
+        resp = self.get("respiration", "breaths_per_min")
+        if resp is not None and resp.confidence >= 0.4:
+            bits.append(f"Breathing about {float(resp.value):.0f} per minute.")
+        age = self.get("age_estimation", "age_range")
+        if age is not None and age.confidence >= 0.3:
+            bits.append(f"Estimated age range {age.value}.")
+        # Alertness: PERCLOS is % of time eyes closed; give the LLM a word, not a number.
+        perclos = self.get("drowsiness", "perclos")
+        if perclos is not None and perclos.confidence >= 0.5:
+            p = float(perclos.value)
+            alertness = "alert" if p < 0.15 else ("tired" if p < 0.30 else "very drowsy")
+            bits.append(f"Alertness: {alertness}.")
+        attention = self.get_val("attention", "eye_contact")
+        if attention is not None:
+            bits.append("They are looking at you." if attention
+                        else "They are not looking at you right now.")
+        gesture = self.get("gesture", "gesture")
+        if gesture is not None and self.is_new("gesture", "gesture", gesture.value):
+            bits.append(f"Gesture just now: {gesture.message or gesture.value}.")
+        if self.get_val("gesture", "waving") and self.is_new("gesture", "waving", True):
+            bits.append("They are waving at you.")
+        height = self.get("height_distance", "height_m")
+        if height is not None and height.confidence >= 0.4:
+            bits.append(f"Height about {float(height.value):.2f} m.")
+        dist = self.get("height_distance", "distance_m")
+        if dist is not None and dist.confidence >= 0.4:
+            bits.append(f"Standing about {float(dist.value):.1f} m away.")
         notable = [r.message for r in self.latest.values()
                    if r.severity in (Severity.NOTICE, Severity.WARNING) and r.message]
         if notable:
             bits.append("Recent observations: " + "; ".join(notable[:4]) + ".")
+        if self.dialogue:
+            turns = "; ".join(f"{who}: \"{text}\""
+                              for who, text, _ts in self.dialogue[-4:])
+            bits.append("Recent conversation (you = you): " + turns + ".")
         return " ".join(bits)

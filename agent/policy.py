@@ -119,13 +119,24 @@ class Policy:
                 "How has your day been so far?", 10))
         return cands
 
-    def next_intent(self, mem: ObservationMemory, now: float | None = None) -> Intent | None:
-        """Pick the highest-priority thing to say now, or None."""
+    def next_intent(self, mem: ObservationMemory, now: float | None = None,
+                    extra: list[Intent] | None = None) -> Intent | None:
+        """Pick the highest-priority thing to say now, or None.
+
+        `extra` lets the corroboration/elicitation layers inject their own
+        candidates (follow-up questions, conclusions, replies) while this
+        policy stays the single place that rate-limits and de-duplicates.
+        """
         now = time.time() if now is None else now
         if now - self._last_spoken < self.min_gap:
-            return None
-        cands = [c for c in self._candidates(mem, now)
-                 if c.kind == "greeting" or self._fresh(c.signature, now)]
+            # Being spoken to beats the anti-chatter gap: replies and
+            # confirmed conclusions may interject; everything else waits.
+            cands = [c for c in (extra or [])
+                     if c.kind in ("reply", "conclusion")
+                     and self._fresh(c.signature, now)]
+        else:
+            cands = [c for c in self._candidates(mem, now) + list(extra or [])
+                     if c.kind == "greeting" or self._fresh(c.signature, now)]
         if not cands:
             return None
         return max(cands, key=lambda c: c.priority)

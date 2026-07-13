@@ -14,6 +14,7 @@ class Speaker:
     """Offline text-to-speech worker on its own thread (the agent's voice)."""
     def __init__(self, rate: int = 165, volume: float = 1.0, enabled: bool = True):
         self.enabled = enabled
+        self.speaking = False   # True while TTS is audible (read by audio/stt.Listener)
         self._engine = None
         self._q: queue.Queue[str | None] = queue.Queue()
         self._thread: threading.Thread | None = None
@@ -35,11 +36,16 @@ class Speaker:
             text = self._q.get()
             if text is None:
                 break
+            # Flag flips inside the worker around the blocking call, so it is
+            # exact by construction — the Listener mutes while this is True.
+            self.speaking = True
             try:
                 self._engine.say(text)
                 self._engine.runAndWait()
             except Exception as e:  # noqa: BLE001
                 print(f"[tts] speak failed: {e}")
+            finally:
+                self.speaking = False
 
     def say(self, text: str) -> None:
         """Queue a line to be spoken (non-blocking)."""

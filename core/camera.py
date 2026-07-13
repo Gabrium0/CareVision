@@ -39,13 +39,17 @@ class Camera:
     # Capture options that a runtime source switch may override per-device
     # (see switch_to()); everything else is fixed for the Camera's lifetime.
     _SWITCHABLE_OPTS = ("target_width", "lock", "exposure", "request_fps",
-                        "request_size", "target_brightness", "allow_gain_boost")
+                        "request_size", "target_brightness", "allow_gain_boost",
+                        "auto_resolution", "min_fps")
+    # Candidate capture resolutions for auto-probing, largest first.
+    _RESOLUTION_CANDIDATES = ((1920, 1080), (1280, 720), (960, 540), (640, 480))
 
     def __init__(self, source: int | str = 0, target_width: int = 960,
                  lock: bool = True, exposure: float | None = None,
                  request_fps: float = 30.0, request_size: tuple = (1280, 720),
                  settle_seconds: float = 1.5, target_brightness: float = 90.0,
-                 allow_gain_boost: bool = True):
+                 allow_gain_boost: bool = True, auto_resolution: bool = False,
+                 min_fps: float = 25.0):
         self.source = source
         self.target_width = target_width
         self.lock = lock                     # lock exposure/WB/gain (webcam only)
@@ -55,6 +59,8 @@ class Camera:
         self.settle_seconds = settle_seconds
         self.target_brightness = target_brightness   # mean luminance to reach before locking
         self.allow_gain_boost = allow_gain_boost     # raise gain if exposure alone is too dark
+        self.auto_resolution = auto_resolution       # probe candidate resolutions on open (webcam only)
+        self.min_fps = min_fps               # floor below which FFT-based vitals alias
         self.cap: Optional[cv2.VideoCapture] = None
         self._fps_smooth = float(request_fps)
         self._last_t: Optional[float] = None
@@ -177,9 +183,45 @@ class Camera:
             print("[camera] no devices found")
         return found
 
+    def _autoprobe_resolution(self) -> None:
+        """Try `_RESOLUTION_CANDIDATES` largest-first and lock in the largest
+        one whose delivered fps still meets `min_fps` -- the floor below
+        which the FFT-based vitals (heart rate/respiration/tremor) alias.
+        Requires MJPG (set here): many UVC webcams silently cap out around
+        640x480 on the default uncompressed YUY2 mode over USB 2.0, and MJPG
+        is what unlocks 720p/1080p on that bus. Falls back to the smallest
+        candidate if none meet the floor. Webcam sources only."""
+        cap = self.cap
+        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+        best = None
+        for w, h in self._RESOLUTION_CANDIDATES:
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, w)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
+            cap.set(cv2.CAP_PROP_FPS, self.request_fps)
+            for _ in range(2):
+                cap.read()                          # let the mode switch settle
+            fps = self._measure_fps(n=10)
+            actual = (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+                      int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
+            print(f"[camera] probe {w}x{h} -> delivered {actual[0]}x{actual[1]} "
+                  f"@ {fps:.1f}fps")
+            best = (actual, fps)
+            if fps >= self.min_fps and actual[0] > 0:
+                break
+        (bw, bh), bfps = best
+        if bw > 0:
+            self.request_size = (bw, bh)
+            self.target_width = bw
+        print(f"[camera] auto-selected {self.request_size[0]}x{self.request_size[1]} "
+              f"@ ~{bfps:.1f}fps (min_fps={self.min_fps:.0f})")
+
     def _configure(self) -> None:
         """Request resolution/fps and (optionally) lock auto controls."""
         cap = self.cap
+        if self._is_webcam():
+            # MJPG unlocks resolutions above the ~640x480 ceiling many UVC
+            # webcams default to over USB 2.0; harmless if a device ignores it.
+            cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
         w, h = self.request_size
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, w)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
@@ -305,6 +347,8 @@ class Camera:
         self.cap = cv2.VideoCapture(self.source, backend)
         if not self.cap.isOpened():
             raise RuntimeError(f"Cannot open video source: {self.source!r}")
+        if self._is_webcam() and self.auto_resolution:
+            self._autoprobe_resolution()
         self._configure()
 
     def _check_fps(self) -> None:

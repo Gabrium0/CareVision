@@ -29,7 +29,7 @@ class DetectionModule(ABC):
     """Base class every detection module implements."""
     name: str = "unnamed"          # set by @register
     interval: float = 0.0          # min seconds between runs; 0 = every frame
-    requires: tuple = ()           # subset of ("face", "pose", "person")
+    requires: tuple = ()           # subset of ("face", "pose", "person", "depth")
 
     def __init__(self, **params: Any):
         # unknown yaml params land here so configs never crash a module

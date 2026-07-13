@@ -6,7 +6,10 @@ recommendations** for elderly people living alone.
 
 It implements every item in [detectionList.md](detectionList.md) as an
 independent, hot-swappable module. See [docs/RESEARCH.md](docs/RESEARCH.md) for
-the method and feasibility rating behind each one.
+the method and feasibility rating behind each one, and
+[docs/REALSENSE_D435I.md](docs/REALSENSE_D435I.md) for a design doc on what a
+depth+IMU camera (e.g. the Unitree G1's RealSense D435i) unlocks beyond a 2D
+webcam.
 
 > ⚠️ **Not a medical device.** All health signals are screening prompts to
 > trigger a gentle check-in or caregiver alert — never diagnoses.
@@ -22,13 +25,48 @@ python main.py --source clip.mp4     # run on a video file
 python main.py --combined            # old single-window overlay instead
 python main.py --headless --name Margaret   # no window; prints greetings/alerts
 ```
-Windowed controls: `q` quit · `g` force a greeting.
+Windowed controls: `q` quit · `g` force a greeting · `c` switch camera (see below).
 
 By default two windows open: **Camera** (video + face/pose boxes only) and
 **Detections — Data**, a readable dashboard with all signals. The vitals
 section shows both heart-rate backends side by side:
 
 ![data window](docs/dashboard_preview.png)
+
+### Camera source: switching and auto resolution
+Run with two cameras configured and swap between them live, without
+restarting — useful when an external webcam (e.g. a low-cost USB 2.0 UVC
+camera) needs to be compared against or replaced by the built-in laptop
+camera on the fly:
+```bash
+python main.py --list-cameras                       # print index + resolution for each device
+python main.py --source 1 --alt-source 0             # start on index 1; 'c' toggles to 0 (laptop)
+```
+Pressing `c` requests the swap on the camera's own frame loop (never from the
+keypress handler directly, so it can't race the reader thread) and re-runs
+that device's exposure/white-balance/gain lock. If the new device fails to
+open (unplugged, busy), it **automatically reverts to the previous camera**
+and keeps running rather than crashing.
+
+By default (`--resolution auto`) the camera probes candidate resolutions
+(1920x1080 → 1280x720 → 960x540 → 640x480) at startup and locks in the
+**largest one that still delivers `--min-fps` (default 25)** — the floor
+below which the FFT-based vitals (`heart_rate`, `respiration`, `tremor`)
+start to alias. This also sets the MJPG FOURCC first, since many UVC
+webcams — especially budget USB 2.0 sensors — silently cap out around
+640x480 on their default uncompressed capture mode otherwise. Pass an
+explicit `--resolution 1280x720` to skip probing. Startup prints each
+candidate's measured fps and the final choice, e.g.:
+```
+[camera] probe 1920x1080 -> delivered 1920x1080 @ 4.3fps
+[camera] probe 1280x720 -> delivered 1280x720 @ 4.3fps
+[camera] probe 960x540 -> delivered 640x480 @ 29.7fps
+[camera] auto-selected 640x480 @ ~29.7fps (min_fps=25)
+```
+A low-resolution auto-selection like this usually means the camera/USB link
+can't sustain higher-resolution frame delivery (common on USB 2.0 with a
+2 MP sensor) — pass `--min-fps` lower to trade frame rate for spatial detail
+if the vitals modules aren't a priority, or use a USB 3 camera for both.
 
 ### Heart rate: two backends, compared live
 The `heart_rate` module runs one or more rPPG backends and reports each one's
@@ -122,7 +160,8 @@ Camera ─▶ Extractors ─▶ Scheduler(modules) ─▶ Aggregator ─▶ Gree
 - **`modules/`** — one file per detection; each is a `DetectionModule` that
   reads the context and returns `Result`s. Self-registered via `@register`.
 - **`output/`** — aggregator, rule-based greeting engine, debug overlay.
-- **`storage/`** — SQLite history for longitudinal signals (activity, presence).
+- **`storage/`** — SQLite history for longitudinal signals (activity, presence,
+  grooming).
 - **`config/modules.yaml`** — enable/disable and tune every module.
 
 ## Add or change a module
@@ -151,18 +190,36 @@ python tests/make_clip.py           # write a synthetic video
 python main.py --source tests/synthetic_clip.mp4 --headless --max-frames 80
 ```
 
-## Module catalogue (33)
+## Module catalogue (34)
 Vitals: `heart_rate` (+HRV), `respiration`.
 Clothing/weather: `weather`, `clothing`, `clothing_advice`.
-Skin/face: `skin_color` (pallor/flushing/cyanosis/jaundice), `rash`, `bruise`,
-`eye_redness`, `sweating`, `dry_lips`, `facial_asymmetry`, `facial_swelling`.
+Skin/face: `skin_color` (pallor/flushing/cyanosis/jaundice; chroma samples are
+temporally pooled — see below), `rash`, `bruise`, `eye_redness`, `sweating`,
+`dry_lips`, `facial_asymmetry` (regional: mouth/eye/brow/cheek-edge, each with
+its own baseline — only mouth/eye can escalate to ALERT), `facial_swelling`
+(features pooled the same way to damp small-face landmark jitter).
 Motor/neuro: `tremor`, `gait`, `balance`, `bradykinesia`, `masked_face`,
 `eye_movement`.
 Fatigue/safety: `drowsiness` (PERCLOS/blink/microsleep), `yawn`, `head_nod`,
 `fall`, `unresponsive`, `wandering`, `hazard_zones`.
 Emotion/cognition: `emotion`, `pain`, `agitation`.
-Behavior/demographic: `activity_level`, `presence`, `age_estimation`,
-`body_estimate`.
+Behavior/demographic: `activity_level`, `presence`, `grooming` (hair/facial-hair
+texture drift vs. a trailing weekly baseline — longitudinal, needs history to
+be meaningful), `age_estimation`, `body_estimate`.
+
+### Accuracy notes: small/compressed cameras
+Two changes specifically target low-cost or distant cameras (e.g. a 2 MP USB
+2.0 webcam at 1–1.5 m), where MJPEG chroma subsampling and a small face in
+frame otherwise degrade color and geometry signals:
+- **Temporal color pooling** (`modules/_util.py::pooled_skin_sample`, used by
+  `skin_color` and `facial_swelling`) averages a near-stationary subject's
+  sample over a short rolling window before any threshold check, recovering
+  signal-to-noise lost to chroma subsampling / landmark jitter at the cost of
+  a few seconds of lag.
+- **Regional facial asymmetry** (`facial_asymmetry`) scores mouth, eye, brow,
+  and cheek/face-edge symmetry independently instead of averaging them into
+  one number, so a droop isolated to one FAST-relevant region (mouth/eye)
+  isn't diluted by an unrelated symmetric region.
 
 ## Privacy note
 Designed to run fully on-device. The SQLite store keeps only numeric signal

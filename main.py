@@ -4,6 +4,7 @@ Usage:
   python main.py                        # default webcam (index 0), live window
   python main.py --source 1             # a different camera
   python main.py --source clip.mp4      # a video file
+  python main.py --source realsense     # RealSense D435i (depth + IMU)
   python main.py --headless             # no window; prints greetings/alerts
   python main.py --name Margaret        # personalize greetings
   python main.py --max-frames 100       # process N frames then stop (testing)
@@ -29,6 +30,7 @@ if os.environ.get("DEEPFACE_WORKER") != "1":
 import yaml
 
 from core.camera import Camera
+from core.camera_factory import make_camera
 from core.pipeline import Pipeline
 from core.registry import discover, build_enabled
 from core.scheduler import Scheduler
@@ -69,7 +71,7 @@ def build_pipeline(source, config, camera_opts=None, max_staleness: float = 0.25
     scheduler = Scheduler(modules)
     aggregator = Aggregator()
     advisor_engine = AdvisorEngine.from_config(config.get("advice"))
-    camera = Camera(source=source, **(camera_opts or {}))
+    camera = make_camera(source, camera_opts or {})
     pipeline = Pipeline(camera, extractors, scheduler, aggregator, advisor_engine,
                         max_staleness=max_staleness)
     return pipeline, aggregator
@@ -78,9 +80,12 @@ def build_pipeline(source, config, camera_opts=None, max_staleness: float = 0.25
 def main():
     """Parse CLI args and run the live detection pipeline."""
     ap = argparse.ArgumentParser()
-    ap.add_argument("--source", default="0", help="camera index, file path, or URL")
+    ap.add_argument("--source", default="0",
+                    help="camera index, file path, URL, or 'realsense' for a "
+                         "RealSense D435i (depth + IMU; needs pyrealsense2)")
     ap.add_argument("--alt-source", default="0",
-                    help="the other camera to toggle to with 'c' (default 0 = laptop cam)")
+                    help="the other camera to toggle to with 'c' (default 0 = "
+                         "laptop cam; 'realsense' also works here)")
     ap.add_argument("--list-cameras", action="store_true",
                     help="probe camera indices, print index+resolution, and exit")
     ap.add_argument("--headless", action="store_true", help="no display window")
@@ -106,10 +111,13 @@ def main():
                          "(default 0.25)")
     ap.add_argument("--fps", type=float, default=30.0,
                     help="requested capture fps (default 30)")
-    ap.add_argument("--width", type=int, default=640,
-                    help="requested/display processing width (default 640)")
-    ap.add_argument("--height", type=int, default=480,
-                    help="requested capture height (default 480)")
+    ap.add_argument("--resolution", default="auto",
+                    help="'auto' probes candidate resolutions on startup and picks the "
+                         "largest that holds --min-fps (default), or an explicit WxH "
+                         "e.g. 1280x720 to skip probing")
+    ap.add_argument("--min-fps", type=float, default=25.0,
+                    help="fps floor for --resolution auto, below which the FFT-based "
+                         "vitals (heart rate/respiration/tremor) start to alias (default 25)")
     ap.add_argument("--vitals-log-every", type=float, default=10.0,
                     help="seconds between terminal vitals summaries; 0 disables")
     ap.add_argument("--alert-cooldown", type=float, default=30.0,
@@ -120,6 +128,11 @@ def main():
                     help="comma-separated debug logs: openrppg,clothing,deepface,drowsiness,weather or all")
     ap.add_argument("--no-voice", action="store_true",
                     help="disable the spoken voice agent (still prints its lines)")
+    ap.add_argument("--listen", action="store_true",
+                    help="enable the microphone listener (speech-to-text via "
+                         "faster-whisper; pip install -r requirements-asr.txt)")
+    ap.add_argument("--whisper-model", default="base",
+                    help="faster-whisper model size for --listen (default base)")
     ap.add_argument("--voice-model", default="gemini-2.5-flash",
                     help="Gemini model for the voice agent (key from .env)")
     ap.add_argument("--webui", action="store_true",
@@ -135,11 +148,23 @@ def main():
         os.environ["APP_DEBUG_MODULES"] = args.debug_modules
     load_env()   # make .env keys (GEMINI_API_KEY, alert creds) available
 
+    auto_resolution = args.resolution.strip().lower() == "auto"
+    if auto_resolution:
+        request_size = Camera._RESOLUTION_CANDIDATES[0]   # probe overrides this on open()
+    else:
+        try:
+            rw, rh = (int(v) for v in args.resolution.lower().split("x", 1))
+        except ValueError:
+            ap.error(f"--resolution must be 'auto' or WxH (e.g. 1280x720), got "
+                      f"{args.resolution!r}")
+        request_size = (rw, rh)
     camera_opts = {"lock": not args.no_lock, "exposure": args.exposure,
-                   "request_fps": args.fps, "request_size": (args.width, args.height),
-                   "target_width": args.width,
+                   "request_fps": args.fps, "request_size": request_size,
+                   "target_width": request_size[0],
                    "target_brightness": args.target_brightness,
-                   "allow_gain_boost": not args.no_gain_boost}
+                   "allow_gain_boost": not args.no_gain_boost,
+                   "auto_resolution": auto_resolution,
+                   "min_fps": args.min_fps}
 
     config = load_config()
     if args.no_deepface:
@@ -156,6 +181,12 @@ def main():
     alert_mgr = AlertManager.from_config(alerts_cfg) if alerts_cfg.get("enabled", True) else None
     voice_agent = VoiceAgent(name=args.name, speak=not args.no_voice,
                              model=args.voice_model)
+    if args.listen:
+        from audio.stt import Listener
+        voice_agent.listener = Listener(model_size=args.whisper_model,
+                                        speaker=voice_agent.speaker)
+        if voice_agent.listener.available:
+            print("[agent] listener attached — the agent can hear replies")
 
     web = None
     if args.webui:
@@ -226,6 +257,9 @@ def main():
                 return False
             if key == ord("g"):
                 force_greet["v"] = True
+            if key == ord("t"):
+                print("[main] tremor test requested ('t')")
+                voice_agent.request_test()
             if key == ord("c") and primary_source != alt_source:
                 nxt = alt_source if cam_state["current"] == primary_source else primary_source
                 print(f"[camera] switching -> {nxt}")
@@ -233,8 +267,8 @@ def main():
                 cam_state["current"] = nxt
         return True
 
-    print("[main] starting; press 'q' to quit, 'g' to greet, 'c' to switch camera "
-          "(Ctrl+C in headless).")
+    print("[main] starting; press 'q' to quit, 'g' to greet, 't' for a tremor "
+          "test, 'c' to switch camera (Ctrl+C in headless).")
     try:
         pipeline.run(on_frame=on_frame, max_frames=args.max_frames)
     except KeyboardInterrupt:

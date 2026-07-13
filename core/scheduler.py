@@ -2,7 +2,7 @@
 
 Each module declares:
   interval: minimum seconds between runs (0.0 = every frame)
-  requires: which context features it needs ("face", "pose", "person")
+  requires: which context features it needs ("face", "pose", "person", "depth")
 
 The scheduler only calls a module when its interval elapsed AND its
 requirements are present in the current frame, so a heavy module can't
@@ -30,6 +30,8 @@ class Scheduler:
             if req == "pose" and ctx.pose is None:
                 return False
             if req == "person" and not ctx.person_present:
+                return False
+            if req == "depth" and ctx.depth is None:
                 return False
         return True
 

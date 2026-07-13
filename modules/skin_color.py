@@ -2,9 +2,12 @@
 
 Method: measure cheek skin in a white-balanced, illumination-normalized
 way. We sample the face-skin mask, convert to normalized chromaticity
-(r,g,b divided by intensity) so overall brightness/lighting cancels, and
-learn a rolling personal baseline over the first ~30 s. Deviations from
-baseline in specific directions map to indicators:
+(r,g,b divided by intensity) so overall brightness/lighting cancels,
+temporally pool that sample over a short rolling window (the subject is
+near-stationary, so this recovers chroma signal-to-noise lost to MJPEG
+4:2:0 chroma subsampling on compressed webcams), and learn a rolling
+personal baseline over the first ~30 s. Deviations from baseline in
+specific directions map to indicators:
   - lower redness + higher paleness  -> pallor
   - higher redness                   -> flushing
   - lips bluish (low R, high B)       -> cyanosis
@@ -23,7 +26,7 @@ from core.context import FrameContext
 from core.events import Severity
 from core.registry import register
 from modules.base import DetectionModule
-from modules._util import face_skin_mask, roi_patch
+from modules._util import TimedBuffer, face_skin_mask, pooled_skin_sample, roi_patch
 from extractors import face_landmarks as FL
 
 
@@ -58,10 +61,13 @@ class SkinColor(DetectionModule):
     """Skin color screening: pallor, flushing, cyanosis, jaundice."""
     interval = 1.0
     requires = ("face",)
+    pool_seconds = 4.0   # temporal-pooling window; recovers chroma SNR lost to MJPEG 4:2:0
 
     def __init__(self, **params):
         super().__init__(**params)
         self.base = _Baseline()
+        self.cheek_buf = TimedBuffer(self.pool_seconds)
+        self.lip_buf = TimedBuffer(self.pool_seconds)
 
     def process(self, ctx: FrameContext):
         """Run this detector on the current frame; return Result(s) or None."""
@@ -69,7 +75,8 @@ class SkinColor(DetectionModule):
         if mask is None or mask.sum() < 500:
             return None
         skin = ctx.frame[mask > 0]
-        chroma = _norm_chroma(skin)          # [r, g, b] normalized
+        raw_chroma = _norm_chroma(skin)      # [r, g, b] normalized, this frame only
+        chroma = pooled_skin_sample(self.cheek_buf, raw_chroma, ctx.timestamp)
         ready = self.base.update(chroma, ctx.timestamp)
         if not ready:
             return None
@@ -101,7 +108,8 @@ class SkinColor(DetectionModule):
         # Cyanosis: measured on the lips, which turn bluish with low oxygen
         lips = roi_patch(ctx, FL.MOUTH_BOTTOM_INNER, radius_frac=0.06)
         if lips is not None and lips.size:
-            lc = _norm_chroma(lips)
+            raw_lc = _norm_chroma(lips)
+            lc = pooled_skin_sample(self.lip_buf, raw_lc, ctx.timestamp)
             bluish = lc[2] - lc[0]           # blue minus red on the lip
             if bluish > 0.08:
                 results.append(self.result(

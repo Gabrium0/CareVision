@@ -61,11 +61,15 @@ class HeartRate(DetectionModule):
     openrppg_motion_threshold = 18.0
     openrppg_face_jitter_threshold = 0.12
     openrppg_async_inference = True
+    debug_backend_values = False
+    bpm_jump_threshold = 20.0
+    bpm_jump_min_confidence = 0.65
 
     def __init__(self, **params):
         super().__init__(**params)
         self._fast_fed = False    # True once fast_update() has fed a backend directly
         self._backends = []
+        self._last_bpm = None
         for name in self.backends:
             cls = _BACKENDS.get(name)
             if cls is None:
@@ -106,6 +110,90 @@ class HeartRate(DetectionModule):
     def _status_result(self, label: str, value: str):
         return self.result(self._key("status", label), value, 0.0, Severity.INFO, "", ttl=8.0)
 
+    @staticmethod
+    def _numeric_bpm(reading: dict | None) -> float | None:
+        if not reading or reading.get("bpm") is None:
+            return None
+        try:
+            bpm = float(reading["bpm"])
+        except (TypeError, ValueError):
+            return None
+        return bpm if 35.0 <= bpm <= 180.0 else None
+
+    def _backend_results(self, label: str, reading: dict | None):
+        """Verbose per-backend diagnostics, intended for testing/tuning mode."""
+        results = []
+        if not reading:
+            if label.startswith("open-rppg"):
+                for metric in ("bpm", "hrv_rmssd_ms", "hrv_sdnn_ms", "breaths_per_min"):
+                    results.append(self._placeholder(metric, label))
+                status = getattr(next((b for b in self._backends if b.label == label), None),
+                                 "_status", "warming up")
+                results.append(self._status_result(label, status))
+            return results
+
+        if label.startswith("open-rppg"):
+            results.append(self._status_result(label, str(reading.get("status", "ready"))))
+        bpm = reading.get("bpm", reading.get("raw_bpm"))
+        conf = float(reading.get("confidence", reading.get("raw_confidence", 0.4)))
+        if bpm is not None:
+            sev = Severity.INFO
+            msg = f"HR ({label}) ~{float(bpm):.0f} bpm"
+            if reading.get("rejected_reason"):
+                msg += f" ({reading['rejected_reason']})"
+                conf = min(conf, 0.2)
+            elif conf >= 0.35 and (float(bpm) < 50 or float(bpm) > 110):
+                sev = Severity.WARNING
+                msg = f"HR ({label}) ~{float(bpm):.0f} bpm (outside typical resting range)"
+            results.append(self.result(self._key("bpm", label), float(bpm), conf,
+                                       sev, msg, ttl=8.0))
+        elif label.startswith("open-rppg"):
+            results.append(self._placeholder("bpm", label))
+        if "hrv_rmssd_ms" in reading:
+            v = reading["hrv_rmssd_ms"]
+            results.append(self.result(
+                self._key("hrv_rmssd_ms", label), v, round(conf * 0.8, 2),
+                Severity.INFO, f"HRV RMSSD ({label}) ~{v:.0f} ms", ttl=8.0))
+        elif label.startswith("open-rppg"):
+            results.append(self._placeholder("hrv_rmssd_ms", label))
+        if "hrv_sdnn_ms" in reading:
+            v = reading["hrv_sdnn_ms"]
+            results.append(self.result(
+                self._key("hrv_sdnn_ms", label), v, round(conf * 0.8, 2),
+                Severity.INFO, f"HRV SDNN ({label}) ~{v:.0f} ms", ttl=8.0))
+        elif label.startswith("open-rppg"):
+            results.append(self._placeholder("hrv_sdnn_ms", label))
+        if "breaths_per_min" in reading:
+            v = reading["breaths_per_min"]
+            results.append(self.result(
+                self._key("breaths_per_min", label), v, round(conf * 0.8, 2),
+                Severity.INFO, f"Respiration ({label}) ~{v:.0f} /min", ttl=8.0))
+        elif label.startswith("open-rppg"):
+            results.append(self._placeholder("breaths_per_min", label))
+        return results
+
+    def _canonical_bpm_result(self, readings: list[tuple[str, dict]]):
+        candidates = []
+        for label, reading in readings:
+            bpm = self._numeric_bpm(reading)
+            if bpm is None:
+                continue
+            conf = float(reading.get("confidence", 0.0))
+            if self._last_bpm is not None and abs(bpm - self._last_bpm) > self.bpm_jump_threshold:
+                if conf < self.bpm_jump_min_confidence:
+                    continue
+            candidates.append((conf, label == "classical", label, bpm))
+        if not candidates:
+            return None
+        conf, _, label, bpm = max(candidates, key=lambda item: (item[0], item[1]))
+        self._last_bpm = bpm
+        sev = Severity.INFO
+        msg = f"HR ~{bpm:.0f} bpm ({label})"
+        if conf >= 0.35 and (bpm < 50 or bpm > 110):
+            sev = Severity.WARNING
+            msg = f"HR ~{bpm:.0f} bpm ({label}, outside typical resting range)"
+        return self.result("bpm", round(bpm, 1), round(conf, 2), sev, msg, ttl=8.0)
+
     def fast_update(self, ctx: FrameContext) -> None:
         """Feed every backend from the camera's reader thread (see module
         docstring); called once per raw captured frame, independent of the
@@ -117,53 +205,19 @@ class HeartRate(DetectionModule):
     def process(self, ctx: FrameContext):
         """Run this detector on the current frame; return Result(s) or None."""
         results = []
+        readings = []
         for be in self._backends:
             if not self._fast_fed:
                 be.update(ctx)
             reading = be.compute()
             label = be.label
-            if not reading:
-                if label.startswith("open-rppg"):
-                    for metric in ("bpm", "hrv_rmssd_ms", "hrv_sdnn_ms", "breaths_per_min"):
-                        results.append(self._placeholder(metric, label))
-                    status = getattr(be, "_status", "warming up")
-                    results.append(self._status_result(label, status))
-                continue
-            if label.startswith("open-rppg"):
-                results.append(self._status_result(label, str(reading.get("status", getattr(be, "_status", "ready")))))
-            bpm = reading.get("bpm")
-            conf = float(reading.get("confidence", 0.4))
-            if bpm is not None:
-                sev = Severity.INFO
-                msg = f"HR ({label}) ~{bpm:.0f} bpm"
-                if conf >= 0.35 and (bpm < 50 or bpm > 110):
-                    sev = Severity.WARNING
-                    msg = f"HR ({label}) ~{bpm:.0f} bpm (outside typical resting range)"
-                results.append(self.result(self._key("bpm", label), bpm, conf,
-                                           sev, msg, ttl=8.0))
-            elif label.startswith("open-rppg"):
-                results.append(self._placeholder("bpm", label))
-            if "hrv_rmssd_ms" in reading:
-                v = reading["hrv_rmssd_ms"]
-                results.append(self.result(
-                    self._key("hrv_rmssd_ms", label), v, round(conf * 0.8, 2),
-                    Severity.INFO, f"HRV RMSSD ({label}) ~{v:.0f} ms", ttl=8.0))
-            elif label.startswith("open-rppg"):
-                results.append(self._placeholder("hrv_rmssd_ms", label))
-            if "hrv_sdnn_ms" in reading:
-                v = reading["hrv_sdnn_ms"]
-                results.append(self.result(
-                    self._key("hrv_sdnn_ms", label), v, round(conf * 0.8, 2),
-                    Severity.INFO, f"HRV SDNN ({label}) ~{v:.0f} ms", ttl=8.0))
-            elif label.startswith("open-rppg"):
-                results.append(self._placeholder("hrv_sdnn_ms", label))
-            if "breaths_per_min" in reading:
-                v = reading["breaths_per_min"]
-                results.append(self.result(
-                    self._key("breaths_per_min", label), v, round(conf * 0.8, 2),
-                    Severity.INFO, f"Respiration ({label}) ~{v:.0f} /min", ttl=8.0))
-            elif label.startswith("open-rppg"):
-                results.append(self._placeholder("breaths_per_min", label))
+            if reading:
+                readings.append((label, reading))
+            if self.debug_backend_values:
+                results.extend(self._backend_results(label, reading))
+        canonical = self._canonical_bpm_result(readings)
+        if canonical is not None:
+            results.insert(0, canonical)
         return results or None
 
     def close(self):
