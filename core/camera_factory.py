@@ -62,22 +62,34 @@ class SwitchableCamera:
             self._cross_pending = (source, opts or {})
 
     def _apply_cross_switch(self) -> None:
-        """Open the new backend before releasing the old so a failed open
-        (missing pyrealsense2, unplugged device) keeps the current stream."""
+        """Release the old backend first, then open the new one.  Opening
+        both simultaneously can exhaust USB bandwidth on some host
+        controllers (e.g. laptop hubs sharing bandwidth between the
+        internal webcam and an external RealSense).  If the new backend
+        fails to open, we try to restore the old one — it was just
+        released so it should be available again."""
         source, opts = self._cross_pending
         self._cross_pending = None
+        old = self.inner
+        old.release()
         new = make_backend(source, opts)
         try:
             new.open()
         except Exception as e:  # noqa: BLE001
-            print(f"[camera] failed to open {source!r} ({e}); staying on "
-                  f"{self.inner.source!r}")
+            print(f"[camera] failed to open {source!r} ({e}); "
+                  f"restoring {old.source!r}")
+            try:
+                old.open()
+                self.inner = old
+                for hook in self._hooks:
+                    old.register_fast_hook(hook)
+            except Exception as e2:  # noqa: BLE001
+                print(f"[camera] also failed to restore {old.source!r} "
+                      f"({e2}); stream dead")
             return
-        old = self.inner
         for hook in self._hooks:
             new.register_fast_hook(hook)
         self.inner = new
-        old.release()
 
     def frames(self) -> Iterator[FrameContext]:
         """Yield from the active backend, swapping backends between yields

@@ -65,6 +65,7 @@ class RealSenseCamera:
         self._align = None
         self._motion_pipe = None             # callback-driven IMU rs.pipeline
         self._depth_scale = 0.001
+        self._depth_available = True
         self._intrinsics: Optional[Intrinsics] = None
         self._scale = 1.0                    # delivered-size / native-size factor
         self._ego_motion = 0.0               # EMA of |gyro| rad/s, IMU-thread written
@@ -103,20 +104,100 @@ class RealSenseCamera:
         return pend
 
     def open(self) -> None:
-        """Start the color+depth pipeline (and best-effort IMU pipeline)."""
+        """Start the color+depth pipeline (and best-effort IMU pipeline).
+
+        Falls back through progressively lower resolutions if the requested
+        (or higher) combinations fail, so the D435i connects even on USB
+        bandwidth-limited hubs or with firmware quirks.  Depth is dropped
+        last — only if no color+depth pair works at all.
+        """
         import pyrealsense2 as rs  # lazy: optional dependency
         self._rs = rs
-        cfg = rs.config()
-        w, h = self.request_size
-        fps = int(self.request_fps)
-        cfg.enable_stream(rs.stream.color, w, h, rs.format.bgr8, fps)
-        cfg.enable_stream(rs.stream.depth, w, h, rs.format.z16, fps)
+
+        requested_w, requested_h = self.request_size
+        requested_fps = int(self.request_fps)
+
+        # Build a fallback chain: query the device for what it actually
+        # supports, then walk from highest resolution downward.
+        dev = rs.context().query_devices()
+        sensor = (dev[0].first_depth_sensor() if len(dev) else None)
+        if sensor is None:
+            raise RuntimeError("No RealSense device found")
+
+        color_profiles = set()
+        depth_profiles = set()
+        for p in sensor.get_stream_profiles():
+            if not p.is_video_stream_profile():
+                continue
+            vp = p.as_video_stream_profile()
+            key = (vp.width(), vp.height(), vp.fps())
+            if p.stream_type() == rs.stream.color and p.format() == rs.format.bgr8:
+                color_profiles.add(key)
+            elif p.stream_type() == rs.stream.depth and p.format() == rs.format.z16:
+                depth_profiles.add(key)
+
+        # Also query the RGB sensor for color profiles (D435i has separate sensors)
+        rgb_sensor = None
+        for s in dev[0].sensors:
+            if s.get_info(rs.camera_info.name) == "RGB Camera":
+                rgb_sensor = s
+                break
+        if rgb_sensor is not None:
+            for p in rgb_sensor.get_stream_profiles():
+                if not p.is_video_stream_profile():
+                    continue
+                vp = p.as_video_stream_profile()
+                if p.stream_type() == rs.stream.color and p.format() == rs.format.bgr8:
+                    color_profiles.add((vp.width(), vp.height(), vp.fps()))
+
+        # Candidates: best resolution first, prefer requested fps, then 30, then 60
+        all_res = {(w, h) for w, h, _ in color_profiles | depth_profiles}
+        target_resolutions = []
+        # Always try the requested resolution first
+        target_resolutions.append((requested_w, requested_h))
+        # Then step down through common D435i resolutions
+        for res in sorted(all_res, key=lambda r: r[0] * r[1], reverse=True):
+            if res != (requested_w, requested_h) and res not in target_resolutions:
+                target_resolutions.append(res)
+
+        fps_preference = [requested_fps, 30, 60, 90, 15, 6]
+
+        # Build candidate (color, depth) pairs
+        candidates = []
+        for w, h in target_resolutions:
+            for fps in fps_preference:
+                color_ok = (w, h, fps) in color_profiles
+                depth_ok = (w, h, fps) in depth_profiles
+                if color_ok and depth_ok:
+                    candidates.append(("color+depth", w, h, fps))
+                elif color_ok:
+                    candidates.append(("color-only", w, h, fps))
+
+        if not candidates:
+            raise RuntimeError(
+                "RealSense device has no compatible color stream profiles")
+
         self._pipe = rs.pipeline()
-        try:
-            profile = self._pipe.start(cfg)
-        except Exception as e:  # noqa: BLE001
+        last_err = None
+        for mode, w, h, fps in candidates:
+            cfg = rs.config()
+            cfg.enable_stream(rs.stream.color, w, h, rs.format.bgr8, fps)
+            if mode == "color+depth":
+                cfg.enable_stream(rs.stream.depth, w, h, rs.format.z16, fps)
+            try:
+                profile = self._pipe.start(cfg)
+                self._depth_available = (mode == "color+depth")
+                break
+            except Exception as e:  # noqa: BLE001
+                last_err = e
+                continue
+        else:
             self._pipe = None
-            raise RuntimeError(f"Cannot open RealSense device: {e}") from e
+            raise RuntimeError(
+                f"Cannot open RealSense device: none of the "
+                f"{len(candidates)} tried configurations worked "
+                f"(last error: {last_err})")
+
         self._align = rs.align(rs.stream.color)
         depth_sensor = profile.get_device().first_depth_sensor()
         self._depth_scale = float(depth_sensor.get_depth_scale())
@@ -132,9 +213,10 @@ class RealSenseCamera:
                        if intr.width > self.target_width else 1.0)
         s = self._scale
         self._intrinsics = Intrinsics(fx=intr.fx * s, fy=intr.fy * s,
-                                      ppx=intr.ppx * s, ppy=intr.ppy * s)
+                                       ppx=intr.ppx * s, ppy=intr.ppy * s)
         self._start_motion_pipe(rs)
-        print(f"[realsense] color+depth {intr.width}x{intr.height}@{fps}fps, "
+        depth_tag = "color+depth" if self._depth_available else "color-only"
+        print(f"[realsense] {depth_tag} {intr.width}x{intr.height}@{fps}fps, "
               f"depth_scale={self._depth_scale:.4f} m/unit, "
               f"delivered_width={int(intr.width * s)}")
 
@@ -176,19 +258,21 @@ class RealSenseCamera:
         """Blocking read of one aligned (color, depth) pair, resized to
         `target_width` together (nearest-neighbor for depth: interpolating
         millimeter values across object boundaries invents phantom
-        surfaces)."""
+        surfaces).  When depth is unavailable, returns ``None`` for the
+        depth array."""
         frames = self._pipe.wait_for_frames(timeout_ms=5000)
         frames = self._align.process(frames)
         color = frames.get_color_frame()
-        depth = frames.get_depth_frame()
-        if not color or not depth:
+        if not color:
             return None
+        depth = frames.get_depth_frame() if self._depth_available else None
         frame = np.asanyarray(color.get_data())
-        dep = np.asanyarray(depth.get_data())
+        dep = np.asanyarray(depth.get_data()) if depth is not None else None
         if self._scale < 1.0:
             frame = cv2.resize(frame, None, fx=self._scale, fy=self._scale)
-            dep = cv2.resize(dep, (frame.shape[1], frame.shape[0]),
-                             interpolation=cv2.INTER_NEAREST)
+            if dep is not None:
+                dep = cv2.resize(dep, (frame.shape[1], frame.shape[0]),
+                                 interpolation=cv2.INTER_NEAREST)
         return frame, dep
 
     def _start_reader(self) -> None:
