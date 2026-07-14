@@ -22,7 +22,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Optional
 
 from core.context import FrameContext
-from core.events import Result, Severity
+from core.events import Result, Severity, Visibility
 
 
 class DetectionModule(ABC):
@@ -43,8 +43,9 @@ class DetectionModule(ABC):
 
     def result(self, key: str, value: Any, confidence: float = 0.5,
                severity: Severity = Severity.INFO, message: str = "",
-               ttl: float = 10.0) -> Result:
+               ttl: float = 10.0,
+               visibility: Visibility = Visibility.PUBLIC) -> Result:
         """Build a Result using this module's registered name."""
         return Result(module=self.name, key=key, value=value,
                       confidence=confidence, severity=severity,
-                      message=message, ttl=ttl)
+                      message=message, ttl=ttl, visibility=visibility)

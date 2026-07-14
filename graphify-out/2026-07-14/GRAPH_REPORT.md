@@ -1,12 +1,12 @@
 # Graph Report - proj  (2026-07-14)
 
 ## Corpus Check
-- 155 files · ~82,907 words
+- 155 files · ~82,846 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1585 nodes · 3359 edges · 161 communities (91 shown, 70 thin omitted)
-- Extraction: 91% EXTRACTED · 9% INFERRED · 0% AMBIGUOUS · INFERRED: 289 edges (avg confidence: 0.52)
+- 1585 nodes · 3354 edges · 160 communities (90 shown, 70 thin omitted)
+- Extraction: 91% EXTRACTED · 9% INFERRED · 0% AMBIGUOUS · INFERRED: 288 edges (avg confidence: 0.52)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
@@ -168,7 +168,6 @@
 - [[_COMMUNITY_BodyEstimate|BodyEstimate]]
 - [[_COMMUNITY_.process|.process]]
 - [[_COMMUNITY_._chest_depth|._chest_depth]]
-- [[_COMMUNITY_unresponsive.py|unresponsive.py]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `FrameContext` - 243 edges
@@ -178,8 +177,8 @@
 5. `Result` - 72 edges
 6. `Camera` - 48 edges
 7. `register()` - 44 edges
-8. `ObservationMemory` - 29 edges
-9. `FaceData` - 29 edges
+8. `FaceData` - 29 edges
+9. `ObservationMemory` - 26 edges
 10. `VoiceAgent` - 26 edges
 
 ## Surprising Connections (you probably didn't know these)
@@ -197,7 +196,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (161 total, 70 thin omitted)
+## Communities (160 total, 70 thin omitted)
 
 ### Community 0 - "Core Pipeline & Camera"
 Cohesion: 0.25
@@ -368,8 +367,8 @@ Cohesion: 0.38
 Nodes (3): Current weather from Open-Meteo for clothing recommendations., Run this detector on the current frame; return Result(s) or None., Weather
 
 ### Community 109 - "Speaker"
-Cohesion: 0.10
-Nodes (21): Frame source abstraction: webcam index, video file, or RTSP URL.  For a live web, PoseData, Per-frame body-pose landmarks and bounding box., Pipeline, Pipeline: capture -> shared extractors -> scheduled modules -> aggregator.  Vi, Orchestrates capture -> extractors -> scheduler -> aggregator -> advisor each fr, Cadence-aware scheduler.  Each module declares:   interval: minimum seconds b, Stationary D435i guest-zone and capture-quality policy.  This is deliberately a (+13 more)
+Cohesion: 0.09
+Nodes (26): Frame source abstraction: webcam index, video file, or RTSP URL.  For a live web, PoseData, Per-frame body-pose landmarks and bounding box., Pipeline, Pipeline: capture -> shared extractors -> scheduled modules -> aggregator.  Vi, Orchestrates capture -> extractors -> scheduler -> aggregator -> advisor each fr, discover(), Import every submodule of `modules/` so @register decorators run. (+18 more)
 
 ### Community 110 - "PoseExtractor"
 Cohesion: 0.11
@@ -448,8 +447,8 @@ Cohesion: 0.29
 Nodes (7): Architecture, Core abstractions, Data flow, Entry points & config, Package map, Threading model (important), Verification & docs guardrail
 
 ### Community 135 - "gait.py"
-Cohesion: 0.07
-Nodes (23): Balance, Standing balance / postural sway., Bradykinesia, Bradykinesia (slowness of movement) screening., Drowsiness, Drowsiness: eye-aspect-ratio, PERCLOS, blink rate, microsleep., EyeMovement, Gaze direction and involuntary eye oscillation (nystagmus) screening. (+15 more)
+Cohesion: 0.06
+Nodes (27): Balance, Standing balance / postural sway., Bradykinesia, Bradykinesia (slowness of movement) screening., Run this detector on the current frame; return Result(s) or None., Drowsiness, Drowsiness: eye-aspect-ratio, PERCLOS, blink rate, microsleep., EyeMovement (+19 more)
 
 ### Community 136 - "yawn.py"
 Cohesion: 0.06
@@ -504,8 +503,8 @@ Cohesion: 0.29
 Nodes (4): ndarray, Periodically summarize how the staleness guard is behaving —         reveals wh, Runs on the camera's reader thread for every raw captured frame.         Kept l, True current frame-difference motion energy, computed on the         reader thr
 
 ### Community 151 - "PoseExtractor"
-Cohesion: 0.21
-Nodes (9): discover(), Import every submodule of `modules/` so @register decorators run., Runs each module at its declared cadence when its required inputs are present., Advance one step: update state and act if warranted., Scheduler, main(), Exercise pose-dependent modules by injecting synthetic pose landmarks.  The synt, 33x4 pose landmarks; add a fast wrist tremor + walking ankle motion. (+1 more)
+Cohesion: 0.29
+Nodes (4): PoseExtractor, MediaPipe PoseLandmarker extractor; fills ctx.pose once per frame., Extract features from the frame and populate the shared context., Release any resources (models, threads, sockets) held here.
 
 ### Community 152 - "Attention"
 Cohesion: 0.33
@@ -531,10 +530,6 @@ Nodes (4): Wandering / pacing detection (disorientation, agitation).  Method: tr
 Cohesion: 0.40
 Nodes (3): BodyEstimate, Rough body-build proxy (shoulder-to-hip / width-to-height)., Run this detector on the current frame; return Result(s) or None.
 
-### Community 160 - "unresponsive.py"
-Cohesion: 0.29
-Nodes (4): Prolonged immobility / unresponsiveness detection.  Method: track scene motion, Prolonged immobility / unresponsiveness detection., Run this detector on the current frame; return Result(s) or None., Unresponsive
-
 ## Knowledge Gaps
 - **149 isolated node(s):** `$schema`, `plugin`, `Usage`, `What graphify is for`, `Step 0 - GitHub repos and multi-path merge (only if a URL or several paths)` (+144 more)
   These have ≤1 connection - possible missing edges or undocumented components.
@@ -543,10 +538,10 @@ Nodes (4): Prolonged immobility / unresponsiveness detection.  Method: track sce
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `FrameContext` connect `AgeEstimation` to `Framework & Context Core`, `Unresponsive`, `classical_talking_gate_test.py`, `dry_lips.py`, `Context & Safety Modules`, `Skin Color Analysis`, `gait.py`, `Emotion`, `yawn.py`, `Sneeze`, `Tremor`, `emotion.py`, `Age Estimation Module`, `fast_path_test.py`, `Gait`, `FerPlusBackend`, `OneEuroArray`, `Emotion`, `HistoryStore`, `deepface_backend.py`, `._fast_hook`, `PoseExtractor`, `Attention`, `Clothing`, `HeuristicEmotionBackend`, `HSEmotionBackend`, `FacialAsymmetry`, `BodyEstimate`, `.process`, `.face_px`, `._chest_depth`, `unresponsive.py`, `wandering.py`, `Fall`, `EyeRedness`, `Pain`, `Agitation`, `BodyEstimate`, `benchmark_rppg_models.py`, `FacialSwelling`, `DataBus`, `Policy`, `Speaker`, `PoseExtractor`, `.result`, `PoseExtractor`, `FerPlusBackend`, `Severity`, `FacialAsymmetry`, `Gait`, `HazardZones`, `pipeline.py`?**
+- **Why does `FrameContext` connect `AgeEstimation` to `Framework & Context Core`, `Unresponsive`, `classical_talking_gate_test.py`, `dry_lips.py`, `Context & Safety Modules`, `Skin Color Analysis`, `gait.py`, `Emotion`, `yawn.py`, `Sneeze`, `Tremor`, `emotion.py`, `Age Estimation Module`, `fast_path_test.py`, `Gait`, `FerPlusBackend`, `OneEuroArray`, `Emotion`, `HistoryStore`, `deepface_backend.py`, `._fast_hook`, `PoseExtractor`, `Attention`, `Clothing`, `HeuristicEmotionBackend`, `HSEmotionBackend`, `FacialAsymmetry`, `BodyEstimate`, `.process`, `.face_px`, `._chest_depth`, `wandering.py`, `pipeline.py`, `Fall`, `EyeRedness`, `Pain`, `Agitation`, `BodyEstimate`, `benchmark_rppg_models.py`, `FacialSwelling`, `DataBus`, `Policy`, `Speaker`, `PoseExtractor`, `.result`, `PoseExtractor`, `FerPlusBackend`, `Severity`, `FacialAsymmetry`, `Gait`, `HazardZones`?**
   _High betweenness centrality (0.338) - this node is a cross-community bridge._
-- **Why does `Severity` connect `Severity` to `Framework & Context Core`, `Unresponsive`, `Longitudinal Behavior Storage`, `Sneeze`, `Skin Color Analysis`, `gait.py`, `yawn.py`, `Tremor`, `Backend`, `Emotion`, `HistoryStore`, `TopicState`, `Clothing`, `Attention`, `pipeline.py`, `wandering.py`, `BodyEstimate`, `unresponsive.py`, `Weather`, `overlay.py`, `Fall`, `Pain`, `FacialSwelling`, `HeadNod`, `Policy`, `Speaker`, `PoseExtractor`, `UtteranceBus`, `.mood`, `.result`, `PoseExtractor`, `AgeEstimation`, `FacialAsymmetry`, `HazardZones`?**
-  _High betweenness centrality (0.096) - this node is a cross-community bridge._
+- **Why does `Severity` connect `Severity` to `Framework & Context Core`, `Unresponsive`, `Longitudinal Behavior Storage`, `Sneeze`, `Skin Color Analysis`, `gait.py`, `yawn.py`, `Tremor`, `Backend`, `Emotion`, `HistoryStore`, `TopicState`, `Clothing`, `Attention`, `pipeline.py`, `wandering.py`, `BodyEstimate`, `Weather`, `overlay.py`, `Fall`, `Pain`, `FacialSwelling`, `HeadNod`, `Policy`, `Speaker`, `PoseExtractor`, `UtteranceBus`, `.mood`, `.result`, `PoseExtractor`, `AgeEstimation`, `FacialAsymmetry`, `HazardZones`?**
+  _High betweenness centrality (0.097) - this node is a cross-community bridge._
 - **Why does `Camera` connect `emotion.py` to `FacialSwelling`, `EyeRedness`, `Speaker`, `Camera`, `OneEuroArray`, `EyeRedness`, `AgeEstimation`?**
   _High betweenness centrality (0.062) - this node is a cross-community bridge._
 - **Are the 67 inferred relationships involving `FrameContext` (e.g. with `Camera` and `SwitchableCamera`) actually correct?**

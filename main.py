@@ -137,6 +137,9 @@ def main():
                     help="faster-whisper model size for --listen (default base)")
     ap.add_argument("--voice-model", default="gemini-2.5-flash",
                     help="Gemini model for the voice agent (key from .env)")
+    ap.add_argument("--enable-cloud-skin", action="store_true",
+                    help="consent to upload sampled camera stills to the configured "
+                         "NVIDIA skin-screening model for this run")
     ap.add_argument("--webui", action="store_true",
                     help="serve the agent's text on a web page for an iPad "
                          "(prints the URL to open)")
@@ -169,6 +172,8 @@ def main():
                    "min_fps": args.min_fps}
 
     config = load_config()
+    skin_cfg = config.get("modules", {}).get("skin_vision", {})
+    skin_cfg["consent"] = bool(args.enable_cloud_skin)
     if args.no_deepface:
         emotion = config.get("modules", {}).get("emotion", {})
         emotion["backends"] = [b for b in emotion.get("backends", []) if b != "deepface"]
@@ -222,6 +227,7 @@ def main():
 
     def on_frame(ctx, results):
         snapshot = aggregator.snapshot()
+        agent_snapshot = aggregator.agent_snapshot()
 
         # deterministic caregiver alerting (independent of the LLM)
         if alert_mgr is not None:
@@ -231,7 +237,7 @@ def main():
         if force_greet["v"]:
             voice_agent.policy._last_spoken = 0.0   # let 'g' force a line now
             force_greet["v"] = False
-        utterance = voice_agent.tick(snapshot)
+        utterance = voice_agent.tick(agent_snapshot)
         if utterance:
             last_greeting["text"] = utterance
             if web is not None:

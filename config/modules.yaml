@@ -62,6 +62,18 @@ modules:
     enabled: true
   rash:
     enabled: true
+  skin_vision:
+    enabled: true
+    consent: false                 # runtime --enable-cloud-skin is required
+    endpoint: https://integrate.api.nvidia.com/v1/chat/completions
+    model: meta/llama-3.2-11b-vision-instruct
+    scan_interval: 60.0
+    request_timeout: 25.0
+    max_image_dim: 1024
+    jpeg_quality: 85
+    closeup_seconds: 10.0
+    closeup_positioning_delay: 2.0
+    min_confidence: 0.35
   bruise:
     enabled: true
   eye_redness:

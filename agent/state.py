@@ -11,7 +11,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 
-from core.events import Result, Severity
+from core.events import Result, Severity, Visibility
 
 
 @dataclass
@@ -38,6 +38,11 @@ class ObservationMemory:
         """Merge new results into the current person-state."""
         now = time.time() if now is None else now
         for r in snapshot:
+            # Dedicated workflows may consume agent-only data directly from
+            # the current snapshot. Never copy it into general conversation
+            # memory, where it would outlive the result TTL or enter prompts.
+            if r.visibility == Visibility.AGENT_ONLY:
+                continue
             self.latest[(r.module, r.key)] = r
             sig = (r.module, r.key, str(r.value))
             self.first_seen.setdefault(sig, now)

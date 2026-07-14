@@ -209,6 +209,12 @@ class CorroborationEngine:
         """Record that the conclusion line was spoken."""
         self.topics[topic].concluded = True
 
+    def suppress(self, topic: str, now: float) -> None:
+        """Dismiss a topic while a richer flow handles the same observation."""
+        state = self.topics.get(topic)
+        if state is None or state.status not in ("denied", "confirmed"):
+            self.topics[topic] = TopicState(status="denied", answered_at=now)
+
     def status(self, topic: str) -> str | None:
         """Current state of a topic (for dashboards/tests)."""
         st = self.topics.get(topic)

@@ -21,6 +21,7 @@ from agent.state import ObservationMemory
 from agent.policy import Intent, Policy
 from agent.corroboration import CorroborationEngine
 from agent.gemini_client import GeminiClient
+from agent.skin_dialogue import SkinDialogue
 from audio.tts import Speaker
 from core.elicitation import ElicitationState
 
@@ -41,6 +42,7 @@ class VoiceAgent:
         self.speaker = Speaker(enabled=speak)
         self.listener = listener
         self.corroboration = CorroborationEngine(gemini=self.gemini)
+        self.skin_dialogue = SkinDialogue(gemini=self.gemini)
         self.elicitation = ElicitationState.instance()
         self.last_utterance = ""
         self._test_requested = False
@@ -64,21 +66,22 @@ class VoiceAgent:
         """
         if self.listener is None:
             return [], False
-        confirmed = False
+        handled = False
         heard = self.listener.pop_utterances()
         for text, ts in heard:
             self.memory.person_said(text, ts)
-            answered = self.corroboration.hear(text, now)
-            if answered is not None and answered[1] == "confirmed":
-                confirmed = True
+            skin_answered = self.skin_dialogue.hear(text, now)
+            answered = None if skin_answered else self.corroboration.hear(text, now)
+            if skin_answered or answered is not None:
+                handled = True
             low = text.lower()
             if any(t in low for t in _TEST_TRIGGERS):
                 self._test_requested = True
-        return heard, confirmed
+        return heard, handled
 
     # -------------------------------------------------------------- intents
 
-    def _extra_intents(self, now: float, heard: list, confirmed: bool) -> list:
+    def _extra_intents(self, now: float, heard: list, handled: bool) -> list:
         """Candidates from the corroboration/elicitation layers this tick."""
         extra: list[Intent] = []
         self._actions.clear()
@@ -107,8 +110,19 @@ class VoiceAgent:
                     "in one kind sentence; do not diagnose.",
                     str(res.message), str(res.message), 85))
 
-        # 3) Corroboration follow-up question for a flagged low-confidence cue.
-        nq = self.corroboration.next_question(now)
+        # 3) Guided skin close-up, questions, or safe conclusion.
+        skin_prompt = self.skin_dialogue.next_prompt(now)
+        if skin_prompt is not None:
+            extra.append(Intent(
+                skin_prompt.kind, skin_prompt.signature,
+                skin_prompt.instruction, skin_prompt.private_detail,
+                skin_prompt.fallback, skin_prompt.priority))
+            self._actions[skin_prompt.signature] = (
+                lambda p=skin_prompt: self.skin_dialogue.mark_spoken(p, now))
+
+        # 4) Corroboration follow-up question for a flagged low-confidence cue.
+        nq = (None if self.skin_dialogue.suppresses_local_skin(now)
+              else self.corroboration.next_question(now))
         if nq is not None:
             topic, rule = nq
             asks = self.corroboration.topics[topic].asks
@@ -120,7 +134,7 @@ class VoiceAgent:
             self._actions[sig] = (lambda t=topic:
                                   self.corroboration.mark_asked(t, now))
 
-        # 4) Conclusions for topics the person confirmed.
+        # 5) Conclusions for topics the person confirmed.
         for topic, rule in self.corroboration.pending_conclusions():
             sig = f"conclude:{topic}"
             extra.append(Intent(
@@ -131,8 +145,8 @@ class VoiceAgent:
             self._actions[sig] = (lambda t=topic:
                                   self.corroboration.mark_concluded(t))
 
-        # 5) A warm reply to free speech (unless a conclusion IS the reply).
-        if heard and not confirmed:
+        # 6) A warm reply to free speech (unless a health flow handled it).
+        if heard and not handled:
             text, ts = heard[-1]
             extra.append(Intent(
                 "reply", f"reply:{int(ts * 10)}",
@@ -146,6 +160,9 @@ class VoiceAgent:
 
     def reasoning_card(self) -> dict | None:
         """A compact, non-diagnostic explanation for the showcase dashboard."""
+        skin = self.skin_dialogue.reasoning_card()
+        if skin is not None:
+            return skin
         active = [(topic, state) for topic, state in self.corroboration.topics.items()
                   if state.status in ("flagged", "asked", "confirmed", "denied")]
         if not active:
@@ -161,15 +178,26 @@ class VoiceAgent:
     def tick(self, snapshot, now: float | None = None) -> str | None:
         """Advance one step: hear, update state, and act if warranted."""
         now = time.time() if now is None else now
-        heard, confirmed = self._consume_heard(now)
+        heard, handled = self._consume_heard(now)
         self.memory.ingest(snapshot, now)
-        self.corroboration.observe(snapshot, now)
-        extra = self._extra_intents(now, heard, confirmed)
+        self.skin_dialogue.observe(snapshot, now)
+        corroboration_snapshot = snapshot
+        if self.skin_dialogue.suppresses_local_skin(now):
+            self.corroboration.suppress("skin_changes", now)
+            corroboration_snapshot = [
+                r for r in snapshot
+                if not (r.module == "rash" and r.key.startswith("rash"))]
+        self.corroboration.observe(corroboration_snapshot, now)
+        extra = self._extra_intents(now, heard, handled)
         intent = self.policy.next_intent(self.memory, now, extra=extra)
         if intent is None:
             return None
-        text = self.gemini.generate(intent.llm_intent, self.memory.context_text(),
-                                    intent.detail) or intent.fallback
+        generated = self.gemini.generate(intent.llm_intent,
+                                         self.memory.context_text(), intent.detail)
+        if intent.signature.startswith("skin:"):
+            text = self.skin_dialogue.safe_speech(generated, intent.fallback)
+        else:
+            text = generated or intent.fallback
         self.policy.mark_spoken(intent, now)
         action = self._actions.get(intent.signature)
         if action is not None:

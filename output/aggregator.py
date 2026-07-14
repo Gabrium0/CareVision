@@ -12,7 +12,7 @@ from __future__ import annotations
 import statistics
 from collections import deque
 
-from core.events import Result, Severity
+from core.events import Result, Severity, Visibility
 
 
 class Aggregator:
@@ -43,19 +43,31 @@ class Aggregator:
             if k not in self.state:
                 self._hist.pop(k, None)
 
-    def snapshot(self) -> list[Result]:
-        """Return the current list of live (non-expired) results."""
-        return list(self.state.values())
+    def snapshot(self, include_agent_only: bool = False) -> list[Result]:
+        """Return live public results, optionally including agent-only data."""
+        values = list(self.state.values())
+        if include_agent_only:
+            return values
+        return [r for r in values if r.visibility == Visibility.PUBLIC]
+
+    def agent_snapshot(self) -> list[Result]:
+        """Return the internal snapshot intended only for the voice agent."""
+        return self.snapshot(include_agent_only=True)
 
     def by_severity(self, minimum: Severity) -> list[Result]:
         """Return live results at or above a severity, most-severe first."""
         order = {Severity.INFO: 0, Severity.NOTICE: 1,
                  Severity.WARNING: 2, Severity.ALERT: 3}
         cutoff = order[minimum]
-        return sorted([r for r in self.state.values() if order[r.severity] >= cutoff],
+        return sorted([r for r in self.snapshot() if order[r.severity] >= cutoff],
                       key=lambda r: (order[r.severity], r.confidence), reverse=True)
 
-    def get(self, module: str, key: str) -> Result | None:
-        """Return the latest result for (module, key), or a default."""
+    def get(self, module: str, key: str,
+            include_agent_only: bool = False) -> Result | None:
+        """Return the latest public result, or an internal one when requested."""
         r = self.state.get((module, key))
-        return r if (r and not r.expired) else None
+        if not r or r.expired:
+            return None
+        if r.visibility == Visibility.AGENT_ONLY and not include_agent_only:
+            return None
+        return r

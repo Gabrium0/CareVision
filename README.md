@@ -24,6 +24,7 @@ python main.py                       # default webcam; Camera + Data windows
 python main.py --source clip.mp4     # run on a video file
 python main.py --combined            # old single-window overlay instead
 python main.py --headless --name Margaret   # no window; prints greetings/alerts
+python main.py --enable-cloud-skin    # opt in to NVIDIA skin screening
 ```
 Windowed controls: `q` quit · `g` force a greeting · `c` switch camera (see below).
 
@@ -164,6 +165,22 @@ Camera ─▶ Extractors ─▶ Scheduler(modules) ─▶ Aggregator ─▶ Gree
   grooming).
 - **`config/modules.yaml`** — enable/disable and tune every module.
 
+### Opt-in NVIDIA skin screening
+
+Set `NVIDIA_API_KEY` in `.env`, then add `--enable-cloud-skin` for each run in
+which the person has consented to upload occasional camera stills. Without that
+flag, the `skin_vision` module never makes a network request even when a key is
+configured. The model and endpoint are configurable under `skin_vision` in
+`config/modules.yaml`.
+
+Screening runs in the background about once per minute. A possible whole-frame
+observation causes the companion to request a closer view; only the close-up
+can create a public, non-diagnostic skin-change result. Possible condition
+names remain private agent context used to phrase follow-up questions. A
+speech guard replaces any generated line that names or implies a condition
+with a reviewed neutral fallback. Image results alone never trigger caregiver
+alerts.
+
 ## Add or change a module
 1. Drop `modules/my_thing.py`:
    ```python
@@ -190,12 +207,13 @@ python tests/make_clip.py           # write a synthetic video
 python main.py --source tests/synthetic_clip.mp4 --headless --max-frames 80
 ```
 
-## Module catalogue (34)
+## Module catalogue (35)
 Vitals: `heart_rate` (+HRV), `respiration`.
 Clothing/weather: `weather`, `clothing`, `clothing_advice`.
 Skin/face: `skin_color` (pallor/flushing/cyanosis/jaundice; chroma samples are
 temporally pooled — see below), `rash`, `bruise`, `eye_redness`, `sweating`,
-`dry_lips`, `facial_asymmetry` (regional: mouth/eye/brow/cheek-edge, each with
+`dry_lips`, `skin_vision` (opt-in NVIDIA whole-body screen + guided close-up),
+`facial_asymmetry` (regional: mouth/eye/brow/cheek-edge, each with
 its own baseline — only mouth/eye can escalate to ALERT), `facial_swelling`
 (features pooled the same way to damp small-face landmark jitter).
 Motor/neuro: `tremor`, `gait`, `balance`, `bradykinesia`, `masked_face`,
@@ -222,6 +240,8 @@ frame otherwise degrade color and geometry signals:
   isn't diluted by an unrelated symmetric region.
 
 ## Privacy note
-Designed to run fully on-device. The SQLite store keeps only numeric signal
-summaries, not video. If you add cloud features, get informed consent — this is
-sensitive health data about a vulnerable person.
+The default pipeline and SQLite store keep only numeric signal summaries, not
+video. `skin_vision` is the explicit exception: with `--enable-cloud-skin`, it
+sends sampled in-memory JPEG stills to the configured NVIDIA endpoint and does
+not save them locally. Obtain informed consent before enabling it; camera
+imagery and inferred health information are sensitive data.

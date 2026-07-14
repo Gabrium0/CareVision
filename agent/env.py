@@ -30,3 +30,9 @@ def gemini_api_key() -> str | None:
     """Return the Gemini API key from the environment, or None."""
     load_env()
     return os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+
+
+def nvidia_api_key() -> str | None:
+    """Return the NVIDIA hosted-inference API key, or None."""
+    load_env()
+    return os.environ.get("NVIDIA_API_KEY")

@@ -15,6 +15,12 @@ class Severity(Enum):
     ALERT = "alert"        # urgent (fall, unresponsiveness, stroke signs)
 
 
+class Visibility(Enum):
+    """Controls which consumers may receive a result."""
+    PUBLIC = "public"
+    AGENT_ONLY = "agent_only"
+
+
 @dataclass
 class Result:
     """A single detection outcome.
@@ -26,6 +32,7 @@ class Result:
     severity:   how the aggregator/greeting engine should treat it
     message:    human-readable one-liner for overlays and logs
     ttl:        seconds this result stays valid in the aggregator
+    visibility: public by default; agent_only never reaches UI/alerts/history
     """
     module: str
     key: str
@@ -34,6 +41,7 @@ class Result:
     severity: Severity = Severity.INFO
     message: str = ""
     ttl: float = 10.0
+    visibility: Visibility = Visibility.PUBLIC
     timestamp: float = field(default_factory=time.time)
 
     @property
