@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from core.events import Result, Severity
+from agent.multimodal_reasoning import MultimodalReasoner
+from agent.routines import RoutineReasoner
 
 
 _ORDER = {Severity.INFO: 0, Severity.NOTICE: 1, Severity.WARNING: 2, Severity.ALERT: 3}
@@ -259,6 +261,11 @@ class AdvisorEngine:
         if cold_cfg.get("enabled", True):
             params = {k: v for k, v in cold_cfg.items() if k != "enabled"}
             advisors.append(ColdSymptomAdvisor(**params))
+        advisors.append(MultimodalReasoner())
+        routine_cfg = cfg.get("routine", {}) or {}
+        if routine_cfg.get("enabled", True):
+            advisors.append(RoutineReasoner(**{k: v for k, v in routine_cfg.items()
+                                               if k != "enabled"}))
         return cls(advisors=advisors)
 
     def evaluate(self, snapshot: list[Result], now: float | None = None) -> list[Result]:
@@ -270,5 +277,8 @@ class AdvisorEngine:
         detector_snapshot = [r for r in snapshot if not r.module.endswith("_advice")]
         out: list[Result] = []
         for advisor in self.advisors:
-            out.extend(advisor.evaluate(detector_snapshot, now))
+            try:
+                out.extend(advisor.evaluate(detector_snapshot, now))
+            except TypeError:
+                out.extend(advisor.evaluate(detector_snapshot))
         return out

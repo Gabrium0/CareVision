@@ -2,6 +2,12 @@
 # Each key is a registered module name; params besides `enabled` are passed
 # to the module constructor.
 
+camera:
+  location: unspecified       # living_room | kitchen | entryway | bedroom
+
+tracking:
+  enabled: false              # opt in with --enable-multi-person
+
 modules:
   # --- Vitals ---
   heart_rate:
@@ -74,6 +80,27 @@ modules:
     closeup_seconds: 10.0
     closeup_positioning_delay: 2.0
     min_confidence: 0.35
+  scene_vision:
+    enabled: true
+    consent: false
+    endpoint: https://integrate.api.nvidia.com/v1/chat/completions
+    model: meta/llama-3.2-11b-vision-instruct
+    scan_interval: 90.0
+    request_timeout: 25.0
+    location: unspecified
+    window_frames: 3
+    window_spacing: 0.5
+  guided_assessments:
+    enabled: true
+  replay_events:
+    enabled: true
+  multi_person:
+    enabled: false
+  routine:
+    enabled: false
+    location: unspecified
+  near_fall:
+    enabled: true
   bruise:
     enabled: true
   eye_redness:
@@ -209,3 +236,19 @@ advice:
     interval: 60.0
     sneeze_count: 2            # sneezes/10min that trigger alone
     face_touch_count: 4        # touches/10min that count as a signal
+  routine:
+    enabled: true
+    interval: 30.0
+    summary_hour: 20
+
+sensors:
+  realsense_depth_imu: {enabled: false}
+  ble_heart_rate: {enabled: false}
+  pulse_oximeter: {enabled: false}
+  smart_scale: {enabled: false}
+  ble_blood_pressure: {enabled: false}
+  thermal: {enabled: false}
+  environment: {enabled: false}
+  door: {enabled: false}
+  bed_pressure: {enabled: false}
+  appliance: {enabled: false}

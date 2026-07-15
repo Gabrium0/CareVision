@@ -15,16 +15,20 @@ never dies, matching `Camera._apply_switch`'s revert contract.
 """
 from __future__ import annotations
 
+import threading
 from typing import Callable, Iterator, Optional
 
 from .camera import Camera
 from .context import FrameContext
 from .realsense_camera import RealSenseCamera, is_realsense_source
+from .replay import ReplayCamera
 
 
 def make_backend(source, opts: dict | None = None):
     """Build the raw backend for a source: RealSense or UVC/file Camera."""
     opts = opts or {}
+    if isinstance(source, str) and source.startswith("replay:"):
+        return ReplayCamera(source=source, **opts)
     if is_realsense_source(source):
         return RealSenseCamera(source=source, **opts)
     return Camera(source=source, **opts)
@@ -42,11 +46,25 @@ class SwitchableCamera:
         self.inner = make_backend(source, opts)
         self._hooks: list[Callable] = []
         self._cross_pending: Optional[tuple] = None
+        self._switch_lock = threading.Lock()
 
     @property
     def current_fps(self) -> float:
         """Delivered fps of the active backend."""
         return self.inner.current_fps
+
+    def latest_frame(self):
+        """Return the active backend's newest frame for live preview."""
+        with self._switch_lock:
+            inner = self.inner
+        getter = getattr(inner, "latest_frame", None)
+        return getter() if getter is not None else None
+
+    def diagnostics(self) -> dict:
+        with self._switch_lock:
+            inner = self.inner
+        getter = getattr(inner, "diagnostics", None)
+        return getter() if getter is not None else {"backend": type(inner).__name__}
 
     def register_fast_hook(self, hook: Callable) -> None:
         """Register on the facade so hooks survive backend swaps."""
@@ -56,10 +74,15 @@ class SwitchableCamera:
     def switch_to(self, source, opts: dict | None = None) -> None:
         """Same-type switches ride the backend's own path; cross-type ones
         are queued for the frames loop (never swapped from a UI thread)."""
-        if is_realsense_source(source) == isinstance(self.inner, RealSenseCamera):
+        target_replay = isinstance(source, str) and source.startswith("replay:")
+        if target_replay or isinstance(self.inner, ReplayCamera):
+            with self._switch_lock:
+                self._cross_pending = (source, opts or {})
+        elif is_realsense_source(source) == isinstance(self.inner, RealSenseCamera):
             self.inner.switch_to(source, opts)
         else:
-            self._cross_pending = (source, opts or {})
+            with self._switch_lock:
+                self._cross_pending = (source, opts or {})
 
     def _apply_cross_switch(self) -> None:
         """Release the old backend first, then open the new one.  Opening
@@ -68,9 +91,10 @@ class SwitchableCamera:
         internal webcam and an external RealSense).  If the new backend
         fails to open, we try to restore the old one — it was just
         released so it should be available again."""
-        source, opts = self._cross_pending
-        self._cross_pending = None
-        old = self.inner
+        with self._switch_lock:
+            source, opts = self._cross_pending
+            self._cross_pending = None
+            old = self.inner
         old.release()
         new = make_backend(source, opts)
         try:
@@ -80,7 +104,8 @@ class SwitchableCamera:
                   f"restoring {old.source!r}")
             try:
                 old.open()
-                self.inner = old
+                with self._switch_lock:
+                    self.inner = old
                 for hook in self._hooks:
                     old.register_fast_hook(hook)
             except Exception as e2:  # noqa: BLE001
@@ -89,7 +114,8 @@ class SwitchableCamera:
             return
         for hook in self._hooks:
             new.register_fast_hook(hook)
-        self.inner = new
+        with self._switch_lock:
+            self.inner = new
 
     def frames(self) -> Iterator[FrameContext]:
         """Yield from the active backend, swapping backends between yields
@@ -97,12 +123,26 @@ class SwitchableCamera:
         while True:
             for ctx in self.inner.frames():
                 yield ctx
-                if self._cross_pending is not None:
+                with self._switch_lock:
+                    pending = self._cross_pending is not None
+                if pending:
                     break
-            if self._cross_pending is None:
+            with self._switch_lock:
+                pending = self._cross_pending is not None
+            if not pending:
                 return              # genuine end of stream (file done, device dead)
             self._apply_cross_switch()
 
     def release(self) -> None:
         """Release the active backend."""
         self.inner.release()
+
+    def replay_control(self, action: str, value: float | None = None) -> dict:
+        """Forward dashboard controls only when the active source is replay."""
+        if not isinstance(self.inner, ReplayCamera):
+            raise RuntimeError("active source is not a replay")
+        return self.inner.control(action, value)
+
+    def replay_status(self) -> dict | None:
+        """Return active replay state or None for live sources."""
+        return self.inner.status() if isinstance(self.inner, ReplayCamera) else None

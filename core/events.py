@@ -21,6 +21,13 @@ class Visibility(Enum):
     AGENT_ONLY = "agent_only"
 
 
+class PersistencePolicy(Enum):
+    """Whether an observation may be retained beyond its live TTL."""
+    NONE = "none"
+    EVENT = "event"
+    BASELINE = "baseline"
+
+
 @dataclass
 class Result:
     """A single detection outcome.
@@ -43,6 +50,14 @@ class Result:
     ttl: float = 10.0
     visibility: Visibility = Visibility.PUBLIC
     timestamp: float = field(default_factory=time.time)
+    subject_id: str = "primary"
+    source: str = "local"
+    quality: float | None = None
+    location: str | None = None
+    evidence_window: tuple[float, float] | None = None
+    correlation_id: str | None = None
+    conversation_tags: tuple[str, ...] = ()
+    persistence: PersistencePolicy = PersistencePolicy.NONE
 
     @property
     def expired(self) -> bool:

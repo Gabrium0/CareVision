@@ -36,24 +36,32 @@ republishes a fresh face vs. how many fast-path frames were fed/rejected.
 from __future__ import annotations
 
 import threading
+import time
 import traceback
+import uuid
 
 import cv2
 import numpy as np
 
 from .camera import Camera
-from .context import FaceData, FrameContext
+from .context import FaceData, FrameContext, PoseData
 from .debug import enabled as debug_enabled, log as debug_log
 from .events import Result
+from .runtime_metrics import RuntimeMetrics
 from .scheduler import Scheduler
 from .showcase import ShowcaseGate
+from .tracking import AnonymousTracker
+from storage.event_store import EventStore
 
 
 class Pipeline:
     """Orchestrates capture -> extractors -> scheduler -> aggregator -> advisor each frame."""
     def __init__(self, camera: Camera, extractors: list, scheduler: Scheduler,
                  aggregator, advisor_engine=None, max_staleness: float = 0.25,
-                 showcase_gate: ShowcaseGate | None = None):
+                 showcase_gate: ShowcaseGate | None = None,
+                 camera_location: str | None = None,
+                 tracking_enabled: bool = False,
+                 runtime_metrics: RuntimeMetrics | None = None):
         self.camera = camera
         self.extractors = extractors
         self.scheduler = scheduler
@@ -61,7 +69,13 @@ class Pipeline:
         self.advisor_engine = advisor_engine
         self.max_staleness = max_staleness   # seconds; see module docstring
         self.showcase_gate = showcase_gate
+        self.event_store = EventStore.instance()
+        self.tracker = AnonymousTracker()
+        self.camera_location = camera_location
+        self.tracking_enabled = tracking_enabled
+        self.runtime_metrics = runtime_metrics or RuntimeMetrics()
         self._face_lock = threading.Lock()
+        self._stop_requested = threading.Event()
         self._latest_face: FaceData | None = None
         self._latest_face_ts = 0.0
         self._motion_prev: np.ndarray | None = None   # reader-thread-only state
@@ -133,11 +147,13 @@ class Pipeline:
             face, face_ts = self._latest_face, self._latest_face_ts
         diag = debug_enabled("pipeline")
         if face is None:
+            self.runtime_metrics.note_fast_path("no_face")
             if diag:
                 self._diag_no_face += 1
                 self._maybe_log_diag(ts)
             return
         if (ts - face_ts) > self.max_staleness:
+            self.runtime_metrics.note_fast_path("stale")
             if diag:
                 self._diag_stale += 1
                 self._maybe_log_diag(ts)
@@ -163,11 +179,42 @@ class Pipeline:
             except Exception:  # noqa: BLE001
                 print(f"[pipeline] module '{module.name}' fast_update raised:")
                 traceback.print_exc()
+        self.runtime_metrics.note_fast_path("fed")
 
     def process_frame(self, ctx: FrameContext) -> list[Result]:
         """Run extractors, modules, and the advisor for one frame."""
+        started = time.perf_counter()
         for ex in self.extractors:
             ex.extract(ctx)
+        boxes = [p["bbox"] for p in ctx.extras.get("poses", [])]
+        if not boxes:
+            boxes = [f["bbox"] for f in ctx.extras.get("faces", [])]
+        ctx.extras["tracks"] = self.tracker.update(boxes, ctx.w, ctx.h, ctx.timestamp)
+        if self.tracking_enabled and ctx.extras["tracks"]:
+            primary = next((t for t in ctx.extras["tracks"] if t["primary"]), None)
+            if primary is None:
+                # Do not let an anonymous visitor contaminate primary state while
+                # the configured primary is absent or assignment is ambiguous.
+                ctx.pose = None
+                ctx.face = None
+                ctx.person_present = False
+            else:
+                def overlap(a, b):
+                    ix = max(0, min(a[2], b[2]) - max(a[0], b[0]))
+                    iy = max(0, min(a[3], b[3]) - max(a[1], b[1]))
+                    return ix * iy
+                pose_item = max(ctx.extras.get("poses", []),
+                                key=lambda p: overlap(primary["bbox"], p["bbox"]), default=None)
+                face_item = max(ctx.extras.get("faces", []),
+                                key=lambda f: overlap(primary["bbox"], f["bbox"]), default=None)
+                if pose_item is not None:
+                    ctx.pose = PoseData(pose_item["landmarks"], pose_item["bbox"])
+                if face_item is not None:
+                    x1, y1, x2, y2 = face_item["bbox"]
+                    ctx.face = FaceData(face_item["landmarks"], face_item["bbox"],
+                                        ctx.frame[y1:y2, x1:x2],
+                                        face_item["landmarks"].shape[0] >= 478)
+                ctx.person_present = ctx.pose is not None or ctx.face is not None
         showcase_results = self.showcase_gate.assess(ctx) if self.showcase_gate else []
         if self.showcase_gate is not None:
             self._fast_capture_ready = bool(ctx.extras["showcase"]["stable"])
@@ -187,18 +234,38 @@ class Pipeline:
         if self.showcase_gate is not None:
             results = [r for r in results if self.showcase_gate.allow(r.module, ctx)]
         results = showcase_results + results
+        if self.camera_location:
+            for result in results:
+                if result.location is None:
+                    result.location = self.camera_location
+        for result in results:
+            if result.persistence.value != "none" and result.correlation_id is None:
+                result.correlation_id = uuid.uuid4().hex
+        for result in results:
+            try:
+                self.event_store.record_result(result)
+            except (TypeError, ValueError) as exc:
+                print(f"[events] refused unsafe {result.module}.{result.key}: {exc}")
         self.aggregator.ingest(results)
         if self.advisor_engine is not None:
             advice = self.advisor_engine.evaluate(self.aggregator.snapshot())
             if advice:
+                for result in advice:
+                    self.event_store.record_result(result)
                 self.aggregator.ingest(advice)
                 results.extend(advice)
+        source_index = int(ctx.extras.get("capture_index", ctx.frame_index))
+        self.runtime_metrics.note_analysis(
+            source_index, (time.perf_counter() - started) * 1000.0)
         return results
 
     def run(self, on_frame=None, max_frames: int | None = None) -> None:
         """on_frame(ctx, results) -> bool; return False to stop."""
+        self._stop_requested.clear()
         try:
             for ctx in self.camera.frames():
+                if self._stop_requested.is_set():
+                    break
                 results = self.process_frame(ctx)
                 if on_frame is not None and on_frame(ctx, results) is False:
                     break
@@ -214,3 +281,7 @@ class Pipeline:
                 close = getattr(module, "close", None)
                 if close:
                     close()
+
+    def request_stop(self) -> None:
+        """Ask an asynchronously running pipeline loop to stop cleanly."""
+        self._stop_requested.set()

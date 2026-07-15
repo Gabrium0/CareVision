@@ -18,7 +18,7 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
-from core.events import Severity
+from core.events import Severity, Visibility
 
 _W = 760
 _BG = (28, 28, 30)
@@ -167,12 +167,21 @@ def _render_clothing_weather(img, snapshot, y: int) -> int:
     return y + 4
 
 
-def render(snapshot, fps: float, greeting: str | None = None, reasoning: dict | None = None):
+def render(snapshot, fps: float, greeting: str | None = None, reasoning: dict | None = None,
+           performance: dict | None = None):
     """Render the data window image for the snapshot."""
+    snapshot = [r for r in snapshot if r.visibility == Visibility.PUBLIC]
     MAX_H = 920
     img = np.full((MAX_H, _W, 3), _BG, np.uint8)
     _text(img, "ELDERLY CARE MONITOR — LIVE DATA", 16, 30, 0.62, (255, 255, 255), 2)
-    _text(img, f"{fps:4.1f} fps   {len(snapshot)} live signals", 16, 52, 0.45, (150, 150, 150))
+    perf = performance or {}
+    if perf:
+        fps_line = (f"capture {perf.get('capture_fps', fps):4.1f}  "
+                    f"preview {perf.get('preview_fps', 0):4.1f}  "
+                    f"analysis {perf.get('analysis_fps', 0):4.1f} fps")
+    else:
+        fps_line = f"{fps:4.1f} fps"
+    _text(img, f"{fps_line}   {len(snapshot)} live signals", 16, 52, 0.45, (150, 150, 150))
     cv2.line(img, (16, 64), (_W - 16, 64), (70, 70, 72), 1)
 
     groups = _parse_comparisons(snapshot)
@@ -258,11 +267,13 @@ def render(snapshot, fps: float, greeting: str | None = None, reasoning: dict | 
 
 
 def to_payload(snapshot, fps: float = 0.0, greeting: str | None = None,
-               reasoning: dict | None = None) -> dict:
+               reasoning: dict | None = None, system: dict | None = None,
+               performance: dict | None = None) -> dict:
     """JSON-safe dict mirroring the rendered window, for the /data web endpoint.
 
     Reuses the same grouping helpers as render() so the web view matches the
     window exactly (single source of truth)."""
+    snapshot = [r for r in snapshot if r.visibility == Visibility.PUBLIC]
     groups = _parse_comparisons(snapshot)
     compared_keys = {(m, f"{metric}_{b}")
                      for (m, metric), bes in groups.items() for b in bes}
@@ -303,11 +314,17 @@ def to_payload(snapshot, fps: float = 0.0, greeting: str | None = None,
     rows = [r for r in snapshot
             if r.message and (r.module, r.key) not in compared_keys]
     rows.sort(key=lambda r: (_SEV_ORDER[r.severity], r.confidence), reverse=True)
-    signals = [{"conf": round(float(r.confidence), 2), "message": r.message,
-                "severity": r.severity.value} for r in rows]
+    signals = [{"conf": round(float(r.confidence), 2),
+                "quality": (round(float(r.quality), 2) if r.quality is not None else None),
+                "message": r.message, "severity": r.severity.value,
+                "subject_id": r.subject_id, "source": r.source,
+                "location": r.location} for r in rows]
+    tracks_result = next((r for r in snapshot
+                          if r.module == "multi_person" and r.key == "tracks"), None)
 
     return {
         "fps": round(float(fps), 1),
+        "performance": performance or {"capture_fps": round(float(fps), 1)},
         "count": len(snapshot),
         "greeting": (greeting.split("\n")[0] if greeting else None),
         "comparison": comparison,
@@ -315,5 +332,7 @@ def to_payload(snapshot, fps: float = 0.0, greeting: str | None = None,
         "advice": (str(advice_r.value) if advice_r else None),
         "fatigue": fatigue,
         "signals": signals,
+        "tracks": tracks_result.value if tracks_result is not None else [],
         "reasoning": reasoning,
+        "system": system or {},
     }

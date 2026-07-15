@@ -13,7 +13,7 @@ _COLORS = {
 }
 
 
-def draw_boxes(frame, ctx, fps: float):
+def draw_boxes(frame, ctx, fps: float, performance: dict | None = None):
     """Lightweight camera overlay: face/pose boxes + fps only. All textual
     data lives in the separate dashboard window (output/dashboard.py)."""
     if ctx.face is not None:
@@ -22,7 +22,10 @@ def draw_boxes(frame, ctx, fps: float):
     if ctx.pose is not None:
         x1, y1, x2, y2 = ctx.pose.bbox
         cv2.rectangle(frame, (x1, y1), (x2, y2), (220, 120, 0), 1)
-    cv2.putText(frame, f"{fps:4.1f} fps", (10, 22),
+    perf = performance or {}
+    label = (f"C {perf.get('capture_fps', fps):.1f}  P {perf.get('preview_fps', 0):.1f}  "
+             f"A {perf.get('analysis_fps', 0):.1f} fps" if perf else f"{fps:4.1f} fps")
+    cv2.putText(frame, label, (10, 22),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1)
     return frame
 

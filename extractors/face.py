@@ -11,6 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
+import cv2
 import mediapipe as mp
 from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision
@@ -23,10 +24,11 @@ _MODEL = Path(__file__).resolve().parent.parent / "models" / "face_landmarker.ta
 
 class FaceExtractor:
     """MediaPipe FaceLandmarker extractor; fills ctx.face once per frame."""
-    def __init__(self, smooth: bool = True):
+    def __init__(self, smooth: bool = True, input_width: int = 960):
         # One-Euro de-jitter on face landmarks steadies emotion/asymmetry/EAR;
         # face motion is low-frequency so this does not blur any measured signal.
         self._smoother = OneEuroArray(mincutoff=1.5, beta=0.05) if smooth else None
+        self.input_width = max(320, int(input_width))
         if not _MODEL.exists():
             raise FileNotFoundError(
                 f"Missing {_MODEL}. Download face_landmarker.task from "
@@ -43,13 +45,26 @@ class FaceExtractor:
 
     def extract(self, ctx: FrameContext) -> None:
         """Extract features from the frame and populate the shared context."""
-        rgb = np.ascontiguousarray(ctx.frame[:, :, ::-1])
+        source = ctx.frame
+        if ctx.w > self.input_width:
+            scale = self.input_width / ctx.w
+            source = cv2.resize(ctx.frame, (self.input_width, max(1, int(ctx.h * scale))))
+        rgb = np.ascontiguousarray(source[:, :, ::-1])
         mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
         ts_ms = int(ctx.timestamp * 1000)
         out = self.landmarker.detect_for_video(mp_img, ts_ms)
         if not out.face_landmarks:
             return
         ctx.extras["face_count"] = len(out.face_landmarks)
+        ctx.extras["faces"] = []
+        for raw in out.face_landmarks:
+            raw_pts = np.array([[p.x, p.y, p.z] for p in raw], dtype=np.float32)
+            raw_px = raw_pts[:, :2] * np.array([ctx.w, ctx.h])
+            ax1, ay1 = raw_px.min(axis=0).astype(int)
+            ax2, ay2 = raw_px.max(axis=0).astype(int)
+            ctx.extras["faces"].append({"bbox": (max(0, ax1), max(0, ay1),
+                                                    min(ctx.w, ax2), min(ctx.h, ay2)),
+                                         "landmarks": raw_pts})
         # Select the closest-looking (largest image area) face, but preserve
         # the count so the showcase gate can reject competing guests.
         lm = max(out.face_landmarks,

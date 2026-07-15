@@ -1,0 +1,19 @@
+{
+  "healthy_greeting": {"duration": 3, "events": [{"at": 0.1, "module": "presence", "key": "present", "value": true, "message": "Person present"}]},
+  "sit_to_stand": {"duration": 45, "pose_profile": "sit_to_stand", "events": [{"at": 0.1, "module": "assessment_request", "key": "protocol", "value": "sit_to_stand", "message": "Start sit-to-stand replay"}, {"at": 22, "type": "answer", "text": "No discomfort"}, {"at": 32, "type": "answer", "text": "No recent change"}, {"at": 42, "type": "answer", "text": "No warning signs"}]},
+  "timed_up_and_go": {"duration": 34, "pose_profile": "timed_up_and_go", "events": [{"at": 0.1, "module": "assessment_request", "key": "protocol", "value": "timed_up_and_go", "message": "Start Timed Up and Go replay"}]},
+  "tremor_arm_drift": {"duration": 14, "pose_profile": "arm_drift", "events": [{"at": 0.1, "module": "assessment_request", "key": "protocol", "value": "arm_drift", "message": "Start arm-drift replay"}]},
+  "finger_tapping": {"duration": 14, "pose_profile": "finger_tapping", "events": [{"at": 0.1, "module": "assessment_request", "key": "protocol", "value": "finger_tapping", "message": "Start finger-tapping replay"}]},
+  "balance": {"duration": 19, "pose_profile": "balance", "events": [{"at": 0.1, "module": "assessment_request", "key": "protocol", "value": "balance", "message": "Start balance replay"}]},
+  "guided_gait": {"duration": 24, "pose_profile": "guided_gait", "events": [{"at": 0.1, "module": "assessment_request", "key": "protocol", "value": "guided_gait", "message": "Start gait replay"}]},
+  "facial_movement": {"duration": 14, "face_profile": "facial_movement", "events": [{"at": 0.1, "module": "assessment_request", "key": "protocol", "value": "facial_movement", "message": "Start facial movement replay"}]},
+  "read_aloud": {"duration": 24, "events": [{"at": 0.1, "module": "assessment_request", "key": "protocol", "value": "read_aloud", "message": "Start read-aloud replay"}, {"at": 2, "type": "answer", "text": "The quick brown fox jumps over the lazy dog", "metrics": {"duration": 3.2, "words_per_minute": 169, "pauses": 0, "baseline_change": 0.02, "quality": 0.95}}]},
+  "guided_breathing": {"duration": 24, "pose_profile": "guided_breathing", "events": [{"at": 0.1, "module": "assessment_request", "key": "protocol", "value": "guided_breathing", "message": "Start breathing replay"}]},
+  "cough_followup": {"duration": 5, "events": [{"at": 0.1, "type": "audio", "synthetic": "cough", "seed": 1}, {"at": 1.2, "type": "audio", "synthetic": "cough", "seed": 2}, {"at": 1.3, "module": "sound_event", "key": "cough", "value": 2, "confidence": 0.9, "message": "Repeated cough-like sounds"}, {"at": 2, "type": "answer", "text": "Yes I feel unwell"}]},
+  "near_fall_recovery": {"duration": 5, "pose_profile": "near_fall", "events": []},
+  "skin_closeup": {"duration": 5, "events": [{"at": 0.1, "module": "skin_vision", "key": "feature", "value": "visible skin color change", "message": "Skin close-up fixture"}]},
+  "meal_hydration": {"duration": 5, "events": [{"at": 0.1, "module": "scene_vision", "key": "activities", "value": ["drinking", "eating"], "message": "Meal and drink visible"}]},
+  "kitchen_spill": {"duration": 5, "events": [{"at": 0.1, "module": "scene_vision", "key": "hazards", "value": ["possible floor spill"], "severity": "notice", "location": "kitchen", "message": "Possible floor spill"}]},
+  "visitor": {"duration": 8, "pose_profile": "balance", "people": 2, "events": [{"at": 0.1, "module": "multi_person", "key": "scenario", "value": "visitor", "message": "Anonymous visitor enters beside the primary person", "subject_id": "track-2"}]},
+  "wearable_thermal": {"duration": 5, "events": [{"at": 0.1, "type": "sensor", "key": "heart_rate_bpm", "value": 72, "unit": "bpm"}, {"at": 0.2, "type": "sensor", "key": "skin_temperature_c", "value": 36.7, "unit": "C"}]}
+}

@@ -83,7 +83,8 @@ class UtteranceBus:
             return [it for it in self._items if it["seq"] > last_seq]
 
 
-def _make_handler(bus: UtteranceBus, data_bus: DataBus):
+def _make_handler(bus: UtteranceBus, data_bus: DataBus, control_handler=None,
+                  primary_handler=None):
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
 
@@ -133,6 +134,37 @@ def _make_handler(bus: UtteranceBus, data_bus: DataBus):
                 self._stream_data()
             else:
                 self._send(code=404, body=b"not found")
+
+        def do_POST(self):
+            """Accept a narrow local replay-control API; no other mutation is exposed."""
+            path = urlparse(self.path).path
+            if path not in ("/replay-control", "/primary-control"):
+                self._send(code=404, body=b"not found")
+                return
+            try:
+                length = min(2048, int(self.headers.get("Content-Length", "0")))
+                request = json.loads(self.rfile.read(length).decode("utf-8"))
+                if path == "/primary-control":
+                    if primary_handler is None:
+                        raise RuntimeError("anonymous tracking is not enabled")
+                    track_id = str(request.get("track_id", ""))
+                    if not track_id or not primary_handler(track_id):
+                        raise ValueError("track is not currently assignable")
+                    self._send(ctype="application/json",
+                               body=json.dumps({"ok": True, "track_id": track_id}).encode())
+                    return
+                if control_handler is None:
+                    raise RuntimeError("active source is not a replay")
+                action = str(request.get("action", ""))
+                if action not in ("pause", "resume", "restart", "seek", "speed"):
+                    raise ValueError("unsupported action")
+                value = request.get("value")
+                result = control_handler(action, None if value is None else float(value))
+                body = json.dumps({"ok": True, "replay": result}).encode()
+                self._send(ctype="application/json", body=body)
+            except (ValueError, TypeError, RuntimeError, json.JSONDecodeError) as exc:
+                self._send(code=400, ctype="application/json",
+                           body=json.dumps({"ok": False, "error": str(exc)}).encode())
 
         def _stream_events(self):
             self.send_response(200)
@@ -203,7 +235,8 @@ def _lan_ips() -> list[str]:
 class CompanionServer:
     """Local web server: companion text at / and full telemetry at /data."""
     def __init__(self, port: int = 8770, host: str = "0.0.0.0",
-                 data_hz: float = 2.0):
+                 data_hz: float = 2.0, control_handler=None,
+                 primary_handler=None):
         self.port = port
         self.host = host
         self.bus = UtteranceBus()
@@ -212,11 +245,15 @@ class CompanionServer:
         self._last_data_push = 0.0
         self._httpd: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
+        self.control_handler = control_handler
+        self.primary_handler = primary_handler
 
     def start(self) -> None:
         """Start the HTTP server on a background daemon thread."""
         self._httpd = ThreadingHTTPServer((self.host, self.port),
-                                          _make_handler(self.bus, self.data_bus))
+                                          _make_handler(self.bus, self.data_bus,
+                                                        self.control_handler,
+                                                        self.primary_handler))
         self._httpd.daemon_threads = True
         self._thread = threading.Thread(target=self._httpd.serve_forever,
                                         daemon=True)
@@ -233,14 +270,16 @@ class CompanionServer:
         self.bus.publish(text)
 
     def publish_data(self, snapshot, fps: float = 0.0, greeting: str | None = None,
-                     reasoning: dict | None = None) -> None:
+                     reasoning: dict | None = None, system: dict | None = None,
+                     performance: dict | None = None) -> None:
         """Push the full telemetry payload to /data, throttled to data_hz."""
         now = time.time()
         if now - self._last_data_push < self._data_min_gap:
             return
         self._last_data_push = now
         from output import dashboard
-        self.data_bus.publish(dashboard.to_payload(snapshot, fps, greeting, reasoning))
+        self.data_bus.publish(dashboard.to_payload(snapshot, fps, greeting, reasoning,
+                                                   system, performance))
 
     def stop(self) -> None:
         """Shut the server down and release its socket."""

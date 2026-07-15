@@ -24,11 +24,20 @@ from agent.gemini_client import GeminiClient
 from agent.skin_dialogue import SkinDialogue
 from audio.tts import Speaker
 from core.elicitation import ElicitationState
+from core.workflows import WorkflowEngine, WorkflowStage
+from assessments import PROTOCOLS
+from storage.event_store import EventStore
+from core.events import PersistencePolicy, Result, Severity
 
 _TEST_TRIGGERS = ("check my hand", "check my tremor", "test my hand",
                   "test my tremor", "am i shaking", "tremor test",
                   "check my hands", "test my hands")
 _HOLD_STILL_SECONDS = 10.0     # ~2 s to comply + 8 s of sampling
+_ASSESSMENT_QUESTIONS = {
+    "symptoms": "Did you notice any discomfort, weakness, dizziness, or other symptoms during that?",
+    "progression": "Has this movement or task changed recently compared with what is normal for you?",
+    "warning_signs": "Are you feeling suddenly unwell, faint, confused, or having trouble speaking right now?",
+}
 
 
 class VoiceAgent:
@@ -37,6 +46,7 @@ class VoiceAgent:
                  model: str = "gemini-2.5-flash", listener=None,
                  **policy_kwargs):
         self.memory = ObservationMemory(name=name)
+        self.memories: dict[str, ObservationMemory] = {"primary": self.memory}
         self.policy = Policy(**policy_kwargs)
         self.gemini = GeminiClient(model=model)
         self.speaker = Speaker(enabled=speak)
@@ -44,9 +54,13 @@ class VoiceAgent:
         self.corroboration = CorroborationEngine(gemini=self.gemini)
         self.skin_dialogue = SkinDialogue(gemini=self.gemini)
         self.elicitation = ElicitationState.instance()
+        self.workflows = WorkflowEngine.instance()
+        self.events = EventStore.instance()
         self.last_utterance = ""
         self._test_requested = False
         self._actions: dict = {}       # intent signature -> post-speech callback
+        self._safety_results: list[Result] = []
+        self._conversation_results: list[Result] = []
         mode = "Gemini" if self.gemini.available else "templated"
         ears = "listening" if (listener is not None and
                                getattr(listener, "available", False)) else "speak-only"
@@ -54,7 +68,10 @@ class VoiceAgent:
 
     def request_test(self, test: str = "hold_still") -> None:
         """Queue a scripted test (the 't' hotkey path)."""
-        self._test_requested = True
+        if test in PROTOCOLS:
+            self.workflows.start(test)
+        else:
+            self._test_requested = True
 
     # ---------------------------------------------------------------- ears
 
@@ -70,14 +87,57 @@ class VoiceAgent:
         heard = self.listener.pop_utterances()
         for text, ts in heard:
             self.memory.person_said(text, ts)
+            active_workflow = self.workflows.active("primary")
+            if active_workflow is not None:
+                low_answer = text.lower().strip()
+                response = ("denied" if any(word in low_answer.split() for word in ("no", "nope", "none"))
+                            else "affirmed" if any(word in low_answer.split() for word in ("yes", "yeah", "yep"))
+                            else "unclear")
+                if (active_workflow.stage == WorkflowStage.QUESTIONS
+                        and active_workflow.current_topic is not None):
+                    answered_topic = active_workflow.current_topic
+                    action = self.workflows.answer(response, active_workflow.subject_id)
+                    handled = True
+                    if response in ("affirmed", "denied") and answered_topic:
+                        self._conversation_results.append(Result(
+                            "conversation", f"{answered_topic}_{'confirmed' if response == 'affirmed' else 'denied'}",
+                            True, 1.0, Severity.INFO,
+                            f"User {'confirmed' if response == 'affirmed' else 'denied'} {answered_topic.replace('_', ' ')}",
+                            ttl=120, subject_id=active_workflow.subject_id,
+                            source="user_answer", correlation_id=active_workflow.correlation_id,
+                            persistence=PersistencePolicy.EVENT))
+                    if action == "suppressed":
+                        self.policy.attention.deny(active_workflow.current_topic or "assessment")
             skin_answered = self.skin_dialogue.hear(text, now)
             answered = None if skin_answered else self.corroboration.hear(text, now)
+            if answered is not None and answered[1] in ("confirmed", "denied"):
+                topic, verdict = answered
+                self._conversation_results.append(Result(
+                    "conversation", f"{topic}_{verdict}", True, 1.0, Severity.INFO,
+                    f"User {verdict} {topic.replace('_', ' ')}", ttl=120,
+                    source="user_answer", persistence=PersistencePolicy.EVENT))
             if skin_answered or answered is not None:
                 handled = True
             low = text.lower()
+            if any(phrase in low for phrase in ("help me", "call for help", "call emergency")):
+                self._safety_results.append(Result(
+                    "explicit_help", "call_for_help", True, .95, Severity.ALERT,
+                    "The person explicitly called for help", ttl=20,
+                    source="speech_recognition", quality=.95,
+                    persistence=PersistencePolicy.EVENT))
             if any(t in low for t in _TEST_TRIGGERS):
                 self._test_requested = True
         return heard, handled
+
+    def pop_safety_results(self) -> list[Result]:
+        """Drain deterministic non-medical safety events recognized from speech."""
+        out, self._safety_results = self._safety_results, []
+        return out
+
+    def pop_conversation_results(self) -> list[Result]:
+        """Drain public-safe answer classifications for deterministic fusion."""
+        out, self._conversation_results = self._conversation_results, []
+        return out
 
     # -------------------------------------------------------------- intents
 
@@ -85,6 +145,54 @@ class VoiceAgent:
         """Candidates from the corroboration/elicitation layers this tick."""
         extra: list[Intent] = []
         self._actions.clear()
+
+        workflow = self.workflows.active("primary")
+        if workflow is not None and workflow.stage == WorkflowStage.INSTRUCTION:
+            protocol = PROTOCOLS[workflow.protocol]
+            sig = f"workflow:{workflow.correlation_id}:instruction"
+            extra.append(Intent("instruction", sig,
+                "Briefly explain this is a non-diagnostic measurement, then give the instruction.",
+                f"Protocol: {workflow.protocol}. Instruction: {protocol.instruction}",
+                protocol.instruction, 110, health_prompt=False, topic=workflow.protocol))
+            self._actions[sig] = lambda p=protocol: self.workflows.transition(
+                WorkflowStage.POSITIONING, message=p.instruction)
+        if workflow is not None and workflow.message and workflow.stage.value in ("positioning", "sampling"):
+            sig = f"workflow:{workflow.correlation_id}:{workflow.stage.value}"
+            extra.append(Intent("instruction", sig,
+                "Explain briefly why this non-diagnostic assessment needs this position, then give the instruction.",
+                f"Protocol: {workflow.protocol}. Stage: {workflow.stage.value}. Instruction: {workflow.message}",
+                workflow.message, 92, health_prompt=False, topic=workflow.protocol))
+        if workflow is not None and workflow.stage == WorkflowStage.QUESTIONS:
+            if self.listener is None:
+                sig = f"workflow-conclusion:{workflow.correlation_id}"
+                extra.append(Intent("conclusion", sig,
+                    "State the neutral assessment summary and explain that no diagnosis was made.",
+                    workflow.score_summary, workflow.score_summary, 94,
+                    health_prompt=False, topic=workflow.protocol))
+                self._actions[sig] = lambda: self.workflows.conclude("primary")
+            elif workflow.current_topic and workflow.unclear_rephrased:
+                topic = workflow.current_topic
+                question = _ASSESSMENT_QUESTIONS.get(topic, "Could you tell me a little more about how that felt?")
+                sig = f"workflow-rephrase:{workflow.correlation_id}:{topic}"
+                extra.append(Intent("question", sig,
+                    "Rephrase this once in plain neutral language: " + question, "", question, 95,
+                    health_prompt=False, topic=topic))
+            elif workflow.current_topic is None:
+                topic = self.workflows.peek_question("primary")
+                if topic is not None:
+                    question = _ASSESSMENT_QUESTIONS.get(topic, "How did that task feel for you?")
+                    sig = f"workflow-question:{workflow.correlation_id}:{topic}"
+                    extra.append(Intent("question", sig,
+                        "Ask this approved neutral follow-up exactly in meaning: " + question,
+                        "", question, 95, health_prompt=False, topic=topic))
+                    self._actions[sig] = lambda: self.workflows.next_question("primary")
+                else:
+                    sig = f"workflow-conclusion:{workflow.correlation_id}"
+                    extra.append(Intent("conclusion", sig,
+                        "State the neutral assessment summary and explain that no diagnosis was made.",
+                        workflow.score_summary, workflow.score_summary, 94,
+                        health_prompt=False, topic=workflow.protocol))
+                    self._actions[sig] = lambda: self.workflows.conclude("primary")
 
         # 1) Scripted tremor test: speak the instruction, then open the window.
         if self._test_requested and not self.elicitation.active(now=now):
@@ -166,7 +274,13 @@ class VoiceAgent:
         active = [(topic, state) for topic, state in self.corroboration.topics.items()
                   if state.status in ("flagged", "asked", "confirmed", "denied")]
         if not active:
-            return None
+            workflow = self.workflows.active("primary")
+            if workflow is None:
+                return None
+            return {"observed": f"assessment requested: {workflow.protocol}",
+                    "question": workflow.message or "Waiting for the next assessment stage",
+                    "answer": workflow.stage.value,
+                    "suggestion": "Positioning and quality are verified before scoring."}
         topic, state = max(active, key=lambda item: item[1].flagged_at)
         rule = self.corroboration.rules[topic]
         suggestion = rule.conclusion if state.status == "confirmed" else None
@@ -180,6 +294,19 @@ class VoiceAgent:
         now = time.time() if now is None else now
         heard, handled = self._consume_heard(now)
         self.memory.ingest(snapshot, now)
+        grouped: dict[str, list] = {}
+        for result in snapshot:
+            grouped.setdefault(result.subject_id, []).append(result)
+        for subject_id, subject_results in grouped.items():
+            if subject_id == "primary":
+                continue
+            memory = self.memories.setdefault(subject_id, ObservationMemory(name="anonymous visitor"))
+            memory.ingest(subject_results, now)
+        for result in snapshot:
+            if result.module == "assessment_request" and result.key == "protocol" \
+                    and str(result.value) in PROTOCOLS:
+                self.workflows.start(str(result.value), subject_id=result.subject_id,
+                                     correlation_id=result.correlation_id)
         self.skin_dialogue.observe(snapshot, now)
         corroboration_snapshot = snapshot
         if self.skin_dialogue.suppresses_local_skin(now):
@@ -189,7 +316,9 @@ class VoiceAgent:
                 if not (r.module == "rash" and r.key.startswith("rash"))]
         self.corroboration.observe(corroboration_snapshot, now)
         extra = self._extra_intents(now, heard, handled)
-        intent = self.policy.next_intent(self.memory, now, extra=extra)
+        intent = self.policy.next_intent(
+            self.memory, now, extra=extra,
+            suppress_routine=self.workflows.active("primary") is not None)
         if intent is None:
             return None
         generated = self.gemini.generate(intent.llm_intent,
@@ -199,12 +328,21 @@ class VoiceAgent:
         else:
             text = generated or intent.fallback
         self.policy.mark_spoken(intent, now)
+        active_workflow = self.workflows.active("primary")
         action = self._actions.get(intent.signature)
         if action is not None:
             action()
+        if active_workflow is not None and intent.kind == "conclusion":
+            self.events.record_recommendation(
+                active_workflow.protocol, text,
+                subject_id=active_workflow.subject_id,
+                correlation_id=active_workflow.correlation_id)
         self.memory.agent_said(text, now)
         self.last_utterance = text
         self.speaker.say(text)
+        mark_spoke = getattr(self.listener, "mark_agent_spoke", None)
+        if mark_spoke is not None:
+            mark_spoke(now)
         return text
 
     def close(self) -> None:

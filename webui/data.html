@@ -36,6 +36,8 @@
   .greeting { margin-top:20px; padding-top:10px; border-top:1px solid var(--line); color:#bfe3bf; }
   .s-info{color:var(--info)} .s-notice{color:var(--notice)} .s-warning{color:var(--warning)} .s-alert{color:var(--alert);font-weight:700}
   .empty { color:var(--dim); font-style:italic; }
+  button { background:#24313a; color:var(--fg); border:1px solid #40515d;
+    border-radius:5px; padding:6px 10px; margin:3px; cursor:pointer; }
 </style>
 </head>
 <body>
@@ -58,7 +60,10 @@
 
   function render(d){
     if(!d){ return; }
-    fpsEl.textContent = (d.fps ?? '–') + ' fps';
+    const p = d.performance || {};
+    fpsEl.textContent = p.preview_fps == null
+      ? (d.fps ?? '–') + ' fps'
+      : `capture ${p.capture_fps ?? '–'} / preview ${p.preview_fps} / analysis ${p.analysis_fps} fps`;
     countEl.textContent = d.count ?? 0;
     const H = [];
 
@@ -89,7 +94,27 @@
     H.push('<h2>Signals</h2>');
     if(!d.signals || !d.signals.length){ H.push('<p class="empty">none</p>'); }
     else for(const s of d.signals)
-      H.push(`<div class="sig"><span class="conf">[${s.conf.toFixed(2)}]</span><span class="s-${s.severity}">${esc(s.message)}</span></div>`);
+      H.push(`<div class="sig"><span class="conf">c:${s.conf.toFixed(2)}${s.quality==null?'':' q:'+s.quality.toFixed(2)}</span><span class="s-${s.severity}">${esc(s.message)}${s.location?' Â· '+esc(s.location):''}${s.subject_id!=='primary'?' Â· '+esc(s.subject_id):''}</span></div>`);
+
+    const sys=d.system||{};
+    H.push('<h2>Capabilities and consent</h2><div class="grid">');
+    for(const c of (sys.capabilities||[])) H.push(`<div class="kv"><span class="k">${esc(c.name)}</span><span class="v">${esc(c.status)}</span></div>`);
+    for(const [k,v] of Object.entries(sys.consent||{})) H.push(`<div class="kv"><span class="k">${esc(k)}</span><span class="v">${v?'enabled':'off'}</span></div>`);
+    H.push('</div><h2>Active assessments</h2>');
+    if(!(sys.workflows||[]).length) H.push('<p class="empty">none</p>');
+    for(const w of (sys.workflows||[])) H.push(`<div class="sig"><span class="conf">${esc(w.stage)}</span>${esc(w.protocol)} â€” ${Math.round((w.progress||0)*100)}% â€” quality ${w.quality??'â€“'}</div>`);
+    H.push('<h2>Event and conversation timeline</h2>');
+    if(!(sys.timeline||[]).length) H.push('<p class="empty">no retained summaries</p>');
+    for(const e of (sys.timeline||[]).slice(-30)) H.push(`<div class="sig"><span class="conf">${esc(e.kind)}</span>${esc(e.module||e.source||'system')} ${esc(JSON.stringify(e.payload))}</div>`);
+    if((d.tracks||[]).length){
+      H.push('<h2>Anonymous track assignment</h2>');
+      for(const t of d.tracks) H.push(`<div class="sig"><span class="conf">${esc(t.track_id)}</span>${esc(t.subject_id)}${t.primary?' Â· primary':''}${t.ambiguous?' Â· ambiguous':''}${t.primary?'':` <button onclick="setPrimary('${esc(t.track_id)}')">Set primary</button>`}</div>`);
+    }
+    if(sys.replay){
+      const r=typeof sys.replay==='object'?sys.replay:{scenario:sys.replay};
+      H.push(`<div class="advice">Replay: ${esc(r.scenario)} Â· ${esc(r.position??0)}/${esc(r.duration??'?')}s Â· ${esc(r.speed??1)}x</div>`);
+      H.push('<div><button onclick="replay(\'pause\')">Pause</button><button onclick="replay(\'resume\')">Resume</button><button onclick="replay(\'restart\')">Restart</button><button onclick="replay(\'speed\',0.5)">0.5Ã—</button><button onclick="replay(\'speed\',1)">1Ã—</button><button onclick="replay(\'speed\',2)">2Ã—</button></div>');
+    }
 
     if(d.reasoning){
       H.push('<h2>Conversation reasoning</h2>');
@@ -111,6 +136,14 @@
       es.onerror = ()=>conn(false);
     }catch(_){ startPoll(); }
   }
+  window.replay=async function(action,value){
+    await fetch('/replay-control',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action,value})});
+  };
+  window.setPrimary=async function(track_id){
+    await fetch('/primary-control',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({track_id})});
+  };
   function startPoll(){
     setInterval(async ()=>{
       try{ const r = await fetch('/data-latest',{cache:'no-store'}); const d = await r.json();

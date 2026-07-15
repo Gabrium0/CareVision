@@ -1,0 +1,3 @@
+# Optional YAMNet general sound-event backend. The app self-disables without it.
+tensorflow>=2.16
+tensorflow-hub>=0.16

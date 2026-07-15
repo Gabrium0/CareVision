@@ -8,6 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
+import cv2
 import mediapipe as mp
 from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision
@@ -28,7 +29,8 @@ L_ANKLE, R_ANKLE = 27, 28
 
 class PoseExtractor:
     """MediaPipe PoseLandmarker extractor; fills ctx.pose once per frame."""
-    def __init__(self):
+    def __init__(self, input_width: int = 960):
+        self.input_width = max(320, int(input_width))
         if not _MODEL.exists():
             raise FileNotFoundError(
                 f"Missing {_MODEL}. Download pose_landmarker_lite.task from "
@@ -45,13 +47,28 @@ class PoseExtractor:
 
     def extract(self, ctx: FrameContext) -> None:
         """Extract features from the frame and populate the shared context."""
-        rgb = np.ascontiguousarray(ctx.frame[:, :, ::-1])
+        source = ctx.frame
+        if ctx.w > self.input_width:
+            scale = self.input_width / ctx.w
+            source = cv2.resize(ctx.frame, (self.input_width, max(1, int(ctx.h * scale))))
+        rgb = np.ascontiguousarray(source[:, :, ::-1])
         mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
         ts_ms = int(ctx.timestamp * 1000)
         out = self.landmarker.detect_for_video(mp_img, ts_ms)
         if not out.pose_landmarks:
             return
         ctx.extras["pose_count"] = len(out.pose_landmarks)
+        ctx.extras["poses"] = []
+        for raw in out.pose_landmarks:
+            raw_pts = np.array([[p.x, p.y, p.z, p.visibility] for p in raw], dtype=np.float32)
+            visible = raw_pts[:, 3] > 0.5
+            if visible.sum() >= 4:
+                raw_px = raw_pts[visible, :2] * np.array([ctx.w, ctx.h])
+                ax1, ay1 = raw_px.min(axis=0).astype(int)
+                ax2, ay2 = raw_px.max(axis=0).astype(int)
+                ctx.extras["poses"].append({"bbox": (max(0, ax1), max(0, ay1),
+                                                       min(ctx.w, ax2), min(ctx.h, ay2)),
+                                             "landmarks": raw_pts})
         lm = max(out.pose_landmarks,
                  key=lambda pts: (max(p.x for p in pts) - min(p.x for p in pts)) *
                                   (max(p.y for p in pts) - min(p.y for p in pts)))

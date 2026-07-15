@@ -83,6 +83,21 @@ class Camera:
         """Smoothed delivered fps, readable from other threads/modules."""
         return self._fps_smooth
 
+    def latest_frame(self) -> Optional[tuple[int, np.ndarray, float]]:
+        """Return the newest captured frame for a non-consuming preview."""
+        with self._latest_lock:
+            if self._latest_frame is None or self._latest_ts is None:
+                return None
+            return self._latest_index, self._latest_frame, self._latest_ts
+
+    def diagnostics(self) -> dict:
+        with self._latest_lock:
+            frame = self._latest_frame
+            resolution = ([int(frame.shape[1]), int(frame.shape[0])]
+                          if frame is not None else None)
+        return {"backend": "uvc", "resolution": resolution,
+                "depth_available": False, "requested_fps": self.request_fps}
+
     def register_fast_hook(self, hook: Callable[[np.ndarray, float], None]) -> None:
         """Register `hook(frame, timestamp)` to run on the reader thread for
         every captured frame (webcam sources only), ahead of the slower
@@ -422,8 +437,10 @@ class Camera:
                 time.sleep(0.001)
                 continue
             last_seen = idx
-            yield FrameContext(frame=frame, timestamp=ts, frame_index=out_idx,
+            ctx = FrameContext(frame=frame, timestamp=ts, frame_index=out_idx,
                                fps=self._fps_smooth)
+            ctx.extras["capture_index"] = idx
+            yield ctx
             out_idx += 1
 
     def _frames_sync(self) -> Iterator[FrameContext]:

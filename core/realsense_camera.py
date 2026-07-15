@@ -52,7 +52,8 @@ class RealSenseCamera:
 
     def __init__(self, source: str = "realsense", target_width: int = 960,
                  request_fps: float = 30.0, request_size: tuple = (1280, 720),
-                 emitter: bool = True, **_unused):
+                 emitter: bool = True, auto_resolution: bool = False,
+                 min_fps: float = 25.0, **_unused):
         # **_unused swallows UVC-only camera_opts (lock/exposure/gain...) so
         # main.py can pass one opts dict to whichever backend gets built.
         self.source = source
@@ -60,6 +61,8 @@ class RealSenseCamera:
         self.request_fps = request_fps
         self.request_size = request_size
         self.emitter = emitter
+        self.auto_resolution = auto_resolution
+        self.min_fps = min_fps
         self._rs = None                      # pyrealsense2 module, set in open()
         self._pipe = None                    # color+depth rs.pipeline
         self._align = None
@@ -77,12 +80,60 @@ class RealSenseCamera:
         self._reader_stop = threading.Event()
         self._latest_lock = threading.Lock()
         self._latest: Optional[tuple] = None   # (frame, depth, ts, index)
+        self._selected_profile: dict = {}
         self._pending: Optional[tuple] = None
 
     @property
     def current_fps(self) -> float:
         """Smoothed delivered fps, readable from other threads/modules."""
         return self._fps_smooth
+
+    def latest_frame(self) -> Optional[tuple[int, np.ndarray, float]]:
+        """Return the newest captured color frame without consuming it."""
+        with self._latest_lock:
+            if self._latest is None:
+                return None
+            frame, _depth, ts, index = self._latest
+            return index, frame, ts
+
+    def diagnostics(self) -> dict:
+        return {"backend": "realsense", **self._selected_profile,
+                "depth_available": self._depth_available,
+                "requested_fps": self.request_fps}
+
+    @staticmethod
+    def rank_profile_candidates(color_profiles: set[tuple[int, int, int]],
+                                depth_profiles: set[tuple[int, int, int]],
+                                requested_size: tuple[int, int], requested_fps: int,
+                                auto_resolution: bool = True) -> list[tuple]:
+        """Rank independent color/depth profiles, preferring depth then pixels."""
+        fps_order = [requested_fps, 30, 60, 90, 15, 6]
+        fps_order = list(dict.fromkeys(fps_order))
+        colors = [p for p in color_profiles if auto_resolution or p[:2] == requested_size]
+        colors.sort(key=lambda p: (fps_order.index(p[2]) if p[2] in fps_order else 99,
+                                   -(p[0] * p[1])))
+        paired, color_only = [], []
+        for cw, ch, fps in colors:
+            depths = [p for p in depth_profiles if p[2] == fps]
+            depths.sort(key=lambda p: (abs((p[0] / max(p[1], 1)) - (cw / max(ch, 1))),
+                                       -(p[0] * p[1])))
+            if depths:
+                dw, dh, _ = depths[0]
+                paired.append(("color+depth", cw, ch, dw, dh, fps))
+            color_only.append(("color-only", cw, ch, None, None, fps))
+        # Accuracy first: retain depth before spending pixels on color alone.
+        return paired + color_only
+
+    @staticmethod
+    def _measure_pipe_fps(pipe, samples: int = 12) -> float:
+        """Measure an already-started SDK pipeline after a short warm-up."""
+        for _ in range(3):
+            pipe.wait_for_frames(timeout_ms=5000)
+        started = time.perf_counter()
+        for _ in range(samples):
+            pipe.wait_for_frames(timeout_ms=5000)
+        elapsed = time.perf_counter() - started
+        return samples / elapsed if elapsed > 0 else 0.0
 
     def register_fast_hook(self, hook: Callable[[np.ndarray, float], None]) -> None:
         """Register `hook(frame, timestamp)` to run on the reader thread for
@@ -150,53 +201,58 @@ class RealSenseCamera:
                 if p.stream_type() == rs.stream.color and p.format() == rs.format.bgr8:
                     color_profiles.add((vp.width(), vp.height(), vp.fps()))
 
-        # Candidates: best resolution first, prefer requested fps, then 30, then 60
-        all_res = {(w, h) for w, h, _ in color_profiles | depth_profiles}
-        target_resolutions = []
-        # Always try the requested resolution first
-        target_resolutions.append((requested_w, requested_h))
-        # Then step down through common D435i resolutions
-        for res in sorted(all_res, key=lambda r: r[0] * r[1], reverse=True):
-            if res != (requested_w, requested_h) and res not in target_resolutions:
-                target_resolutions.append(res)
-
-        fps_preference = [requested_fps, 30, 60, 90, 15, 6]
-
-        # Build candidate (color, depth) pairs
-        candidates = []
-        for w, h in target_resolutions:
-            for fps in fps_preference:
-                color_ok = (w, h, fps) in color_profiles
-                depth_ok = (w, h, fps) in depth_profiles
-                if color_ok and depth_ok:
-                    candidates.append(("color+depth", w, h, fps))
-                elif color_ok:
-                    candidates.append(("color-only", w, h, fps))
+        candidates = self.rank_profile_candidates(
+            color_profiles, depth_profiles, (requested_w, requested_h),
+            requested_fps, self.auto_resolution)
 
         if not candidates:
             raise RuntimeError(
                 "RealSense device has no compatible color stream profiles")
 
-        self._pipe = rs.pipeline()
         last_err = None
-        for mode, w, h, fps in candidates:
+        measured_fps = None
+        fallback = None
+        threshold = max(float(self.min_fps), 0.95 * requested_fps)
+        for mode, w, h, dw, dh, fps in candidates:
             cfg = rs.config()
             cfg.enable_stream(rs.stream.color, w, h, rs.format.bgr8, fps)
             if mode == "color+depth":
-                cfg.enable_stream(rs.stream.depth, w, h, rs.format.z16, fps)
+                cfg.enable_stream(rs.stream.depth, dw, dh, rs.format.z16, fps)
+            candidate_pipe = rs.pipeline()
             try:
-                profile = self._pipe.start(cfg)
-                self._depth_available = (mode == "color+depth")
-                break
+                candidate_profile = candidate_pipe.start(cfg)
+                candidate_measured = (self._measure_pipe_fps(candidate_pipe)
+                                      if self.auto_resolution else float(fps))
+                if not self.auto_resolution or candidate_measured >= threshold:
+                    self._pipe, profile = candidate_pipe, candidate_profile
+                    measured_fps = candidate_measured
+                    self._depth_available = (mode == "color+depth")
+                    break
+                if fallback is None:
+                    fallback = (mode, w, h, dw, dh, fps, candidate_measured)
+                candidate_pipe.stop()
             except Exception as e:  # noqa: BLE001
                 last_err = e
+                try:
+                    candidate_pipe.stop()
+                except Exception:  # noqa: BLE001
+                    pass
                 continue
         else:
-            self._pipe = None
-            raise RuntimeError(
-                f"Cannot open RealSense device: none of the "
-                f"{len(candidates)} tried configurations worked "
-                f"(last error: {last_err})")
+            if fallback is None:
+                self._pipe = None
+                raise RuntimeError(
+                    f"Cannot open RealSense device: none of the "
+                    f"{len(candidates)} tried configurations worked "
+                    f"(last error: {last_err})")
+            mode, w, h, dw, dh, fps, measured_fps = fallback
+            cfg = rs.config()
+            cfg.enable_stream(rs.stream.color, w, h, rs.format.bgr8, fps)
+            if mode == "color+depth":
+                cfg.enable_stream(rs.stream.depth, dw, dh, rs.format.z16, fps)
+            self._pipe = rs.pipeline()
+            profile = self._pipe.start(cfg)
+            self._depth_available = (mode == "color+depth")
 
         self._align = rs.align(rs.stream.color)
         depth_sensor = profile.get_device().first_depth_sensor()
@@ -216,9 +272,19 @@ class RealSenseCamera:
                                        ppx=intr.ppx * s, ppy=intr.ppy * s)
         self._start_motion_pipe(rs)
         depth_tag = "color+depth" if self._depth_available else "color-only"
-        print(f"[realsense] {depth_tag} {intr.width}x{intr.height}@{fps}fps, "
+        depth_profile = (f", depth={dw}x{dh}" if self._depth_available else "")
+        print(f"[realsense] {depth_tag} color={intr.width}x{intr.height}{depth_profile} "
+              f"@{fps}fps (measured={measured_fps:.1f}), "
               f"depth_scale={self._depth_scale:.4f} m/unit, "
               f"delivered_width={int(intr.width * s)}")
+        self._selected_profile = {
+            "resolution": [int(intr.width * s), int(intr.height * s)],
+            "native_color_resolution": [intr.width, intr.height],
+            "selected_fps": fps,
+            "measured_fps": round(float(measured_fps), 1),
+            "native_depth_resolution": ([dw, dh] if self._depth_available else None),
+            "mode": depth_tag,
+        }
 
     def _start_motion_pipe(self, rs) -> None:
         """Best-effort gyro stream -> smoothed `ego_motion` magnitude. The
@@ -335,11 +401,13 @@ class RealSenseCamera:
                 time.sleep(0.001)
                 continue
             frame, dep, ts, last_seen = latest
-            yield FrameContext(frame=frame, timestamp=ts, frame_index=out_idx,
+            ctx = FrameContext(frame=frame, timestamp=ts, frame_index=out_idx,
                                fps=self._fps_smooth, depth=dep,
                                depth_scale=self._depth_scale,
                                intrinsics=self._intrinsics,
                                ego_motion=self._ego_motion)
+            ctx.extras["capture_index"] = last_seen
+            yield ctx
             out_idx += 1
 
     def release(self) -> None:

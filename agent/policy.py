@@ -16,6 +16,7 @@ from dataclasses import dataclass
 
 from core.events import Severity
 from agent.state import ObservationMemory
+from agent.attention import AttentionPlanner
 
 _ORDER = {Severity.INFO: 0, Severity.NOTICE: 1, Severity.WARNING: 2, Severity.ALERT: 3}
 
@@ -29,6 +30,12 @@ class Intent:
     detail: str          # facts for the LLM
     fallback: str        # templated line if no LLM
     priority: int
+    confidence: float = 1.0
+    quality: float = 1.0
+    novelty: float = 1.0
+    health_prompt: bool | None = None
+    topic: str | None = None
+    severity_score: float = 0.0
 
 
 _SMALL_TALK = [
@@ -49,6 +56,7 @@ class Policy:
         self._spoken: dict[str, float] = {}
         self._greeted_for: float | None = None
         self._small_talk_idx = 0
+        self.attention = AttentionPlanner(health_prompt_gap=60.0)
 
     def _fresh(self, sig: str, now: float) -> bool:
         last = self._spoken.get(sig)
@@ -75,7 +83,9 @@ class Policy:
                     "observation", sig,
                     "Gently mention what you noticed about their clothing "
                     "versus the weather and offer a suggestion.",
-                    str(adv.value), str(adv.value), 60))
+                    str(adv.value), str(adv.value), 60,
+                    confidence=adv.confidence, quality=adv.quality,
+                    severity_score=float(_ORDER[adv.severity])))
 
         vitals = mem.get("vitals_advice", "recommendation")
         if vitals is not None and _ORDER[vitals.severity] >= _ORDER[Severity.NOTICE]:
@@ -85,7 +95,9 @@ class Policy:
                     "observation", sig,
                     "Gently mention the health observation without diagnosing, "
                     "and suggest a calm check-in or rest.",
-                    str(vitals.value), str(vitals.value), 65))
+                    str(vitals.value), str(vitals.value), 65,
+                    confidence=vitals.confidence, quality=vitals.quality,
+                    severity_score=float(_ORDER[vitals.severity])))
 
         # discomfort / pain
         pain = mem.get("pain", "pain")
@@ -93,7 +105,9 @@ class Policy:
             cands.append(Intent(
                 "observation", "pain",
                 "Gently ask if they are comfortable or in any discomfort.",
-                str(pain.message), "You look a little uncomfortable — are you okay?", 70))
+                str(pain.message), "You look a little uncomfortable — are you okay?", 70,
+                confidence=pain.confidence, quality=pain.quality,
+                severity_score=float(_ORDER[pain.severity])))
 
         # tiredness
         per = mem.get("drowsiness", "perclos")
@@ -101,7 +115,9 @@ class Policy:
             cands.append(Intent(
                 "observation", "tired",
                 "Kindly note they seem tired and suggest a rest if they'd like.",
-                str(per.message), "You seem a little tired — a short rest might feel good.", 50))
+                str(per.message), "You seem a little tired — a short rest might feel good.", 50,
+                confidence=per.confidence, quality=per.quality,
+                severity_score=float(_ORDER[per.severity])))
 
         # low mood
         if mem.mood() == "low" and self._fresh("mood", now):
@@ -120,7 +136,8 @@ class Policy:
         return cands
 
     def next_intent(self, mem: ObservationMemory, now: float | None = None,
-                    extra: list[Intent] | None = None) -> Intent | None:
+                    extra: list[Intent] | None = None,
+                    suppress_routine: bool = False) -> Intent | None:
         """Pick the highest-priority thing to say now, or None.
 
         `extra` lets the corroboration/elicitation layers inject their own
@@ -135,11 +152,12 @@ class Policy:
                      if c.kind in ("reply", "conclusion")
                      and self._fresh(c.signature, now)]
         else:
-            cands = [c for c in self._candidates(mem, now) + list(extra or [])
+            routine = [] if suppress_routine else self._candidates(mem, now)
+            cands = [c for c in routine + list(extra or [])
                      if c.kind == "greeting" or self._fresh(c.signature, now)]
         if not cands:
             return None
-        return max(cands, key=lambda c: c.priority)
+        return self.attention.choose(cands, now)
 
     def mark_spoken(self, intent: Intent, now: float | None = None) -> None:
         """Record that an intent was spoken (for no-repeat/cadence)."""

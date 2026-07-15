@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import json
 import re
+import uuid
 import urllib.error
 import urllib.request
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -22,9 +23,11 @@ import numpy as np
 from agent.env import nvidia_api_key
 from core.context import FrameContext
 from core.elicitation import ElicitationState
-from core.events import Severity, Visibility
+from core.events import PersistencePolicy, Severity, Visibility
 from core.registry import register
 from modules.base import DetectionModule
+from integrations.nvidia_vlm import NvidiaVLMClient, NvidiaVLMError
+from core.capabilities import CapabilityRegistry, CapabilityStatus
 
 
 _FEATURES = {
@@ -175,6 +178,9 @@ class SkinVision(DetectionModule):
     def __init__(self, **params):
         super().__init__(**params)
         self._key = nvidia_api_key()
+        self._client = NvidiaVLMClient(self._key or "", self.endpoint, self.model,
+                                       float(self.request_timeout), int(self.max_image_dim),
+                                       int(self.jpeg_quality))
         self._executor = ThreadPoolExecutor(max_workers=1,
                                             thread_name_prefix="skin-vision")
         self._pending: Future | None = None
@@ -188,13 +194,20 @@ class SkinVision(DetectionModule):
         self._sampling_closeup = False
         self._best_frame: np.ndarray | None = None
         self._best_sharpness = -1.0
+        self._correlation_id: str | None = None
         self._elicitation = ElicitationState.instance()
         if self.consent and self._key:
             print(f"[skin-vision] cloud screening enabled (model {self.model})")
+            CapabilityRegistry.instance().set("nvidia_skin", "cloud",
+                                               CapabilityStatus.READY, "consented background VLM")
         elif self.consent:
             print("[skin-vision] consent given but NVIDIA_API_KEY is missing; disabled")
+            CapabilityRegistry.instance().set("nvidia_skin", "cloud",
+                                               CapabilityStatus.UNAVAILABLE, "credential unavailable")
         else:
             print("[skin-vision] cloud screening disabled (use --enable-cloud-skin)")
+            CapabilityRegistry.instance().set("nvidia_skin", "cloud",
+                                               CapabilityStatus.UNAVAILABLE, "consent off")
 
     @property
     def available(self) -> bool:
@@ -202,19 +215,7 @@ class SkinVision(DetectionModule):
         return bool(self.consent and self._key and self.endpoint and self.model)
 
     def _encode(self, frame: np.ndarray) -> bytes:
-        h, w = frame.shape[:2]
-        longest = max(h, w)
-        if longest > int(self.max_image_dim):
-            scale = float(self.max_image_dim) / longest
-            frame = cv2.resize(frame, (max(1, int(w * scale)),
-                                       max(1, int(h * scale))),
-                               interpolation=cv2.INTER_AREA)
-        ok, encoded = cv2.imencode(
-            ".jpg", frame,
-            [int(cv2.IMWRITE_JPEG_QUALITY), int(self.jpeg_quality)])
-        if not ok:
-            raise ValueError("JPEG encoding failed")
-        return encoded.tobytes()
+        return self._client.encode(frame)
 
     def _prompt(self, stage: str, previous: SkinAnalysis | None) -> str:
         if stage == "preliminary":
@@ -231,36 +232,12 @@ class SkinVision(DetectionModule):
 
     def _call_api(self, jpeg: bytes, stage: str,
                   previous: SkinAnalysis | None) -> SkinAnalysis:
-        image = base64.b64encode(jpeg).decode("ascii")
-        payload = {
-            "model": self.model,
-            "messages": [{
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": self._prompt(stage, previous)},
-                    {"type": "image_url", "image_url": {
-                        "url": "data:image/jpeg;base64," + image}},
-                ],
-            }],
-            "temperature": 0.1,
-            "max_tokens": 700,
-        }
-        request = urllib.request.Request(
-            self.endpoint, data=json.dumps(payload).encode("utf-8"), method="POST",
-            headers={"Authorization": f"Bearer {self._key}",
-                     "Content-Type": "application/json",
-                     "Accept": "application/json"})
         try:
-            with urllib.request.urlopen(request, timeout=float(self.request_timeout)) as resp:
-                body = json.loads(resp.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            raise SkinVisionAPIError(f"HTTP {exc.code}", status=exc.code) from exc
-        except (urllib.error.URLError, TimeoutError, OSError) as exc:
-            raise SkinVisionAPIError(type(exc).__name__) from exc
-        try:
-            content = body["choices"][0]["message"]["content"]
+            content = self._client.request(self._prompt(stage, previous), [jpeg])
             raw = _extract_json(content)
             return validate_analysis(raw, float(self.min_confidence))
+        except NvidiaVLMError as exc:
+            raise SkinVisionAPIError(str(exc), status=exc.status) from exc
         except (KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as exc:
             raise SkinVisionAPIError("invalid structured response") from exc
 
@@ -281,6 +258,7 @@ class SkinVision(DetectionModule):
         self._sampling_closeup = False
         self._best_frame = None
         self._best_sharpness = -1.0
+        self._correlation_id = None
 
     def _failure(self, now: float, exc: BaseException) -> None:
         self._failures += 1
@@ -310,6 +288,7 @@ class SkinVision(DetectionModule):
             if not analysis.finding_present:
                 return []
             self._preliminary = analysis
+            self._correlation_id = uuid.uuid4().hex
             self._preliminary_at = now
             self._awaiting_closeup = True
             value = analysis.private_value()
@@ -318,7 +297,9 @@ class SkinVision(DetectionModule):
                 "closeup_request", value,
                 confidence=min(analysis.confidence, 0.55),
                 severity=Severity.NOTICE, ttl=45.0,
-                visibility=Visibility.AGENT_ONLY)]
+                visibility=Visibility.AGENT_ONLY,
+                correlation_id=self._correlation_id)]
+        correlation_id = self._correlation_id
         self._reset_closeup()
         if not analysis.finding_present:
             return []
@@ -332,12 +313,15 @@ class SkinVision(DetectionModule):
             confidence=min(analysis.confidence, 0.65),
             severity=Severity.NOTICE,
             message=f"Possible visible skin change on {region}: {features}",
-            ttl=120.0)
+            ttl=120.0, correlation_id=correlation_id,
+            persistence=PersistencePolicy.EVENT,
+            quality={"poor": .2, "fair": .6, "good": .9}[analysis.image_quality],
+            location=region)
         private = self.result(
             "analysis", analysis.private_value(),
             confidence=min(analysis.confidence, 0.65),
             severity=Severity.NOTICE, ttl=120.0,
-            visibility=Visibility.AGENT_ONLY)
+            visibility=Visibility.AGENT_ONLY, correlation_id=correlation_id)
         return [public, private]
 
     def _collect_closeup(self, ctx: FrameContext) -> None:
