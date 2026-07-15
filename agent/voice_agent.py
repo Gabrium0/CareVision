@@ -44,11 +44,12 @@ class VoiceAgent:
     """Orchestrates memory -> policy -> Gemini -> speech (and listening)."""
     def __init__(self, name: str = "there", speak: bool = True,
                  model: str = "gemini-2.5-flash", listener=None,
+                 gemini_enabled: bool = True,
                  **policy_kwargs):
         self.memory = ObservationMemory(name=name)
         self.memories: dict[str, ObservationMemory] = {"primary": self.memory}
         self.policy = Policy(**policy_kwargs)
-        self.gemini = GeminiClient(model=model)
+        self.gemini = GeminiClient(model=model, enabled=gemini_enabled)
         self.speaker = Speaker(enabled=speak)
         self.listener = listener
         self.corroboration = CorroborationEngine(gemini=self.gemini)
@@ -61,10 +62,25 @@ class VoiceAgent:
         self._actions: dict = {}       # intent signature -> post-speech callback
         self._safety_results: list[Result] = []
         self._conversation_results: list[Result] = []
-        mode = "Gemini" if self.gemini.available else "templated"
+        gemini = self.gemini.status()
+        mode = ("Gemini" if gemini["active"] else
+                "Gemini disabled (templated)" if gemini["available"] else "templated")
         ears = "listening" if (listener is not None and
                                getattr(listener, "available", False)) else "speak-only"
         print(f"[agent] voice agent ready (name={name}, speech={mode}, {ears})")
+
+    def set_gemini_enabled(self, enabled: bool) -> dict:
+        """Control future Gemini calls without disabling templated speech."""
+        self.gemini.set_enabled(enabled)
+        return self.gemini.status()
+
+    def toggle_gemini(self) -> dict:
+        """Toggle future Gemini calls and return the new diagnostic state."""
+        self.gemini.toggle_enabled()
+        return self.gemini.status()
+
+    def gemini_status(self) -> dict:
+        return self.gemini.status()
 
     def request_test(self, test: str = "hold_still") -> None:
         """Queue a scripted test (the 't' hotkey path)."""

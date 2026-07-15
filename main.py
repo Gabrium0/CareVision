@@ -159,6 +159,8 @@ def main():
                     help="faster-whisper model size for --listen (default base)")
     ap.add_argument("--voice-model", default="gemini-2.5-flash",
                     help="Gemini model for the voice agent (key from .env)")
+    ap.add_argument("--no-gemini", action="store_true",
+                    help="start with Gemini API calls disabled; press M to toggle")
     ap.add_argument("--enable-cloud-skin", action="store_true",
                     help="consent to upload sampled camera stills to the configured "
                          "NVIDIA skin-screening model for this run")
@@ -230,7 +232,8 @@ def main():
     alerts_cfg = load_alerts_config()
     alert_mgr = AlertManager.from_config(alerts_cfg) if alerts_cfg.get("enabled", True) else None
     voice_agent = VoiceAgent(name=args.name, speak=not args.no_voice,
-                             model=args.voice_model)
+                             model=args.voice_model,
+                             gemini_enabled=not args.no_gemini)
     capabilities = CapabilityRegistry.instance()
     capabilities.set("camera", "hardware", CapabilityStatus.READY,
                      "replay" if str(args.source).startswith("replay:") else "live source")
@@ -300,6 +303,7 @@ def main():
             "consent": {"cloud_skin": args.enable_cloud_skin,
                         "cloud_scene": args.enable_cloud_scene},
             "replay": pipeline.camera.replay_status(),
+            "gemini": voice_agent.gemini_status(),
         }
 
     debug_server = None
@@ -326,6 +330,12 @@ def main():
         last_vitals_print["t"] = now
         parts = [f"{r.key}={r.value} ({r.confidence:.2f})" for r in sorted(rows, key=lambda r: r.key)]
         print("[vitals] " + " | ".join(parts))
+
+    def toggle_gemini() -> None:
+        status = voice_agent.toggle_gemini()
+        state = "ON" if status["enabled"] else "OFF"
+        note = "" if status["available"] else " (API unavailable; templates remain active)"
+        print(f"[agent/gemini] Gemini {state}{note}")
 
     def on_frame(ctx, results):
         pipeline.runtime_metrics.note_capture(ctx.fps, ctx.timestamp,
@@ -405,13 +415,16 @@ def main():
                 # separate, readable data window
                 panel = dashboard.render(snapshot, ctx.fps, last_greeting["text"],
                                          reasoning=voice_agent.reasoning_card(),
-                                         performance=pipeline.runtime_metrics.snapshot())
+                                         performance=pipeline.runtime_metrics.snapshot(),
+                                         gemini=voice_agent.gemini_status())
                 cv2.imshow("Detections — Data", panel)
             key = cv2.waitKey(1) & 0xFF
             if key == ord("q"):
                 return False
             if key == ord("g"):
                 force_greet["v"] = True
+            if key == ord("m"):
+                toggle_gemini()
             if key == ord("t"):
                 print("[main] tremor test requested ('t')")
                 voice_agent.request_test()
@@ -422,8 +435,9 @@ def main():
                 cam_state["current"] = nxt
         return True
 
-    print("[main] starting; press 'q' to quit, 'g' to greet, 't' for a tremor "
-          "test, 'c' to switch camera (Ctrl+C in headless).")
+    print("[main] starting; press 'q' to quit, 'g' to greet, 'm' to toggle "
+          "Gemini, 't' for a tremor test, 'c' to switch camera "
+          "(Ctrl+C in headless).")
     try:
         if not decoupled_display:
             pipeline.run(on_frame=on_frame, max_frames=args.max_frames)
@@ -472,7 +486,8 @@ def main():
                                 panel = dashboard.render(
                                     snapshot, performance["capture_fps"],
                                     last_greeting["text"], reasoning=reasoning,
-                                    performance=performance)
+                                    performance=performance,
+                                    gemini=voice_agent.gemini_status())
                                 cv2.imshow("Detections — Data", panel)
                                 last_panel_at = now
                         pipeline.runtime_metrics.note_preview()
@@ -482,6 +497,8 @@ def main():
                     break
                 if key == ord("g"):
                     force_greet["v"] = True
+                if key == ord("m"):
+                    toggle_gemini()
                 if key == ord("t"):
                     print("[main] tremor test requested ('t')")
                     voice_agent.request_test()

@@ -7,11 +7,15 @@ import threading
 import time
 from enum import Enum
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any, Callable
+from urllib.parse import urlparse
 
 import numpy as np
 
 from core.events import Result
+
+_DEBUG_PAGE = Path(__file__).resolve().parent / "debug.html"
 
 
 def safe_json(value: Any) -> Any:
@@ -74,7 +78,21 @@ class DebugServer:
                 pass
 
             def do_GET(self):
-                if self.path.split("?", 1)[0] != "/debug/state":
+                path = urlparse(self.path).path
+                if path == "/debug":
+                    try:
+                        body = _DEBUG_PAGE.read_bytes()
+                        self.send_response(200)
+                    except OSError:
+                        body = b"<h1>debug.html missing</h1>"
+                        self.send_response(500)
+                    self.send_header("Content-Type", "text/html; charset=utf-8")
+                    self.send_header("Cache-Control", "no-store")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+                if path != "/debug/state":
                     self.send_error(404)
                     return
                 try:
@@ -94,7 +112,8 @@ class DebugServer:
         self._thread = threading.Thread(target=self._httpd.serve_forever,
                                         daemon=True, name="debug-http")
         self._thread.start()
-        print(f"[debug] private state: http://127.0.0.1:{self.port}/debug/state")
+        print(f"[debug] readable private dashboard: http://127.0.0.1:{self.port}/debug")
+        print(f"[debug] private JSON state: http://127.0.0.1:{self.port}/debug/state")
 
     def stop(self) -> None:
         if self._httpd is not None:

@@ -31,7 +31,7 @@ class Intent:
     fallback: str        # templated line if no LLM
     priority: int
     confidence: float = 1.0
-    quality: float = 1.0
+    quality: float | None = 1.0
     novelty: float = 1.0
     health_prompt: bool | None = None
     topic: str | None = None

@@ -66,12 +66,18 @@ def test_private_debug_payload_includes_private_and_redacts_media():
     assert safe_json(float("nan")) is None
 
 
-def test_debug_server_binds_loopback_and_serves_only_debug_state():
+def test_debug_server_binds_loopback_and_serves_readable_private_dashboard():
     server = DebugServer(lambda: {"ok": True}, port=0)
     server.start()
     try:
         host, port = server._httpd.server_address
         assert host == "127.0.0.1"
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/debug") as response:
+            html = response.read().decode("utf-8")
+            assert response.headers["Cache-Control"] == "no-store"
+            assert "Care Monitor — Private Debug" in html
+            assert "fetch('/debug/state'" in html
+            assert "textContent" in html
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/debug/state") as response:
             assert json.load(response) == {"ok": True}
         try:

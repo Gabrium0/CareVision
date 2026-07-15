@@ -25,9 +25,11 @@ python main.py --source clip.mp4     # run on a video file
 python main.py --combined            # old single-window overlay instead
 python main.py --headless --name Margaret   # no window; prints greetings/alerts
 python main.py --enable-cloud-skin    # opt in to NVIDIA skin screening
-python main.py --source realsense --webui --debug-endpoint  # smooth preview + local raw state
+python main.py --source realsense --webui --debug-endpoint --no-gemini  # private debug, no Gemini calls initially
 ```
-Windowed controls: `q` quit · `g` force a greeting · `c` switch camera (see below).
+Windowed controls: `q` quit · `g` force a greeting · `m` toggle Gemini API calls ·
+`t` start a tremor test · `c` switch camera (see below). Use `--no-gemini` to
+guarantee that testing starts with Gemini disabled; templated speech remains active.
 
 By default two windows open: **Camera** (video + face/pose boxes only) and
 **Detections — Data**, a readable dashboard with all signals. The vitals
@@ -81,9 +83,11 @@ original pixels.
 
 ### Private debugging endpoint
 
-Pass `--debug-endpoint` to serve the complete live result objects, including
-agent-only hypotheses, at `http://127.0.0.1:8771/debug/state`. Use
-`--debug-port` to change the port. This is a separate localhost-only server;
+Pass `--debug-endpoint` for a readable, auto-refreshing private dashboard at
+`http://127.0.0.1:8771/debug`. Its programmatic JSON is available at
+`http://127.0.0.1:8771/debug/state`. Both include complete live result objects,
+including agent-only hypotheses and Gemini request counters. Use `--debug-port`
+to change the port. This is a separate localhost-only server;
 the LAN-facing `/data` dashboard remains public-only. Raw image/audio arrays,
 binary values, and data URLs are always redacted. The payload also includes
 capture/preview/analysis rates, latency, skipped analysis frames, selected
