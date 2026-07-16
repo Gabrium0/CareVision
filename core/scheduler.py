@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import traceback
 import time
+from collections.abc import Callable
 
 from .context import FrameContext
 from .events import Result
@@ -36,10 +37,13 @@ class Scheduler:
                 return False
         return True
 
-    def tick(self, ctx: FrameContext, timings: dict[str, float] | None = None) -> list[Result]:
+    def tick(self, ctx: FrameContext, timings: dict[str, float] | None = None,
+             should_stop: Callable[[], bool] | None = None) -> list[Result]:
         """Advance one step: update state and act if warranted."""
         results: list[Result] = []
         for module in self.modules:
+            if should_stop is not None and should_stop():
+                break
             interval = getattr(module, "interval", 0.0)
             last = self._last_run.get(module.name, -1e9)
             if ctx.timestamp - last < interval:

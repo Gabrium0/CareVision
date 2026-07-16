@@ -99,6 +99,143 @@ def test_blocking_detector_cannot_delay_critical_face_publication():
         pipeline._stop_background_worker()
 
 
+def test_module_start_runs_before_background_frame_analysis():
+    started = threading.Event()
+    extracted = threading.Event()
+
+    class Camera:
+        current_fps = 30.0
+
+        def frames(self):
+            yield FrameContext(np.zeros((32, 32, 3), dtype=np.uint8), 1.0, 0, 30.0)
+
+        def release(self):
+            pass
+
+    class WarmModule:
+        name = "warm_module"
+        interval = 0.0
+        requires = ()
+
+        def start(self):
+            started.set()
+
+        def process(self, ctx):
+            return None
+
+    class BackgroundExtractor:
+        def extract(self, ctx):
+            assert started.is_set()
+            extracted.set()
+
+    class Aggregator:
+        def ingest(self, results):
+            pass
+
+        def snapshot(self):
+            return {}
+
+    pipeline = Pipeline(Camera(), [BackgroundExtractor()],
+                        Scheduler([WarmModule()]), Aggregator(),
+                        background_analysis=True)
+    pipeline.run(on_frame=lambda ctx, results: extracted.wait(1.0), max_frames=1)
+
+    assert started.is_set()
+    assert extracted.is_set()
+
+
+def test_shutdown_waits_for_background_extractor_before_closing_resources():
+    entered = threading.Event()
+    release = threading.Event()
+
+    class Camera:
+        current_fps = 30.0
+
+        def frames(self):
+            yield FrameContext(np.zeros((32, 32, 3), dtype=np.uint8), 1.0, 0, 30.0)
+
+        def release(self):
+            pass
+
+    class BlockingExtractor:
+        def __init__(self):
+            self.closed = False
+
+        def extract(self, ctx):
+            entered.set()
+            release.wait()
+            assert not self.closed
+
+        def close(self):
+            self.closed = True
+
+    class ShouldNotRun:
+        name = "should_not_run"
+        interval = 0.0
+        requires = ()
+
+        def __init__(self):
+            self.calls = 0
+
+        def process(self, ctx):
+            self.calls += 1
+
+    class Aggregator:
+        def ingest(self, results):
+            pass
+
+        def snapshot(self):
+            return {}
+
+    extractor = BlockingExtractor()
+    module = ShouldNotRun()
+    pipeline = Pipeline(Camera(), [extractor], Scheduler([module]), Aggregator(),
+                        background_analysis=True)
+    runner = threading.Thread(
+        target=lambda: pipeline.run(
+            on_frame=lambda ctx, results: entered.wait(1.0) and False),
+        daemon=True)
+    runner.start()
+    assert entered.wait(1.0)
+    time.sleep(0.05)
+    assert runner.is_alive()
+    assert not extractor.closed
+
+    release.set()
+    runner.join(2.0)
+
+    assert not runner.is_alive()
+    assert extractor.closed
+    assert module.calls == 0
+
+
+def test_scheduler_stop_predicate_prevents_later_module_submission():
+    stop = threading.Event()
+    calls = []
+
+    class First:
+        name = "first"
+        interval = 0.0
+        requires = ()
+
+        def process(self, ctx):
+            calls.append("first")
+            stop.set()
+
+    class Second:
+        name = "second"
+        interval = 0.0
+        requires = ()
+
+        def process(self, ctx):
+            calls.append("second")
+
+    ctx = FrameContext(np.zeros((8, 8, 3), dtype=np.uint8), 1.0, 0, 30.0)
+    Scheduler([First(), Second()]).tick(ctx, should_stop=stop.is_set)
+
+    assert calls == ["first"]
+
+
 def test_realsense_profile_ranking_prefers_depth_then_resolution():
     colors = {(1920, 1080, 30), (1280, 720, 30), (640, 480, 30)}
     depths = {(848, 480, 30), (640, 480, 30)}

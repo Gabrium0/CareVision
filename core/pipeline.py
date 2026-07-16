@@ -132,13 +132,22 @@ class Pipeline:
             target=self._background_loop, daemon=True, name="detector-analysis")
         self._background_thread.start()
 
+    def _start_modules(self) -> None:
+        """Start optional asynchronous module warmups before frame analysis."""
+        for module in self.scheduler.modules:
+            start = getattr(module, "start", None)
+            if start is not None:
+                start()
+
     def _stop_background_worker(self) -> None:
         with self._background_cv:
             self._background_stop = True
             self._background_pending = None
             self._background_cv.notify_all()
         if self._background_thread is not None:
-            self._background_thread.join(timeout=10.0)
+            # Extractors and modules own native/threaded resources.  Do not
+            # close those underneath an analysis call that is still unwinding.
+            self._background_thread.join()
             self._background_thread = None
 
     def _background_loop(self) -> None:
@@ -156,11 +165,18 @@ class Pipeline:
             started = time.perf_counter()
             timings: dict[str, float] = {}
             for ex in self._background_extractors:
+                if self._background_stop:
+                    return
                 t0 = time.perf_counter()
                 ex.extract(ctx)
                 timings[f"extractor:{ex.__class__.__name__}"] = round(
                     (time.perf_counter() - t0) * 1000.0, 2)
-            results = self._background_scheduler.tick(ctx, timings=timings)
+            if self._background_stop:
+                return
+            results = self._background_scheduler.tick(
+                ctx, timings=timings, should_stop=lambda: self._background_stop)
+            if self._background_stop:
+                return
             if self.showcase_gate is not None:
                 results = [r for r in results if self.showcase_gate.allow(r.module, ctx)]
             latency_ms = (time.perf_counter() - started) * 1000.0
@@ -178,6 +194,8 @@ class Pipeline:
 
     def _submit_background(self, ctx: FrameContext) -> None:
         with self._background_cv:
+            if self._background_stop:
+                return
             if self._background_pending is not None:
                 self.runtime_metrics.note_background_drop()
             self._background_pending = self._copy_for_background(ctx)
@@ -501,8 +519,9 @@ class Pipeline:
     def run(self, on_frame=None, max_frames: int | None = None) -> None:
         """on_frame(ctx, results) -> bool; return False to stop."""
         self._stop_requested.clear()
-        self._start_background_worker()
         try:
+            self._start_modules()
+            self._start_background_worker()
             for ctx in self.camera.frames():
                 if self._stop_requested.is_set():
                     break
@@ -528,3 +547,7 @@ class Pipeline:
     def request_stop(self) -> None:
         """Ask an asynchronously running pipeline loop to stop cleanly."""
         self._stop_requested.set()
+        with self._background_cv:
+            self._background_stop = True
+            self._background_pending = None
+            self._background_cv.notify_all()

@@ -4,6 +4,7 @@ from __future__ import annotations
 from core.context import FrameContext
 from core.events import Severity
 from core.registry import register
+from core.shared_signals import SharedSignals
 from modules.base import DetectionModule
 
 
@@ -23,11 +24,18 @@ class ClothingAdvice(DetectionModule):
     rain_mm_threshold = 0.1
     wind_kph_threshold = 25.0
     uv_high = 6.0
+    clothing_max_age_seconds = 30.0
+
+    def __init__(self, **params):
+        super().__init__(**params)
+        self._shared_signals = SharedSignals.instance()
 
     def process(self, ctx: FrameContext):
         """Run this detector on the current frame; return Result(s) or None."""
         weather = ctx.extras.get("weather") or {}
-        clothing = ctx.extras.get("clothing") or {}
+        clothing = ctx.extras.get("clothing") or self._shared_signals.get(
+            "clothing", {}, max_age=self.clothing_max_age_seconds,
+            now=ctx.timestamp)
         temp = weather.get("feels_like_c", weather.get("temperature_c"))
         label = str(clothing.get("clothing") or "...").lower()
         if temp is None:

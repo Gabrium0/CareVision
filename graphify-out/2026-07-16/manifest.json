@@ -1050,8 +1050,8 @@
     "semantic_hash": ""
   },
   "tests/vitals_debug_test.py": {
-    "mtime": 1784179821.3165276,
-    "ast_hash": "7bab4105e86b798adfd1e9f7176c86a6",
+    "mtime": 1784180564.2676506,
+    "ast_hash": "54ec0d609303431dff58855ca61767aa",
     "semantic_hash": ""
   },
   "tests/persistence_batching_test.py": {

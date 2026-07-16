@@ -449,6 +449,8 @@ def main():
     print("[main] starting; press 'q' to quit, 'g' to greet, 'm' to toggle "
           "Gemini, 't' for a tremor test, 'c' to switch camera "
           "(Ctrl+C in headless).")
+    worker = None
+    interrupted = False
     try:
         if not decoupled_display:
             pipeline.run(on_frame=on_frame, max_frames=args.max_frames)
@@ -524,13 +526,16 @@ def main():
                 if packet is None:
                     time.sleep(0.002)
             pipeline.request_stop()
-            worker.join(timeout=5.0)
+            worker.join()
             if worker_error:
                 exc, tb = worker_error[0]
                 print(tb, end="")
                 raise exc
     except KeyboardInterrupt:
-        print("\n[main] stopped.")
+        pipeline.request_stop()
+        if worker is not None and worker.is_alive():
+            worker.join()
+        interrupted = True
     finally:
         voice_agent.close()
         sensor_manager.close()
@@ -540,6 +545,8 @@ def main():
             debug_server.stop()
         if display and cv2 is not None:
             cv2.destroyAllWindows()
+    if interrupted:
+        print("\n[main] stopped.")
 
 
 if __name__ == "__main__":

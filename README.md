@@ -18,7 +18,9 @@ webcam.
 ```bash
 pip install -r requirements.txt
 pip install -r requirements-openrppg.txt   # optional: neural rPPG backend
-pip install -r requirements-clothing.txt   # optional: OWL-ViT clothing detection
+# NVIDIA CUDA 12.4 clothing backend (keep all PyTorch binaries matched):
+pip install torch==2.6.0 torchvision==0.21.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cu124
+pip install -r requirements-clothing.txt   # optional: FashionCLIP / OWL-ViT clothing detection
 # MediaPipe .task models are downloaded into models/ (see docs/RESEARCH.md)
 python main.py                       # default webcam; Camera + Data windows
 python main.py --source clip.mp4     # run on a video file
