@@ -11,6 +11,7 @@ accidentally run at full framerate and modules never see missing inputs.
 from __future__ import annotations
 
 import traceback
+import time
 
 from .context import FrameContext
 from .events import Result
@@ -35,7 +36,7 @@ class Scheduler:
                 return False
         return True
 
-    def tick(self, ctx: FrameContext) -> list[Result]:
+    def tick(self, ctx: FrameContext, timings: dict[str, float] | None = None) -> list[Result]:
         """Advance one step: update state and act if warranted."""
         results: list[Result] = []
         for module in self.modules:
@@ -46,12 +47,17 @@ class Scheduler:
             if not self._requirements_met(module, ctx):
                 continue
             self._last_run[module.name] = ctx.timestamp
+            started = time.perf_counter()
             try:
                 out = module.process(ctx)
             except Exception:
                 print(f"[scheduler] module '{module.name}' raised:")
                 traceback.print_exc()
                 continue
+            finally:
+                if timings is not None:
+                    timings[f"module:{module.name}"] = round(
+                        (time.perf_counter() - started) * 1000.0, 2)
             if out is None:
                 continue
             results.extend(out if isinstance(out, list) else [out])

@@ -77,6 +77,9 @@ def build_pipeline(source, config, camera_opts=None, max_staleness: float = 0.25
     """Discover modules and assemble the full processing pipeline."""
     discover("modules")
     modules = build_enabled(config)
+    for module in modules:
+        if module.name == "gesture":
+            module.input_width = analysis_width
     registry = CapabilityRegistry.instance()
     for module in modules:
         available = getattr(module, "available", True)
@@ -94,7 +97,8 @@ def build_pipeline(source, config, camera_opts=None, max_staleness: float = 0.25
                         max_staleness=max_staleness,
                         showcase_gate=ShowcaseGate.from_config(config),
                         camera_location=(config.get("camera") or {}).get("location"),
-                        tracking_enabled=bool((config.get("tracking") or {}).get("enabled", False)))
+                        tracking_enabled=bool((config.get("tracking") or {}).get("enabled", False)),
+                        background_analysis=not str(source).startswith("replay:"))
     return pipeline, aggregator
 
 
@@ -295,8 +299,8 @@ def main():
     analysis_state_lock = threading.Lock()
     analysis_state = {"ctx": None, "snapshot": [], "reasoning": None}
 
-    def system_snapshot():
-        return {
+    def system_snapshot(private: bool = False, results=None, performance=None):
+        system = {
             "timeline": EventStore.instance().recent(60),
             "capabilities": capabilities.snapshot(),
             "workflows": WorkflowEngine.instance().snapshot(),
@@ -305,16 +309,22 @@ def main():
             "replay": pipeline.camera.replay_status(),
             "gemini": voice_agent.gemini_status(),
         }
+        if private:
+            system["vitals"] = pipeline.vitals_diagnostics(
+                list(results or []), now=time.time(), performance=performance)
+        return system
 
     debug_server = None
     if args.debug_endpoint:
         def debug_provider():
             with analysis_state_lock:
                 reasoning = analysis_state["reasoning"]
-            system = system_snapshot()
+            results = aggregator.agent_snapshot()
+            performance = pipeline.runtime_metrics.snapshot()
+            system = system_snapshot(private=True, results=results,
+                                     performance=performance)
             system["reasoning"] = reasoning
-            return build_debug_payload(aggregator.agent_snapshot(),
-                                       pipeline.runtime_metrics.snapshot(), system)
+            return build_debug_payload(results, performance, system)
         debug_server = DebugServer(debug_provider, port=args.debug_port)
         debug_server.start()
 
@@ -431,6 +441,7 @@ def main():
             if key == ord("c") and primary_source != alt_source:
                 nxt = alt_source if cam_state["current"] == primary_source else primary_source
                 print(f"[camera] switching -> {nxt}")
+                pipeline.reset_capture_state()
                 pipeline.camera.switch_to(nxt, camera_opts)
                 cam_state["current"] = nxt
         return True
@@ -507,6 +518,7 @@ def main():
                     print(f"[camera] switching -> {nxt}")
                     with analysis_state_lock:
                         analysis_state["ctx"] = None
+                    pipeline.reset_capture_state()
                     pipeline.camera.switch_to(nxt, camera_opts)
                     cam_state["current"] = nxt
                 if packet is None:

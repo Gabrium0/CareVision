@@ -51,6 +51,11 @@ class EventStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
         self._db = sqlite3.connect(self.path, check_same_thread=False)
+        self._db.execute("PRAGMA journal_mode=WAL")
+        self._db.execute("PRAGMA synchronous=NORMAL")
+        self._db.execute("PRAGMA busy_timeout=5000")
+        self._pending_writes = 0
+        self._last_commit = time.monotonic()
         self._db.execute("""CREATE TABLE IF NOT EXISTS events (
             id TEXT PRIMARY KEY, ts REAL NOT NULL, kind TEXT NOT NULL,
             subject_id TEXT NOT NULL, source TEXT NOT NULL, module TEXT,
@@ -98,8 +103,20 @@ class EventStore:
                 subject_id, source, module, key, severity, confidence, quality,
                 location, correlation_id, json.dumps(safe, separators=(",", ":")),
                 persistence.value, expires))
-            self._db.commit()
+            self._pending_writes += 1
+            if self._pending_writes >= 64 or time.monotonic() - self._last_commit >= 1.0:
+                self._flush_locked()
         return event_id
+
+    def _flush_locked(self) -> None:
+        if self._pending_writes:
+            self._db.commit()
+            self._pending_writes = 0
+            self._last_commit = time.monotonic()
+
+    def flush(self) -> None:
+        with self._lock:
+            self._flush_locked()
 
     def record_result(self, result: Result) -> str | None:
         """Persist an opted-in public result; private or ephemeral data is ignored."""
@@ -176,9 +193,12 @@ class EventStore:
         with self._lock:
             cursor = self._db.execute("DELETE FROM events WHERE expires_at IS NOT NULL AND expires_at<=?", (now,))
             self._db.commit()
+            self._pending_writes = 0
+            self._last_commit = time.monotonic()
             return int(cursor.rowcount)
 
     def close(self) -> None:
         """Close the SQLite handle."""
         with self._lock:
+            self._flush_locked()
             self._db.close()

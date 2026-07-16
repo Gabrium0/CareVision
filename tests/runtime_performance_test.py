@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 import sys
+import threading
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -11,9 +13,12 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from core.context import FaceData, FrameContext
 from core.events import Result, Visibility
+from core.pipeline import Pipeline
 from core.realsense_camera import RealSenseCamera
 from core.runtime_metrics import RuntimeMetrics
+from core.scheduler import Scheduler
 from webui.debug_server import DebugServer, build_debug_payload, safe_json
 
 
@@ -30,6 +35,68 @@ def test_runtime_metrics_separate_capture_preview_and_analysis():
     assert 29.0 <= snap["preview_fps"] <= 31.0
     assert 9.0 <= snap["analysis_fps"] <= 11.0
     assert snap["skipped_analysis_frames"] == 20
+    metrics.note_fast_path("stale", now=base + 1.0)
+    fast = metrics.snapshot(now=base + 1.25)["fast_path"]
+    assert fast["latest_outcome"] == "stale"
+    assert fast["latest_outcome_age_ms"] == 250.0
+
+
+def test_blocking_detector_cannot_delay_critical_face_publication():
+    class Camera:
+        current_fps = 30.0
+
+        def register_fast_hook(self, hook):
+            self.fast_hook = hook
+
+    class FaceExtractor:
+        def extract(self, ctx):
+            crop = ctx.frame[10:130, 10:130]
+            ctx.face = FaceData(np.zeros((5, 3)), (10, 10, 130, 130), crop, False)
+            ctx.person_present = True
+
+    class Critical:
+        name = "heart_rate"
+        calls = 0
+
+        def fast_update(self, ctx):
+            pass
+
+        def process(self, ctx):
+            self.calls += 1
+
+    class Blocking:
+        name = "synthetic_blocker"
+
+        def __init__(self):
+            self.started = threading.Event()
+
+        def process(self, ctx):
+            self.started.set()
+            time.sleep(0.3)
+
+    class Aggregator:
+        def ingest(self, results):
+            pass
+
+        def snapshot(self):
+            return {}
+
+    critical, blocker = Critical(), Blocking()
+    pipeline = Pipeline(Camera(), [FaceExtractor()],
+                        Scheduler([critical, blocker]), Aggregator(),
+                        background_analysis=True)
+    pipeline._start_background_worker()
+    try:
+        frame = np.zeros((160, 160, 3), dtype=np.uint8)
+        pipeline.process_frame(FrameContext(frame, 1.0, 0, 30.0))
+        assert blocker.started.wait(1.0)
+        started = time.perf_counter()
+        pipeline.process_frame(FrameContext(frame, 1.1, 1, 30.0))
+        assert time.perf_counter() - started < 0.1
+        assert critical.calls == 2
+        assert pipeline._latest_face_ts == 1.1
+    finally:
+        pipeline._stop_background_worker()
 
 
 def test_realsense_profile_ranking_prefers_depth_then_resolution():
@@ -78,6 +145,8 @@ def test_debug_server_binds_loopback_and_serves_readable_private_dashboard():
             assert "Care Monitor — Private Debug" in html
             assert "fetch('/debug/state'" in html
             assert "textContent" in html
+            assert "renderVitals" in html
+            assert "Vitals diagnostics unavailable" in html
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/debug/state") as response:
             assert json.load(response) == {"ok": True}
         try:

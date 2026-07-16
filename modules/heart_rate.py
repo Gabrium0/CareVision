@@ -28,6 +28,8 @@ that has happened at least once, `process()` stops re-feeding them itself
 """
 from __future__ import annotations
 
+import threading
+
 from core.context import FrameContext
 from core.events import Severity
 from core.registry import register
@@ -60,6 +62,9 @@ class HeartRate(DetectionModule):
     openrppg_smoothing_window = 5
     openrppg_motion_threshold = 18.0
     openrppg_face_jitter_threshold = 0.12
+    openrppg_face_reacquire_frames = 3
+    openrppg_inference_timeout_seconds = 90.0
+    openrppg_cpu_reserved_cores = 2
     openrppg_async_inference = True
     debug_backend_values = False
     bpm_jump_threshold = 20.0
@@ -70,10 +75,16 @@ class HeartRate(DetectionModule):
         self._fast_fed = False    # True once fast_update() has fed a backend directly
         self._backends = []
         self._last_bpm = None
+        self._last_source: str | None = None
+        self._diagnostic_lock = threading.Lock()
+        self._latest_readings: dict[str, dict] = {}
+        self._unavailable_backends: list[dict] = []
         for name in self.backends:
             cls = _BACKENDS.get(name)
             if cls is None:
                 print(f"[heart_rate] unknown backend '{name}', skipping")
+                self._unavailable_backends.append({
+                    "name": name, "available": False, "status": "unknown backend"})
                 continue
             if name == "openrppg":
                 inst = cls(
@@ -86,6 +97,9 @@ class HeartRate(DetectionModule):
                     smoothing_window=self.openrppg_smoothing_window,
                     motion_threshold=self.openrppg_motion_threshold,
                     face_jitter_threshold=self.openrppg_face_jitter_threshold,
+                    face_reacquire_frames=self.openrppg_face_reacquire_frames,
+                    inference_timeout_seconds=self.openrppg_inference_timeout_seconds,
+                    cpu_reserved_cores=self.openrppg_cpu_reserved_cores,
                     async_inference=self.openrppg_async_inference,
                     brightness_normalize=self.openrppg_brightness_normalize,
                 )
@@ -96,9 +110,32 @@ class HeartRate(DetectionModule):
                            talk_delta_threshold=self.classical_talk_delta_threshold)
             if getattr(inst, "available", True):
                 self._backends.append(inst)
+            else:
+                self._unavailable_backends.append({
+                    "name": getattr(inst, "label", name), "available": False,
+                    "status": getattr(inst, "_status", "dependency or model unavailable")})
+                inst.close()
         if not self._backends:
             # ensure at least the classical backend is present
             self._backends.append(ClassicalBackend(window_seconds=self.window_seconds))
+
+    def diagnostics(self) -> dict:
+        """Return JSON-safe backend progress without exposing raw samples/crops."""
+        with self._diagnostic_lock:
+            latest = {key: dict(value) for key, value in self._latest_readings.items()}
+            source = self._last_source
+        backends = []
+        for backend in self._backends:
+            snapshot = backend.diagnostics() if hasattr(backend, "diagnostics") else {
+                "name": backend.label, "available": getattr(backend, "available", True),
+                "status": "available",
+            }
+            reading = latest.get(backend.label)
+            if reading is not None:
+                snapshot["latest"] = reading
+            backends.append(snapshot)
+        backends.extend(dict(item) for item in self._unavailable_backends)
+        return {"canonical_source": source, "backends": backends}
 
     @staticmethod
     def _key(base: str, label: str) -> str:
@@ -187,6 +224,8 @@ class HeartRate(DetectionModule):
             return None
         conf, _, label, bpm = max(candidates, key=lambda item: (item[0], item[1]))
         self._last_bpm = bpm
+        with self._diagnostic_lock:
+            self._last_source = label
         sev = Severity.INFO
         msg = f"HR ~{bpm:.0f} bpm ({label})"
         if conf >= 0.35 and (bpm < 50 or bpm > 110):
@@ -212,14 +251,13 @@ class HeartRate(DetectionModule):
         require a fresh window without rebuilding optional neural models.
         """
         self._last_bpm = None
+        with self._diagnostic_lock:
+            self._last_source = None
+            self._latest_readings.clear()
         for be in self._backends:
-            buf = getattr(be, "buf", None)
-            if buf is not None:
-                buf.t.clear()
-                buf.v.clear()
-            crops = getattr(be, "crops", None)
-            if crops is not None:
-                crops.clear()
+            reset = getattr(be, "reset", None)
+            if reset is not None:
+                reset()
 
     def process(self, ctx: FrameContext):
         """Run this detector on the current frame; return Result(s) or None."""
@@ -232,6 +270,9 @@ class HeartRate(DetectionModule):
             label = be.label
             if reading:
                 readings.append((label, reading))
+                with self._diagnostic_lock:
+                    self._latest_readings[label] = {
+                        **dict(reading), "updated_at": ctx.timestamp}
             if self.debug_backend_values:
                 results.extend(self._backend_results(label, reading))
         canonical = self._canonical_bpm_result(readings)

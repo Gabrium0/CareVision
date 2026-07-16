@@ -21,12 +21,14 @@ class Presence(DetectionModule):
     """Presence tracking and greeting trigger."""
     interval = 0.5
     absence_seconds = 15.0
+    heartbeat_seconds = 60.0
 
     def __init__(self, **params):
         super().__init__(**params)
         self.store = HistoryStore.instance()
         self._present = False
         self._last_seen = None
+        self._last_persisted = None
 
     def process(self, ctx: FrameContext):
         """Run this detector on the current frame; return Result(s) or None."""
@@ -36,7 +38,10 @@ class Presence(DetectionModule):
                      (self._last_seen is None or now - self._last_seen > self.absence_seconds))
             self._last_seen = now
             self._present = True
-            self.store.add("presence", "present", 1.0, now)
+            if (newly or self._last_persisted is None or
+                    now - self._last_persisted >= self.heartbeat_seconds):
+                self.store.add("presence", "present", 1.0, now)
+                self._last_persisted = now
             if newly:
                 return self.result("arrival", True, 0.9, Severity.NOTICE,
                                    "Person arrived", ttl=5.0)
@@ -45,4 +50,5 @@ class Presence(DetectionModule):
             if self._present and self._last_seen and now - self._last_seen > self.absence_seconds:
                 self._present = False
                 self.store.add("presence", "present", 0.0, now)
+                self._last_persisted = now
         return None

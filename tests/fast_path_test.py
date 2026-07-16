@@ -117,10 +117,41 @@ def test_concurrent_update_and_compute():
     print(f"[fast-path-test] concurrent update/compute OK -> {last}")
 
 
+def test_classical_diagnostics_are_safe_during_updates():
+    hr = HeartRate(window_seconds=12.0, backends=["classical"])
+    backend = hr._backends[0]
+    face = FaceExtractor()
+    ctx = FrameContext(frame=_pulsing_frame(0.0), timestamp=0.0,
+                       frame_index=0, fps=FPS)
+    face.extract(ctx)
+    assert ctx.face is not None
+    errors: list[Exception] = []
+
+    def update_many():
+        try:
+            for i in range(100):
+                ctx.timestamp = i / FPS
+                backend.update(ctx)
+        except Exception as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    worker = threading.Thread(target=update_many)
+    worker.start()
+    while worker.is_alive():
+        snapshot = backend.diagnostics()
+        assert 0.0 <= snapshot["progress"] <= 1.0
+        assert "latest" in snapshot
+    worker.join()
+    face.close()
+    hr.close()
+    assert not errors
+
+
 def main():
     """Run all fast-path tests."""
     test_fast_update_flag_and_no_double_feed()
     test_concurrent_update_and_compute()
+    test_classical_diagnostics_are_safe_during_updates()
     print("[fast-path-test] OK")
 
 

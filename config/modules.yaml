@@ -27,6 +27,9 @@ modules:
     openrppg_smoothing_window: 5
     openrppg_motion_threshold: 35.0
     openrppg_face_jitter_threshold: 0.25
+    openrppg_face_reacquire_frames: 3
+    openrppg_inference_timeout_seconds: 90.0
+    openrppg_cpu_reserved_cores: 2
     openrppg_async_inference: true     # keeps CPU-only Open-RPPG from freezing camera frames
     debug_backend_values: true        # true shows raw per-backend vitals; false emits trusted canonical bpm
   respiration:
@@ -218,6 +221,7 @@ showcase:
   min_brightness: 45.0
   max_brightness: 220.0
   max_motion: 12.0
+  capture_reset_grace_seconds: 1.0
 
 advice:
   enabled: true

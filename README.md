@@ -91,7 +91,9 @@ to change the port. This is a separate localhost-only server;
 the LAN-facing `/data` dashboard remains public-only. Raw image/audio arrays,
 binary values, and data URLs are always redacted. The payload also includes
 capture/preview/analysis rates, latency, skipped analysis frames, selected
-camera profile, and rPPG fast-path counters.
+camera profile, and rPPG fast-path counters. Its always-visible Vitals panel
+shows current BPM when valid, or explains whether positioning is blocked,
+samples are warming up, inference is running, or a backend is unavailable.
 
 ### Heart rate: two backends, compared live
 The `heart_rate` module runs one or more rPPG backends and reports each one's

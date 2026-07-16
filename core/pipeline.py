@@ -39,6 +39,8 @@ import threading
 import time
 import traceback
 import uuid
+import copy
+from collections import deque
 
 import cv2
 import numpy as np
@@ -52,6 +54,7 @@ from .scheduler import Scheduler
 from .showcase import ShowcaseGate
 from .tracking import AnonymousTracker
 from storage.event_store import EventStore
+from storage.history_store import HistoryStore
 
 
 class Pipeline:
@@ -61,7 +64,8 @@ class Pipeline:
                  showcase_gate: ShowcaseGate | None = None,
                  camera_location: str | None = None,
                  tracking_enabled: bool = False,
-                 runtime_metrics: RuntimeMetrics | None = None):
+                 runtime_metrics: RuntimeMetrics | None = None,
+                 background_analysis: bool = False):
         self.camera = camera
         self.extractors = extractors
         self.scheduler = scheduler
@@ -74,13 +78,24 @@ class Pipeline:
         self.camera_location = camera_location
         self.tracking_enabled = tracking_enabled
         self.runtime_metrics = runtime_metrics or RuntimeMetrics()
+        self.background_analysis = bool(background_analysis)
         self._face_lock = threading.Lock()
+        self._vitals_lock = threading.Lock()
         self._stop_requested = threading.Event()
         self._latest_face: FaceData | None = None
         self._latest_face_ts = 0.0
         self._motion_prev: np.ndarray | None = None   # reader-thread-only state
         self._fast_capture_ready = showcase_gate is None
         self._capture_was_ready = showcase_gate is None
+        self._capture_blocked_since: float | None = None
+        self._capture_reset_done = False
+        self._showcase_state = {
+            "enabled": showcase_gate is not None,
+            "capture_ready": showcase_gate is None,
+            "zone": None,
+            "guidance": ("Waiting for positioning assessment"
+                         if showcase_gate is not None else "Capture gate disabled"),
+        }
         # Diagnostic counters (only accumulated when --debug-modules pipeline
         # is set, see _maybe_log_diag); reader-thread-only, no lock needed.
         self._diag_fed = 0
@@ -89,12 +104,133 @@ class Pipeline:
         self._diag_heavy_publishes = 0
         self._diag_window_start = 0.0
         fast_modules = [m for m in scheduler.modules if hasattr(m, "fast_update")]
+        self._critical_scheduler = Scheduler(fast_modules)
+        self._background_scheduler = Scheduler(
+            [m for m in scheduler.modules if m not in fast_modules])
+        self._critical_extractors = [
+            ex for ex in extractors
+            if ex.__class__.__name__ in ("FaceExtractor", "MotionExtractor")]
+        self._background_extractors = [ex for ex in extractors
+                                       if ex not in self._critical_extractors]
+        self._background_cv = threading.Condition()
+        self._background_pending: FrameContext | None = None
+        self._background_done: deque[list[Result]] = deque()
+        self._background_stop = False
+        self._background_thread: threading.Thread | None = None
         register = getattr(camera, "register_fast_hook", None)
         if fast_modules and register is not None:
             self._fast_modules = fast_modules
             register(self._fast_hook)
         else:
             self._fast_modules = []
+
+    def _start_background_worker(self) -> None:
+        if not self.background_analysis or self._background_thread is not None:
+            return
+        self._background_stop = False
+        self._background_thread = threading.Thread(
+            target=self._background_loop, daemon=True, name="detector-analysis")
+        self._background_thread.start()
+
+    def _stop_background_worker(self) -> None:
+        with self._background_cv:
+            self._background_stop = True
+            self._background_pending = None
+            self._background_cv.notify_all()
+        if self._background_thread is not None:
+            self._background_thread.join(timeout=10.0)
+            self._background_thread = None
+
+    def _background_loop(self) -> None:
+        """Run pose and non-vitals modules serially without blocking geometry."""
+        while True:
+            with self._background_cv:
+                while self._background_pending is None and not self._background_stop:
+                    self._background_cv.wait()
+                if self._background_stop:
+                    return
+                ctx = self._background_pending
+                self._background_pending = None
+            if ctx is None:
+                continue
+            started = time.perf_counter()
+            timings: dict[str, float] = {}
+            for ex in self._background_extractors:
+                t0 = time.perf_counter()
+                ex.extract(ctx)
+                timings[f"extractor:{ex.__class__.__name__}"] = round(
+                    (time.perf_counter() - t0) * 1000.0, 2)
+            results = self._background_scheduler.tick(ctx, timings=timings)
+            if self.showcase_gate is not None:
+                results = [r for r in results if self.showcase_gate.allow(r.module, ctx)]
+            latency_ms = (time.perf_counter() - started) * 1000.0
+            source_index = int(ctx.extras.get("capture_index", ctx.frame_index))
+            self.runtime_metrics.note_analysis(source_index, latency_ms)
+            self.runtime_metrics.note_stage_timings(timings)
+            with self._background_cv:
+                self._background_done.append(results)
+
+    @staticmethod
+    def _copy_for_background(ctx: FrameContext) -> FrameContext:
+        cloned = copy.copy(ctx)
+        cloned.extras = dict(ctx.extras)
+        return cloned
+
+    def _submit_background(self, ctx: FrameContext) -> None:
+        with self._background_cv:
+            if self._background_pending is not None:
+                self.runtime_metrics.note_background_drop()
+            self._background_pending = self._copy_for_background(ctx)
+            self._background_cv.notify()
+
+    def _drain_background(self) -> list[Result]:
+        with self._background_cv:
+            batches = list(self._background_done)
+            self._background_done.clear()
+        return [result for batch in batches for result in batch]
+
+    def _reset_fast_modules(self) -> None:
+        for module in self._fast_modules:
+            reset = getattr(module, "reset_capture", None)
+            if reset is not None:
+                reset()
+
+    def reset_capture_state(self) -> None:
+        """Reset subject-bound sampling after an explicit camera/source change."""
+        self._reset_fast_modules()
+        with self._face_lock:
+            self._latest_face = None
+            self._latest_face_ts = 0.0
+        self._capture_blocked_since = None
+        self._capture_reset_done = True
+
+    def _update_capture_gate(self, ctx: FrameContext) -> None:
+        state = ctx.extras["showcase"]
+        ready = bool(state.get("heart_rate_ready", state["stable"]))
+        self._fast_capture_ready = ready
+        with self._vitals_lock:
+            self._showcase_state = {
+                **dict(state), "enabled": True, "capture_ready": ready,
+                "guidance": state.get("heart_rate_guidance", state.get("guidance"))}
+        if ready:
+            self._capture_blocked_since = None
+            self._capture_reset_done = False
+        else:
+            reason = state.get("heart_rate_block_reason", state.get("block_reason"))
+            transient = reason in ("motion", "lighting")
+            if self._capture_was_ready and self._capture_blocked_since is None:
+                self._capture_blocked_since = ctx.timestamp
+            should_reset = False
+            if not transient:
+                should_reset = self._capture_was_ready or self._capture_blocked_since is not None
+            elif self._capture_blocked_since is not None:
+                grace = float(getattr(self.showcase_gate,
+                                      "capture_reset_grace_seconds", 1.0))
+                should_reset = ctx.timestamp - self._capture_blocked_since >= grace
+            if should_reset and not self._capture_reset_done:
+                self._reset_fast_modules()
+                self._capture_reset_done = True
+        self._capture_was_ready = ready
 
     def _motion_energy(self, frame: np.ndarray) -> float:
         """True current frame-difference motion energy, computed on the
@@ -147,13 +283,13 @@ class Pipeline:
             face, face_ts = self._latest_face, self._latest_face_ts
         diag = debug_enabled("pipeline")
         if face is None:
-            self.runtime_metrics.note_fast_path("no_face")
+            self.runtime_metrics.note_fast_path("no_face", ts)
             if diag:
                 self._diag_no_face += 1
                 self._maybe_log_diag(ts)
             return
         if (ts - face_ts) > self.max_staleness:
-            self.runtime_metrics.note_fast_path("stale")
+            self.runtime_metrics.note_fast_path("stale", ts)
             if diag:
                 self._diag_stale += 1
                 self._maybe_log_diag(ts)
@@ -179,13 +315,101 @@ class Pipeline:
             except Exception:  # noqa: BLE001
                 print(f"[pipeline] module '{module.name}' fast_update raised:")
                 traceback.print_exc()
-        self.runtime_metrics.note_fast_path("fed")
+        self.runtime_metrics.note_fast_path("fed", ts)
+
+    def vitals_diagnostics(self, results: list[Result], now: float | None = None,
+                           performance: dict | None = None) -> dict:
+        """Compose a private, JSON-safe explanation of heart-rate readiness."""
+        now = float(now or time.time())
+        with self._vitals_lock:
+            showcase = dict(self._showcase_state)
+        heart = next((module for module in self.scheduler.modules
+                      if module.name == "heart_rate"), None)
+        heart_diag = heart.diagnostics() if heart is not None and hasattr(heart, "diagnostics") \
+            else {"canonical_source": None, "backends": []}
+        backends = heart_diag.get("backends", [])
+        available = [item for item in backends if item.get("available")]
+        performance = performance or self.runtime_metrics.snapshot(now=now)
+        fast_path = performance.get("fast_path", {})
+
+        canonical = max((result for result in results
+                         if result.module == "heart_rate" and result.key == "bpm"
+                         and result.subject_id == "primary"),
+                        key=lambda result: result.timestamp, default=None)
+        measurement_age = (max(0.0, now - canonical.timestamp)
+                           if canonical is not None else None)
+        capture_ready = bool(showcase.get("capture_ready"))
+        fresh = bool(canonical is not None and measurement_age is not None
+                     and measurement_age <= canonical.ttl and capture_ready)
+        bpm = None
+        if fresh:
+            try:
+                candidate = float(canonical.value)
+                bpm = candidate if 35.0 <= candidate <= 180.0 else None
+            except (TypeError, ValueError):
+                bpm = None
+            fresh = bpm is not None
+
+        if not capture_ready:
+            state = "blocked"
+            guidance = str(showcase.get("guidance") or "Capture quality is not ready")
+        elif not available:
+            state = "unavailable"
+            guidance = "No heart-rate backend is available"
+        elif fresh:
+            state = "ready"
+            guidance = "Heart-rate estimate is current"
+        elif any("inferr" in str(item.get("status", "")).lower()
+                 or item.get("inference_pending") for item in available):
+            state = "inferring"
+            guidance = "A heart-rate backend is processing the clean sample window"
+        else:
+            state = "warming_up"
+            recent_outcome = fast_path.get("latest_outcome")
+            recent_age = fast_path.get("latest_outcome_age_ms")
+            if recent_age is not None and recent_age <= 2000 and recent_outcome == "no_face":
+                guidance = "No current face geometry; face the camera clearly"
+            elif recent_age is not None and recent_age <= 2000 and recent_outcome == "stale":
+                guidance = "Face geometry is stale; analysis is not refreshing quickly enough"
+            else:
+                leader = max(available, key=lambda item: float(item.get("progress", 0.0)))
+                buffered = float(leader.get("buffered_seconds", 0.0))
+                required = float(leader.get("required_seconds", 0.0))
+                samples = int(leader.get("samples", 0))
+                required_samples = int(leader.get("required_samples", 0))
+                if required > 0 and required_samples > 0:
+                    guidance = (f"Collecting clean samples: {samples}/{required_samples} "
+                                f"samples, {buffered:.1f}/{required:.1f}s")
+                else:
+                    guidance = (f"Collecting clean samples: {buffered:.1f}/{required:.1f}s"
+                                if required > 0 else "Waiting for a heart-rate result")
+
+        return {
+            "state": state,
+            "bpm": round(bpm, 1) if bpm is not None else None,
+            "confidence": canonical.confidence if fresh else None,
+            "quality": canonical.quality if fresh else None,
+            "source": ((heart_diag.get("canonical_source") or canonical.source)
+                       if fresh else None),
+            "measurement_age_seconds": (round(measurement_age, 2) if fresh else None),
+            "capture_ready": capture_ready,
+            "zone": showcase.get("zone"),
+            "guidance": guidance,
+            "fast_path": fast_path,
+            "backends": backends,
+        }
 
     def process_frame(self, ctx: FrameContext) -> list[Result]:
         """Run extractors, modules, and the advisor for one frame."""
         started = time.perf_counter()
-        for ex in self.extractors:
+        timings: dict[str, float] = {}
+        active_extractors = (self._critical_extractors
+                             if self.background_analysis else self.extractors)
+        for ex in active_extractors:
+            t0 = time.perf_counter()
             ex.extract(ctx)
+            timings[f"extractor:{ex.__class__.__name__}"] = round(
+                (time.perf_counter() - t0) * 1000.0, 2)
         boxes = [p["bbox"] for p in ctx.extras.get("poses", [])]
         if not boxes:
             boxes = [f["bbox"] for f in ctx.extras.get("faces", [])]
@@ -217,22 +441,23 @@ class Pipeline:
                 ctx.person_present = ctx.pose is not None or ctx.face is not None
         showcase_results = self.showcase_gate.assess(ctx) if self.showcase_gate else []
         if self.showcase_gate is not None:
-            self._fast_capture_ready = bool(ctx.extras["showcase"]["stable"])
-            if self._capture_was_ready and not self._fast_capture_ready:
-                for module in self._fast_modules:
-                    reset = getattr(module, "reset_capture", None)
-                    if reset is not None:
-                        reset()
-            self._capture_was_ready = self._fast_capture_ready
+            self._update_capture_gate(ctx)
         if self._fast_modules and ctx.face is not None:
             with self._face_lock:
                 self._latest_face = ctx.face
                 self._latest_face_ts = ctx.timestamp
             if debug_enabled("pipeline"):
                 self._diag_heavy_publishes += 1
-        results = self.scheduler.tick(ctx)
-        if self.showcase_gate is not None:
-            results = [r for r in results if self.showcase_gate.allow(r.module, ctx)]
+        if self.background_analysis:
+            results = self._critical_scheduler.tick(ctx, timings=timings)
+            if self.showcase_gate is not None:
+                results = [r for r in results if self.showcase_gate.allow(r.module, ctx)]
+            results.extend(self._drain_background())
+            self._submit_background(ctx)
+        else:
+            results = self.scheduler.tick(ctx, timings=timings)
+            if self.showcase_gate is not None:
+                results = [r for r in results if self.showcase_gate.allow(r.module, ctx)]
         results = showcase_results + results
         if self.camera_location:
             for result in results:
@@ -241,27 +466,42 @@ class Pipeline:
         for result in results:
             if result.persistence.value != "none" and result.correlation_id is None:
                 result.correlation_id = uuid.uuid4().hex
+        persistence_started = time.perf_counter()
         for result in results:
             try:
                 self.event_store.record_result(result)
             except (TypeError, ValueError) as exc:
                 print(f"[events] refused unsafe {result.module}.{result.key}: {exc}")
+        timings["coordinator:persistence"] = round(
+            (time.perf_counter() - persistence_started) * 1000.0, 2)
+        aggregate_started = time.perf_counter()
         self.aggregator.ingest(results)
+        timings["coordinator:aggregation"] = round(
+            (time.perf_counter() - aggregate_started) * 1000.0, 2)
         if self.advisor_engine is not None:
+            advisor_started = time.perf_counter()
             advice = self.advisor_engine.evaluate(self.aggregator.snapshot())
             if advice:
                 for result in advice:
                     self.event_store.record_result(result)
                 self.aggregator.ingest(advice)
                 results.extend(advice)
-        source_index = int(ctx.extras.get("capture_index", ctx.frame_index))
-        self.runtime_metrics.note_analysis(
-            source_index, (time.perf_counter() - started) * 1000.0)
+            timings["coordinator:advisor"] = round(
+                (time.perf_counter() - advisor_started) * 1000.0, 2)
+        latency_ms = (time.perf_counter() - started) * 1000.0
+        self.runtime_metrics.note_stage_timings(timings)
+        if self.background_analysis:
+            geometry_ts = ctx.timestamp if ctx.face is not None else self._latest_face_ts
+            self.runtime_metrics.note_critical(latency_ms, geometry_ts)
+        else:
+            source_index = int(ctx.extras.get("capture_index", ctx.frame_index))
+            self.runtime_metrics.note_analysis(source_index, latency_ms)
         return results
 
     def run(self, on_frame=None, max_frames: int | None = None) -> None:
         """on_frame(ctx, results) -> bool; return False to stop."""
         self._stop_requested.clear()
+        self._start_background_worker()
         try:
             for ctx in self.camera.frames():
                 if self._stop_requested.is_set():
@@ -273,6 +513,9 @@ class Pipeline:
                     break
         finally:
             self.camera.release()
+            self._stop_background_worker()
+            self.event_store.flush()
+            HistoryStore.instance().flush()
             for ex in self.extractors:
                 close = getattr(ex, "close", None)
                 if close:

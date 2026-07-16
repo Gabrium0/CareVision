@@ -23,6 +23,11 @@ class HistoryStore:
         path.parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(str(path), check_same_thread=False)
         self._lock = threading.RLock()
+        self.conn.execute("PRAGMA journal_mode=WAL")
+        self.conn.execute("PRAGMA synchronous=NORMAL")
+        self.conn.execute("PRAGMA busy_timeout=5000")
+        self._pending_writes = 0
+        self._last_commit = time.monotonic()
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS samples ("
             "  ts REAL, module TEXT, key TEXT, value REAL)")
@@ -47,7 +52,24 @@ class HistoryStore:
             self.conn.execute(
                 "INSERT INTO samples (ts,module,key,value,subject_id) VALUES (?,?,?,?,?)",
                 (ts or time.time(), module, key, float(value), subject_id))
+            self._pending_writes += 1
+            if self._pending_writes >= 64 or time.monotonic() - self._last_commit >= 1.0:
+                self._flush_locked()
+
+    def _flush_locked(self) -> None:
+        if self._pending_writes:
             self.conn.commit()
+            self._pending_writes = 0
+            self._last_commit = time.monotonic()
+
+    def flush(self) -> None:
+        with self._lock:
+            self._flush_locked()
+
+    def close(self) -> None:
+        with self._lock:
+            self._flush_locked()
+            self.conn.close()
 
     def recent(self, module: str, key: str, seconds: float,
                subject_id: str = "primary", now: float | None = None):

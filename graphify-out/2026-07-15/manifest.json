@@ -70,8 +70,8 @@
     "semantic_hash": ""
   },
   "main.py": {
-    "mtime": 1784106783.7595985,
-    "ast_hash": "2544885c2b04d7e05619e85778768839",
+    "mtime": 1784109033.2130125,
+    "ast_hash": "a809c3a7a1016e13c0dfb8cf4a788094",
     "semantic_hash": ""
   },
   "modules/__init__.py": {
@@ -300,8 +300,8 @@
     "semantic_hash": "8a6643a420fdad6bfb583523bc6cef16"
   },
   "README.md": {
-    "mtime": 1784106783.589954,
-    "ast_hash": "dd078b2546d16e43be743f55bd8d910d",
+    "mtime": 1784109120.5000012,
+    "ast_hash": "97ca0cdab37c21c54ad5c2b87586ed0f",
     "semantic_hash": ""
   },
   "detectionList.md": {
@@ -340,8 +340,8 @@
     "semantic_hash": ""
   },
   "output/dashboard.py": {
-    "mtime": 1784106783.7595985,
-    "ast_hash": "5b693f512c4158a310d0eaae60abc68b",
+    "mtime": 1784109009.9373443,
+    "ast_hash": "3e3b049069ef83c0571e2665411632ab",
     "semantic_hash": ""
   },
   "tests/hr_backends_test.py": {
@@ -500,8 +500,8 @@
     "semantic_hash": ""
   },
   "agent/gemini_client.py": {
-    "mtime": 1783657720.3977566,
-    "ast_hash": "311412d45336b8fa2e933065ab2045be",
+    "mtime": 1784109007.623594,
+    "ast_hash": "8e245f5273abb377d30ab096c019471b",
     "semantic_hash": ""
   },
   "agent/policy.py": {
@@ -515,8 +515,8 @@
     "semantic_hash": ""
   },
   "agent/voice_agent.py": {
-    "mtime": 1784106783.5997536,
-    "ast_hash": "047e2f83ce63ea379af69e462a036885",
+    "mtime": 1784109008.8422089,
+    "ast_hash": "e532a68032f0919c092c9db2da34f2e9",
     "semantic_hash": ""
   },
   "alerts/__init__.py": {
@@ -1025,18 +1025,28 @@
     "semantic_hash": ""
   },
   "tests/runtime_performance_test.py": {
-    "mtime": 1784106783.7752314,
-    "ast_hash": "5f123a7ecd79b7bc17fde3f27743aa3d",
+    "mtime": 1784109163.4278526,
+    "ast_hash": "c0ebc4586ee12e85ddfdf5b006be4f95",
     "semantic_hash": ""
   },
   "webui/debug_server.py": {
-    "mtime": 1784106783.791057,
-    "ast_hash": "7c501c8a3d7f724558b8c65bec9539e0",
+    "mtime": 1784109011.1338098,
+    "ast_hash": "362a3084695cca98e5d4fbc844d8579e",
     "semantic_hash": ""
   },
   "tests/attention_planner_test.py": {
     "mtime": 1784107257.10189,
     "ast_hash": "8d564d754f085fda4904bbc53fd47349",
+    "semantic_hash": ""
+  },
+  "tests/gemini_toggle_test.py": {
+    "mtime": 1784109164.5403116,
+    "ast_hash": "acbae5aa9674ca53bcc1c97426c3e686",
+    "semantic_hash": ""
+  },
+  "webui/debug.html": {
+    "mtime": 1784109089.66271,
+    "ast_hash": "1937e236a844b0f19c55a96dd57f9be1",
     "semantic_hash": ""
   }
 }

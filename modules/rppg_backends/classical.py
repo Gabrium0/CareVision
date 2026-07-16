@@ -53,6 +53,7 @@ class ClassicalBackend(RPPGBackend):
     """Classical rPPG backend: multi-ROI skin chrominance + FFT."""
     label = "classical"
     available = True
+    required_samples = 8
 
     def __init__(self, window_seconds: float = 12.0, method: str = "chrom",
                  smoothing_window: int = 5, talk_delta_threshold: float = 0.05):
@@ -64,6 +65,9 @@ class ClassicalBackend(RPPGBackend):
         # update() (writer) and compute() (reader) can run on different
         # threads when fed via the camera's fast path (see core/pipeline.py).
         self._lock = threading.Lock()
+        self._accepted = 0
+        self._rejected_no_roi = 0
+        self._last_reading: dict | None = None
         # compute() only ever runs on the heavy-loop thread (see
         # modules/heart_rate.py), so this needs no lock of its own.
         self._bpm_history: deque[float] = deque(maxlen=max(1, int(smoothing_window)))
@@ -91,6 +95,8 @@ class ClassicalBackend(RPPGBackend):
             if patch is not None and patch.size:
                 pixels.append(patch.reshape(-1, 3))
         if not pixels:
+            with self._lock:
+                self._rejected_no_roi += 1
             return
         px = np.concatenate(pixels, axis=0).astype(np.float64)   # BGR
         # store as (R, G, B) so chrom/pos get channels in the expected order
@@ -99,6 +105,46 @@ class ClassicalBackend(RPPGBackend):
         with self._lock:
             self.buf.push(ctx.timestamp, rgb_mean)
             self._brightness = 0.9 * self._brightness + 0.1 * bright
+            self._accepted += 1
+
+    def diagnostics(self) -> dict:
+        """Return a thread-safe snapshot without copying raw signal samples."""
+        with self._lock:
+            samples = len(self.buf)
+            span = self.buf.span()
+            brightness = self._brightness
+            latest = dict(self._last_reading) if self._last_reading else None
+            accepted = self._accepted
+            rejected = self._rejected_no_roi
+        required = 6.0
+        sample_progress = min(1.0, samples / self.required_samples)
+        time_progress = min(1.0, span / required)
+        ready = samples >= self.required_samples and span >= required
+        sample_hz = ((samples - 1) / span if samples > 1 and span > 0 else 0.0)
+        return {
+            "name": self.label, "available": True,
+            "samples": samples, "buffered_seconds": round(span, 1),
+            "required_seconds": required,
+            "required_samples": self.required_samples,
+            "sample_progress": round(sample_progress, 3),
+            "effective_sample_hz": round(sample_hz, 2),
+            "progress": round(min(time_progress, sample_progress), 3),
+            "ready": ready,
+            "status": ("ready" if ready else
+                       f"warming up: {samples}/{self.required_samples} samples, "
+                       f"{span:.0f}/{required:.0f}s"),
+            "accepted": accepted, "rejected": {"no_roi": rejected},
+            "inference_latency_ms": 0.0, "latest": latest,
+            "brightness": round(brightness, 1),
+        }
+
+    def reset(self) -> None:
+        with self._lock:
+            self.buf.t.clear()
+            self.buf.v.clear()
+            self._last_reading = None
+            self._bpm_history.clear()
+            self._last_mar = None
 
     def _snapshot(self):
         """Thread-safe copy of the buffer + brightness for compute() to use."""
@@ -160,4 +206,6 @@ class ClassicalBackend(RPPGBackend):
             rr_ms = rr * 1000.0
             out["hrv_rmssd_ms"] = round(float(np.sqrt(np.mean(np.diff(rr_ms) ** 2))), 1)
             out["hrv_sdnn_ms"] = round(float(np.std(rr_ms)), 1)
+        with self._lock:
+            self._last_reading = dict(out)
         return out

@@ -34,7 +34,7 @@ def test_conversation_zone_allows_stable_face_measurements():
     assert ctx.extras["showcase"]["stable"] is True
     assert gate.allow("heart_rate", ctx)
     assert not gate.allow("gait", ctx)
-    assert {r.key for r in results} == {"zone", "capture_ready"}
+    assert {r.key for r in results} == {"zone", "capture_ready", "heart_rate_ready"}
 
 
 def test_gate_rejects_multiple_people_and_bad_capture():
@@ -56,7 +56,21 @@ def test_movement_zone_only_allows_whole_body_features():
     gate.assess(ctx)
     assert ctx.extras["showcase"]["zone"] == "movement"
     assert gate.allow("gait", ctx)
-    assert not gate.allow("heart_rate", ctx)
+    assert gate.allow("heart_rate", ctx)
+    assert ctx.extras["showcase"]["heart_rate_ready"] is True
+
+
+def test_heart_rate_does_not_require_depth_or_conversation_distance():
+    gate = ShowcaseGate()
+    ctx = _ctx(2.8)
+    ctx.depth = None
+    ctx.intrinsics = None
+    gate.assess(ctx)
+    assert ctx.extras["showcase"]["zone"] == "outside"
+    assert ctx.extras["showcase"]["stable"] is False
+    assert ctx.extras["showcase"]["heart_rate_ready"] is True
+    assert gate.allow("heart_rate", ctx)
+    assert not gate.allow("facial_asymmetry", ctx)
 
 
 def test_dashboard_payload_exposes_reasoning_card():
