@@ -238,6 +238,10 @@ speech guard replaces any generated line that names or implies a condition
 with a reviewed neutral fallback. Image results alone never trigger caregiver
 alerts.
 
+See [NVIDIA-Assisted Skin Detection](docs/SKIN_DETECTION.md) for the complete
+two-stage flow, structured result schema, customized agent questions, normal
+versus debug visibility, live demonstration commands, and failure behavior.
+
 ## Add or change a module
 1. Drop `modules/my_thing.py`:
    ```python
