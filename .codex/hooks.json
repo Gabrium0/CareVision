@@ -1,21 +1,14 @@
 {
   "hooks": {
-    "PreToolUse": [
+    "SessionStart": [
       {
-        "matcher": "Bash",
+        "matcher": "startup|resume|clear|compact",
         "hooks": [
           {
             "type": "command",
-            "command": "C:\\Users\\Gabriel\\.local\\bin\\graphify.EXE hook-guard search"
-          }
-        ]
-      },
-      {
-        "matcher": "Read|Glob",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "C:\\Users\\Gabriel\\.local\\bin\\graphify.EXE hook-guard read"
+            "command": "node \"$(git rev-parse --show-toplevel)/.agents/skills/graphify/scripts/graphify.mjs\" hook",
+            "commandWindows": "powershell -NoProfile -Command \"node (Join-Path (git rev-parse --show-toplevel) '.agents/skills/graphify/scripts/graphify.mjs') hook\"",
+            "statusMessage": "Loading the repository Graphify integration"
           }
         ]
       }

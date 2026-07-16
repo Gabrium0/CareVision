@@ -91,6 +91,16 @@ class ObservationMemory:
         emo = self._first_present_backend("emotion")
         return str(emo.value) if emo is not None else None
 
+    def facial_cues(self) -> dict[str, str]:
+        """Return current public NVIDIA appearance cues for corroboration only."""
+        result = self.get("skin_vision", "facial_appearance")
+        if result is None or result.expired or not isinstance(result.value, dict):
+            return {}
+        cues = result.value.get("cues")
+        if not isinstance(cues, dict):
+            return {}
+        return {str(key): str(value) for key, value in cues.items()}
+
     def context_text(self) -> str:
         """Compact description of what the agent currently knows, for the LLM."""
         bits = [f"Person: {self.name}.", f"Time of day: {self.time_of_day()}."]

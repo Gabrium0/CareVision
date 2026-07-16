@@ -270,6 +270,18 @@ def test_private_debug_payload_includes_private_and_redacts_media():
     assert safe_json(float("nan")) is None
 
 
+def test_private_debug_payload_includes_nvidia_skin_diagnostics():
+    diagnostic = {
+        "available": True, "status": "success",
+        "last_attempt": {
+            "stage": "preliminary", "raw_model_content": '{"finding_present":false}',
+        },
+    }
+    payload = build_debug_payload([], {"capture_fps": 30.0},
+                                  {"nvidia_skin": diagnostic})
+    assert payload["system"]["nvidia_skin"] == diagnostic
+
+
 def test_debug_server_binds_loopback_and_serves_readable_private_dashboard():
     server = DebugServer(lambda: {"ok": True}, port=0)
     server.start()
@@ -284,6 +296,8 @@ def test_debug_server_binds_loopback_and_serves_readable_private_dashboard():
             assert "textContent" in html
             assert "renderVitals" in html
             assert "Vitals diagnostics unavailable" in html
+            assert "NVIDIA skin VLM" in html
+            assert "Latest private request diagnostics" in html
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/debug/state") as response:
             assert json.load(response) == {"ok": True}
         try:

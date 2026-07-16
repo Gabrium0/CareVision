@@ -251,10 +251,25 @@ class VoiceAgent:
             topic, rule = nq
             asks = self.corroboration.topics[topic].asks
             sig = f"ask:{topic}:{asks}"
+            cues = self.memory.facial_cues()
+            relevant = []
+            if topic == "cold_symptoms":
+                relevant = [key for key in ("nose_redness", "cheek_redness",
+                                             "nasal_discharge_visible") if key in cues]
+            elif topic == "hydration" and "lip_dryness" in cues:
+                relevant = ["lip_dryness"]
+            elif topic == "tiredness_pallor":
+                relevant = [key for key in ("under_eye_darkness", "under_eye_puffiness")
+                            if key in cues]
+            support = (" Supporting visible appearance cues: " +
+                       ", ".join(key.replace("_", " ") for key in relevant) +
+                       ". Use them only to phrase the check-in; do not state a cause or diagnosis."
+                       if relevant else "")
             extra.append(Intent(
                 "follow_up", sig,
                 "Ask this gentle check-in question, naturally and without "
-                "alarm: " + rule.question, "", rule.question, 45))
+                "alarm: " + rule.question + support,
+                support.strip(), rule.question, 45))
             self._actions[sig] = (lambda t=topic:
                                   self.corroboration.mark_asked(t, now))
 

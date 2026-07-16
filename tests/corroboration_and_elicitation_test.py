@@ -56,6 +56,46 @@ def test_flag_ask_confirm_flow():
     assert eng.pending_conclusions() == []
 
 
+def test_nvidia_facial_cues_never_flag_questions_without_local_trigger():
+    appearance = _res(
+        "skin_vision", "facial_appearance",
+        {"cues": {"under_eye_darkness": "mild", "lip_dryness": "marked"}},
+        0.8, severity=Severity.INFO)
+    eng = CorroborationEngine()
+    eng.observe([appearance], now=100.0)
+    assert eng.next_question(100.0) is None
+
+    eng.observe([appearance, _res("dry_lips", "lip_dryness", 1.2, 0.5)],
+                now=101.0)
+    topic, rule = eng.next_question(101.0)
+    assert topic == "hydration"
+    assert "drink" in rule.question.lower()
+
+
+def test_tiredness_policy_uses_nvidia_eye_cues_only_after_local_perclos():
+    from agent.policy import Policy
+    from agent.state import ObservationMemory
+
+    appearance = _res(
+        "skin_vision", "facial_appearance",
+        {"cues": {"under_eye_darkness": "mild"}},
+        0.8, severity=Severity.INFO)
+    memory = ObservationMemory()
+    memory.ingest([appearance], now=100.0)
+    policy = Policy(small_talk_interval=1e9)
+    assert all(intent.signature != "tired"
+               for intent in policy._candidates(memory, 100.0))
+
+    perclos = _res("drowsiness", "perclos", 0.25, 0.7,
+                   severity=Severity.NOTICE,
+                   message="Drowsiness: eyes closed 25% of the time")
+    memory.ingest([perclos], now=101.0)
+    tired = next(intent for intent in policy._candidates(memory, 101.0)
+                 if intent.signature == "tired")
+    assert "supporting visible appearance cues" in tired.llm_intent.lower()
+    assert "under eye darkness" in tired.llm_intent.lower()
+
+
 def test_denied_topic_cools_down_and_is_not_reflagged():
     eng = CorroborationEngine()
     snap = [_res("rash", "rash", 0.3, 0.4)]

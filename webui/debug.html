@@ -202,6 +202,11 @@
     tileGrid(current.performance);
     heading('Gemini API control');
     tileGrid((current.system || {}).gemini || {});
+    heading('NVIDIA skin VLM');
+    jsonSection('Latest private request diagnostics',
+      (current.system || {}).nvidia_skin || {
+        available:false, status:'unavailable', last_attempt:null
+      }, true);
 
     const needle = filter.value.trim().toLowerCase();
     const all = current.results || [];

@@ -312,6 +312,14 @@ def main():
         if private:
             system["vitals"] = pipeline.vitals_diagnostics(
                 list(results or []), now=time.time(), performance=performance)
+            skin_vision = next((module for module in pipeline.scheduler.modules
+                                if module.name == "skin_vision"), None)
+            system["nvidia_skin"] = (
+                skin_vision.diagnostics()
+                if skin_vision is not None and hasattr(skin_vision, "diagnostics")
+                else {"available": False, "status": "unavailable",
+                      "last_attempt": None}
+            )
         return system
 
     debug_server = None

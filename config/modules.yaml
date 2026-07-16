@@ -86,6 +86,8 @@ modules:
     closeup_seconds: 10.0
     closeup_positioning_delay: 2.0
     min_confidence: 0.35
+    min_facial_confidence: 0.45
+    min_face_crop_size: 64
   scene_vision:
     enabled: true
     consent: false

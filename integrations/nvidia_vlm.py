@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 import urllib.error
 import urllib.request
 from typing import Any
@@ -16,6 +17,20 @@ class NvidiaVLMError(RuntimeError):
     def __init__(self, message: str, status: int | None = None):
         super().__init__(message)
         self.status = status
+
+
+def _sanitized_http_error(exc: urllib.error.HTTPError) -> str:
+    """Return only NVIDIA's bounded error message, never its response envelope."""
+    label = f"HTTP {exc.code}"
+    try:
+        body = json.loads(exc.read().decode("utf-8", errors="replace"))
+        detail = body.get("error", {}).get("message")
+    except (AttributeError, TypeError, ValueError, json.JSONDecodeError, OSError):
+        return label
+    if not isinstance(detail, str):
+        return label
+    detail = re.sub(r"\s+", " ", detail).strip()[:300]
+    return f"{label}: {detail}" if detail else label
 
 
 class NvidiaVLMClient:
@@ -39,7 +54,8 @@ class NvidiaVLMClient:
             raise NvidiaVLMError("JPEG encoding failed")
         return encoded.tobytes()
 
-    def request(self, prompt: str, images: list[bytes], max_tokens: int = 700) -> Any:
+    def request(self, prompt: str, images: list[bytes], max_tokens: int = 700,
+                response_format: dict[str, Any] | None = None) -> Any:
         """Submit text plus still/multi-frame input and return message content."""
         content: list[dict] = [{"type": "text", "text": prompt}]
         content.extend({"type": "image_url", "image_url": {"url":
@@ -47,6 +63,8 @@ class NvidiaVLMClient:
                        for image in images)
         payload = {"model": self.model, "messages": [{"role": "user", "content": content}],
                    "temperature": 0.1, "max_tokens": max_tokens}
+        if response_format is not None:
+            payload["response_format"] = response_format
         req = urllib.request.Request(self.endpoint, data=json.dumps(payload).encode(), method="POST",
                                      headers={"Authorization": f"Bearer {self._key}",
                                               "Content-Type": "application/json",
@@ -56,7 +74,7 @@ class NvidiaVLMClient:
                 body = json.loads(response.read().decode())
             return body["choices"][0]["message"]["content"]
         except urllib.error.HTTPError as exc:
-            raise NvidiaVLMError(f"HTTP {exc.code}", exc.code) from exc
+            raise NvidiaVLMError(_sanitized_http_error(exc), exc.code) from exc
         except (urllib.error.URLError, TimeoutError, OSError, KeyError, IndexError,
                 ValueError, json.JSONDecodeError) as exc:
             raise NvidiaVLMError(type(exc).__name__) from exc

@@ -16,10 +16,13 @@ more informative, but the combined result still does not establish a diagnosis.
 ## End-to-end flow
 
 1. About once per minute, `SkinVision` analyzes an occasional whole-camera
-   frame when a person is visible.
-2. The model returns strict JSON describing image quality, visible features,
-   body region, confidence, uncertain possible conditions, and useful follow-up
-   topics.
+   frame when a person is visible. When the detected face crop is at least
+   64 pixels per side, the whole frame and enlarged crop are placed in the top
+   and bottom panels of one labeled 1024-by-1024 in-memory JPEG. This respects
+   the hosted model's one-image-per-prompt limit.
+2. NVIDIA structured generation enforces strict JSON describing image quality,
+   visible skin features, body region, confidence, uncertain possible
+   conditions, follow-up topics, and bounded facial appearance cues.
 3. If the preliminary image contains a sufficiently clear possible change, the
    result is sent privately to `SkinDialogue`.
 4. The companion asks the person to show the named body area closer to the
@@ -56,12 +59,13 @@ flowchart TD
 
 Heavy network inference runs in a single-worker background executor, so the
 camera capture thread does not wait for NVIDIA. Only one skin request can be in
-flight at a time.
+flight at a time. Composites and individual frames are never written to disk.
 
 ## Structured NVIDIA result
 
-Both preliminary and close-up responses must contain one JSON object with the
-following fields:
+Both preliminary and close-up responses must contain one JSON object matching
+the stage-specific `response_format` JSON schema. Close-up responses use the
+skin fields below:
 
 ```json
 {
@@ -86,6 +90,14 @@ following fields:
 | `confidence` | Model confidence from 0 to 1, bounded again by CareVision. |
 | `possible_conditions` | Up to three uncertain likely-condition hypotheses for internal context and debugging. |
 | `follow_up_topics` | Approved topics that deterministic code converts into questions. |
+
+Preliminary responses additionally require `under_eye_darkness`,
+`under_eye_puffiness`, `nose_redness`, `cheek_redness`, and `lip_dryness` as
+`none`, `mild`, `marked`, or `unclear`; `nasal_discharge_visible` as `no`,
+`yes`, or `unclear`; and `facial_cue_confidence` from 0 to 1. These are visible
+appearance observations, never tiredness, cold, allergy, or dehydration labels.
+They are suppressed unless a usable face crop, fair/good image quality, and at
+least 0.45 confidence are present.
 
 CareVision rejects malformed or loose responses. A finding is accepted only
 when skin is sufficiently visible, quality is not poor, confidence meets the
@@ -175,6 +187,13 @@ valid close-up, they can show:
 - Current dialogue/answer state in the reasoning card.
 - The final monitoring or professional-review suggestion.
 
+A valid preliminary face crop can also produce a transient, non-persisted
+`skin_vision.facial_appearance` signal containing only affirmative appearance
+cues. The voice agent may use these cues to phrase a question only after local
+PERCLOS/yawn/head-nod, sneeze/nose-touch/flushing, pallor, or lip-dryness
+evidence has independently qualified. NVIDIA cues never trigger a question or
+conclusion alone.
+
 Likely-condition names are not spoken, included in normal dashboard payloads,
 sent to caregiver alerts, or written to the event timeline. Before speech is
 played, a filter checks for private hypothesis names, aliases, and diagnostic
@@ -206,6 +225,8 @@ The debug output can include:
   conversation tags, TTL, and persistence policy.
 - Active workflow and reasoning state.
 - NVIDIA capability/consent state.
+- Latest NVIDIA request state, stage, timing, sanitized error, and exact raw
+  model content under `system.nvidia_skin` (in memory only).
 - Gemini availability, enabled state, request counters, and error state.
 - Capture, preview, analysis, and module-performance diagnostics.
 
@@ -236,6 +257,8 @@ skin_vision:
   closeup_seconds: 10.0
   closeup_positioning_delay: 2.0
   min_confidence: 0.35
+  min_facial_confidence: 0.45
+  min_face_crop_size: 64
 ```
 
 Runtime consent always comes from `--enable-cloud-skin`; the YAML `consent`
@@ -306,6 +329,8 @@ For the best demonstration:
 | `--enable-cloud-skin` omitted | Skin cloud screening remains disabled even when the key exists. |
 | Person or sufficient skin not visible | No preliminary request is scheduled or the response is rejected as not usable. |
 | Poor image or confidence below threshold | No finding, hypothesis, or question workflow is created. |
+| Missing/small face crop | Skin screening may continue from the whole frame, but every facial cue is suppressed. |
+| Invalid structured response | The attempt is marked `invalid_response`; raw model content remains visible only in localhost diagnostics. |
 | Invalid model JSON | The response is rejected and the module enters sanitized exponential backoff. |
 | Timeout, rate limit, or API outage | Capture continues; the worker backs off and retries later without blocking the camera. |
 | Person does not provide a close-up | The request expires and enters a short cooldown without publishing a skin finding. |

@@ -30,8 +30,8 @@
     "semantic_hash": ""
   },
   "core/pipeline.py": {
-    "mtime": 1784179995.3402133,
-    "ast_hash": "e4dd9078c22b6583e0cbec2e13756e22",
+    "mtime": 1784183719.6433444,
+    "ast_hash": "b68d3de11fc4b2c06297dc0377099259",
     "semantic_hash": ""
   },
   "core/registry.py": {
@@ -40,8 +40,8 @@
     "semantic_hash": ""
   },
   "core/scheduler.py": {
-    "mtime": 1784178056.118301,
-    "ast_hash": "764f9800fdff4a028f9d0a70cf908242",
+    "mtime": 1784183720.6772308,
+    "ast_hash": "9f49c86569366ea3948731dd9b7084c7",
     "semantic_hash": ""
   },
   "extractors/__init__.py": {
@@ -70,8 +70,8 @@
     "semantic_hash": ""
   },
   "main.py": {
-    "mtime": 1784178143.1663375,
-    "ast_hash": "4ee9823eb64b9f913871b2b35d304859",
+    "mtime": 1784188749.2308116,
+    "ast_hash": "b88597867af1f19c11f943c9eca3c9c0",
     "semantic_hash": ""
   },
   "modules/__init__.py": {
@@ -285,8 +285,8 @@
     "semantic_hash": ""
   },
   "config/modules.yaml": {
-    "mtime": 1784181315.303674,
-    "ast_hash": "1858b29a4d6061cc8bc475407604305c",
+    "mtime": 1784191444.186807,
+    "ast_hash": "3b0e9c32404a580b03d33f1acde92693",
     "semantic_hash": ""
   },
   "docs/RESEARCH.md": {
@@ -300,8 +300,8 @@
     "semantic_hash": "8a6643a420fdad6bfb583523bc6cef16"
   },
   "README.md": {
-    "mtime": 1784112826.0966246,
-    "ast_hash": "17b5e22b0f932e2db3c12f95ac97c2a2",
+    "mtime": 1784184933.62997,
+    "ast_hash": "e892cb2c315464c1bead441580f771e3",
     "semantic_hash": ""
   },
   "detectionList.md": {
@@ -460,13 +460,13 @@
     "semantic_hash": ""
   },
   "AGENTS.md": {
-    "mtime": 1783407754.349005,
-    "ast_hash": "21ceb6533048be51308e69e7b74a35cf",
+    "mtime": 1784192872.1102667,
+    "ast_hash": "fb379aa4da8c89b3b277976b36783ad9",
     "semantic_hash": ""
   },
   "modules/clothing.py": {
-    "mtime": 1784181312.054128,
-    "ast_hash": "c7257b9b0cc41d04a4ed0682a6ba24e2",
+    "mtime": 1784183367.5636234,
+    "ast_hash": "76924e3a931af20e32fd94e4dbbd013e",
     "semantic_hash": ""
   },
   "modules/clothing_advice.py": {
@@ -480,8 +480,8 @@
     "semantic_hash": ""
   },
   "requirements-clothing.txt": {
-    "mtime": 1783418515.097546,
-    "ast_hash": "e552c3de258a35a8c17d6a4cb242c0b7",
+    "mtime": 1784182297.7144165,
+    "ast_hash": "3e7e6c4fa5859f693e6130150df86423",
     "semantic_hash": ""
   },
   "core/debug.py": {
@@ -505,18 +505,18 @@
     "semantic_hash": ""
   },
   "agent/policy.py": {
-    "mtime": 1784107255.9451318,
-    "ast_hash": "74ff7e00f4405d3761d440342819b0f8",
+    "mtime": 1784191504.3292592,
+    "ast_hash": "7852f133842877fd921f72155eb0def2",
     "semantic_hash": ""
   },
   "agent/state.py": {
-    "mtime": 1784106783.598755,
-    "ast_hash": "a43526b0d964b21283d5595b701f3f60",
+    "mtime": 1784191787.2326536,
+    "ast_hash": "43fce41c0255892555fbb4c3d3ab6753",
     "semantic_hash": ""
   },
   "agent/voice_agent.py": {
-    "mtime": 1784109008.8422089,
-    "ast_hash": "e532a68032f0919c092c9db2da34f2e9",
+    "mtime": 1784191506.5640368,
+    "ast_hash": "a036bd17f50cd931409f48ce25dab04c",
     "semantic_hash": ""
   },
   "alerts/__init__.py": {
@@ -785,8 +785,8 @@
     "semantic_hash": ""
   },
   "agent/corroboration.py": {
-    "mtime": 1784106783.5929549,
-    "ast_hash": "21af351972cfc5cb80a1b88c9c9638ee",
+    "mtime": 1784191505.4290414,
+    "ast_hash": "9786d9f21003d12183db0df78a08a8fe",
     "semantic_hash": ""
   },
   "audio/stt.py": {
@@ -805,8 +805,8 @@
     "semantic_hash": ""
   },
   "tests/corroboration_and_elicitation_test.py": {
-    "mtime": 1783658710.0518749,
-    "ast_hash": "afe69e3874f508dff06adee1fc20cee6",
+    "mtime": 1784191685.5677047,
+    "ast_hash": "3f4098e0e25fda6af547c21f40549da4",
     "semantic_hash": ""
   },
   "requirements-asr.txt": {
@@ -815,8 +815,8 @@
     "semantic_hash": ""
   },
   ".codex/hooks.json": {
-    "mtime": 1783915577.9763682,
-    "ast_hash": "ccae862697f5b22a170a1f05b79a2c33",
+    "mtime": 1784192870.4740229,
+    "ast_hash": "ebd9d9180e4ae73ef7f9ca36cd0bf55c",
     "semantic_hash": ""
   },
   "agent/skin_dialogue.py": {
@@ -830,8 +830,8 @@
     "semantic_hash": ""
   },
   "modules/skin_vision.py": {
-    "mtime": 1784106783.7595985,
-    "ast_hash": "e57d31a90f0552c19c8610d2fc5caa76",
+    "mtime": 1784192613.1109805,
+    "ast_hash": "a0724f536ca084f88821e6414cef3389",
     "semantic_hash": ""
   },
   "tests/showcase_gate_test.py": {
@@ -840,8 +840,8 @@
     "semantic_hash": ""
   },
   "tests/skin_vision_test.py": {
-    "mtime": 1784106783.7752314,
-    "ast_hash": "e6128abef488f49a4583ab3f51e0a45e",
+    "mtime": 1784192718.9852645,
+    "ast_hash": "308b5d5c2be2394150c1e19799aaa484",
     "semantic_hash": ""
   },
   "timeline.md": {
@@ -910,8 +910,8 @@
     "semantic_hash": ""
   },
   "integrations/nvidia_vlm.py": {
-    "mtime": 1784106783.7439642,
-    "ast_hash": "002114e62805eb973abe0b972ce377ed",
+    "mtime": 1784192612.0083117,
+    "ast_hash": "d9a071189cfa82561e2df12a4a9e736e",
     "semantic_hash": ""
   },
   "modules/guided_assessments.py": {
@@ -1025,8 +1025,8 @@
     "semantic_hash": ""
   },
   "tests/runtime_performance_test.py": {
-    "mtime": 1784180283.8567226,
-    "ast_hash": "dbea37326307956a2569eda413c13a58",
+    "mtime": 1784188752.7492728,
+    "ast_hash": "aa4109599995fa2987eebbb2f576addc",
     "semantic_hash": ""
   },
   "webui/debug_server.py": {
@@ -1045,8 +1045,8 @@
     "semantic_hash": ""
   },
   "webui/debug.html": {
-    "mtime": 1784178227.645966,
-    "ast_hash": "a811352d6665bd4be1c1be8c67ae0681",
+    "mtime": 1784188750.3831284,
+    "ast_hash": "9a277d2ca56122e670730d83de70c4ca",
     "semantic_hash": ""
   },
   "tests/vitals_debug_test.py": {
@@ -1060,8 +1060,43 @@
     "semantic_hash": ""
   },
   "tests/clothing_status_test.py": {
-    "mtime": 1784181317.240385,
-    "ast_hash": "6f14ffa8994908ae953e24261a55ed16",
+    "mtime": 1784183510.2524042,
+    "ast_hash": "a57523f17bf679e45228f09770e0b218",
+    "semantic_hash": ""
+  },
+  ".agents/skills/graphify/scripts/graphify.mjs": {
+    "mtime": 1784193106.7129078,
+    "ast_hash": "6a5163f026c1f2c72359d17b7362c1f0",
+    "semantic_hash": ""
+  },
+  ".agents/skills/graphify/tests/directed.graph.json": {
+    "mtime": 1784192997.3793008,
+    "ast_hash": "28b3e316aac8d81ef95ae055b547d869",
+    "semantic_hash": ""
+  },
+  ".agents/skills/graphify/tests/fixture.graph.json": {
+    "mtime": 1784192867.396002,
+    "ast_hash": "bbdd74b0ed86c43f4bcd8ad5ccfe4d7a",
+    "semantic_hash": ""
+  },
+  ".agents/skills/graphify/tests/graphify-helper.test.mjs": {
+    "mtime": 1784193107.7449777,
+    "ast_hash": "771eb1ce39b308f2c1ad4eafb8054068",
+    "semantic_hash": ""
+  },
+  ".agents/skills/graphify/SKILL.md": {
+    "mtime": 1784192863.578871,
+    "ast_hash": "13a131283e233f9380a19576a2ddb09c",
+    "semantic_hash": ""
+  },
+  ".agents/skills/graphify/agents/openai.yaml": {
+    "mtime": 1784192865.4849007,
+    "ast_hash": "08569c360db442272e1ca248548f6494",
+    "semantic_hash": ""
+  },
+  "docs/SKIN_DETECTION.md": {
+    "mtime": 1784192717.7702765,
+    "ast_hash": "992456ea5eff30586e9e05fc87cfcec1",
     "semantic_hash": ""
   }
 }

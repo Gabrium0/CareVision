@@ -1,0 +1,16 @@
+{
+  "directed": false,
+  "multigraph": true,
+  "graph": {},
+  "nodes": [
+    {"id": "auth", "label": "AuthService", "source_file": "src/auth.js", "source_location": "L10"},
+    {"id": "token", "label": "TokenStore", "source_file": "src/token.js", "source_location": "L5"},
+    {"id": "db", "label": "Database", "source_file": "src/db.js", "source_location": "L1"},
+    {"id": "lonely", "label": "LonelyWorker", "source_file": "src/lonely.js", "source_location": "L2"}
+  ],
+  "links": [
+    {"source": "auth", "target": "token", "key": "writes", "relation": "WRITES", "confidence": "EXTRACTED"},
+    {"source": "auth", "target": "token", "key": "reads", "relation": "READS", "confidence": "INFERRED"},
+    {"source": "token", "target": "db", "key": "stores", "relation": "STORES", "confidence": "EXTRACTED"}
+  ]
+}

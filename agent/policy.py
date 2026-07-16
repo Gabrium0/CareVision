@@ -112,10 +112,18 @@ class Policy:
         # tiredness
         per = mem.get("drowsiness", "perclos")
         if per is not None and _ORDER[per.severity] >= _ORDER[Severity.NOTICE] and self._fresh("tired", now):
+            facial = mem.facial_cues()
+            eye_cues = [key.replace("_", " ") for key in
+                        ("under_eye_darkness", "under_eye_puffiness")
+                        if key in facial]
+            support = (" Supporting visible appearance cues: " + ", ".join(eye_cues) +
+                       ". Treat them only as corroboration, not as a cause or diagnosis."
+                       if eye_cues else "")
             cands.append(Intent(
                 "observation", "tired",
-                "Kindly note they seem tired and suggest a rest if they'd like.",
-                str(per.message), "You seem a little tired — a short rest might feel good.", 50,
+                "Kindly ask how they are feeling and suggest a rest if they'd like." + support,
+                str(per.message),
+                "You seem a little tired — how are you feeling? A short rest might feel good.", 50,
                 confidence=per.confidence, quality=per.quality,
                 severity_score=float(_ORDER[per.severity])))
 

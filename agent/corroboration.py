@@ -77,7 +77,7 @@ DEFAULT_RULES = [
         "Since you're feeling run down, some rest and a good meal could "
         "help — and mention it to a doctor if it keeps up."),
     FollowUpRule(
-        "hydration", "dry_lips", "dry_lips",
+        "hydration", "dry_lips", "lip_dryness",
         "Have you had enough to drink today?",
         "A glass of water sounds like a good idea then."),
     FollowUpRule(
