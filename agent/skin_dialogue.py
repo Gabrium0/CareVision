@@ -63,7 +63,7 @@ class SkinPrompt:
 class SkinDialogue:
     """Coordinates close-up capture and at most three symptom questions."""
 
-    gemini: Any = None
+    language_model: Any = None
     answer_window: float = 45.0
     cooldown_seconds: float = 4 * 3600.0
     closeup_wait: float = 45.0
@@ -215,8 +215,9 @@ class SkinDialogue:
             return False
         question, tag = self.questions[self.question_index]
         verdict = None
-        if self.gemini is not None and getattr(self.gemini, "available", False):
-            verdict = self.gemini.classify_answer(question, text)
+        if (self.language_model is not None
+                and getattr(self.language_model, "available", False)):
+            verdict = self.language_model.classify_answer(question, text)
         if verdict not in ("confirmed", "denied", "unclear"):
             verdict = interpret_answer_keywords(text)
         self.answers.append((tag, verdict))

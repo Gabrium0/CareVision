@@ -76,7 +76,7 @@ Low-confidence cues never surface directly. `agent/corroboration.py` turns
 them into gentle follow-up questions ("have you noticed any skin changes
 lately?"); with the microphone listener (`--listen`, `audio/stt.py`,
 faster-whisper offline) the person's answer is classified
-(confirmed/denied/unclear — Gemini when available, keywords offline) and
+(confirmed/denied/unclear — Moondream when available, keywords offline) and
 only **confirmed** topics produce a spoken suggestion; denials suppress the
 topic for hours. This is the boundary that keeps camera inference on the
 "conversation steering" side rather than the "health screening device" side

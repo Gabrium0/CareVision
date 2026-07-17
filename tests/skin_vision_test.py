@@ -463,7 +463,7 @@ def test_preliminary_process_uses_whole_frame_when_face_crop_is_too_small(monkey
 def test_skin_dialogue_closeup_questions_and_speech_guard():
     elicitation = ElicitationState.instance()
     elicitation.clear()
-    dialogue = SkinDialogue(gemini=None)
+    dialogue = SkinDialogue(language_model=None)
     private_value = _analysis().private_value()
     private_value["closeup_seconds"] = 8.0
     request = Result("skin_vision", "closeup_request", private_value,

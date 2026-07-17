@@ -62,7 +62,7 @@ def test_assessment_concludes_neutrally_without_microphone(tmp_path, monkeypatch
     monkeypatch.setattr(WorkflowEngine, "_instance", engine)
     monkeypatch.setattr(EventStore, "_instance", store)
     agent = VoiceAgent(speak=False, listener=None, min_gap=0)
-    agent.gemini.available = False
+    agent.moondream.available = False
     session = engine.start("balance", now=10)
     engine.set_score("Balance measurements captured.", {"body_sway": .01}, .9, ())
     text = agent.tick([], now=20)

@@ -81,12 +81,15 @@ def test_warmup_and_inference_states_report_backend_progress():
     assert state["state"] == "warming_up"
     assert "3.0/6.0s" in state["guidance"]
     assert state["backends"][0]["progress"] == .5
+    assert state["backends"][0]["measurement"]["state"] == "warming_up"
+    assert state["backends"][0]["measurement"]["bpm"] is None
 
     inferring = _pipeline(showcase, [
         _backend("open-rppg", 10.0, 10.0, "inferring", inference_pending=True)])
     state = inferring.vitals_diagnostics([], now=100.0)
     assert state["state"] == "inferring"
     assert "processing" in state["guidance"]
+    assert state["backends"][0]["measurement"]["state"] == "inferring"
 
 
 def test_ready_state_exposes_current_canonical_measurement_fields():
@@ -107,6 +110,59 @@ def test_ready_state_exposes_current_canonical_measurement_fields():
     assert state["measurement_age_seconds"] == 1.25
 
 
+def test_debug_state_exposes_fresh_classical_and_rejected_openrppg_separately():
+    backends = [
+        _backend("classical", span=8.0,
+                 latest={"bpm": 72.4, "confidence": .88}),
+        _backend("open-rppg", span=10.0, status="low SQI 0.16<0.35",
+                 latest={"raw_bpm": 136.0, "raw_confidence": .16,
+                         "rejected_reason": "low SQI 0.16<0.35"}),
+    ]
+    pipeline = _pipeline(
+        {"capture_ready": True, "zone": "conversation", "guidance": "ready"},
+        backends)
+    results = [
+        Result("heart_rate", "bpm", 72.4, .88, ttl=8, timestamp=100.0),
+        Result("heart_rate", "bpm_classical", 72.4, .88, ttl=8,
+               timestamp=100.0, quality=.9),
+        Result("heart_rate", "bpm_open_rppg", 136.0, .16, ttl=8,
+               timestamp=100.0, quality=.2),
+    ]
+
+    state = pipeline.vitals_diagnostics(results, now=101.0)
+    classical, openrppg = state["backends"]
+
+    assert state["bpm"] == 72.4
+    assert classical["measurement"] == {
+        "bpm": 72.4, "confidence": .88, "quality": .9,
+        "measurement_age_seconds": 1.0, "state": "accepted",
+        "accepted": True, "rejection_reason": None}
+    assert openrppg["measurement"]["bpm"] == 136.0
+    assert openrppg["measurement"]["state"] == "rejected"
+    assert openrppg["measurement"]["accepted"] is False
+    assert "low SQI" in openrppg["measurement"]["rejection_reason"]
+    assert "bpm" not in classical["latest"]
+    assert "raw_bpm" not in openrppg["latest"]
+
+
+def test_backend_measurements_hide_stale_and_positioning_blocked_values():
+    backend = _backend("classical", span=8.0,
+                       latest={"bpm": 72.4, "confidence": .88})
+    reading = Result("heart_rate", "bpm_classical", 72.4, .88,
+                     ttl=8, timestamp=90.0)
+    ready = {"capture_ready": True, "zone": "conversation", "guidance": "ready"}
+    stale = _pipeline(ready, [backend]).vitals_diagnostics([reading], now=101.0)
+    assert stale["backends"][0]["measurement"]["bpm"] is None
+    assert stale["backends"][0]["measurement"]["state"] == "stale"
+
+    blocked = _pipeline({"capture_ready": False, "zone": "outside",
+                         "guidance": "Move into position"}, [backend]) \
+        .vitals_diagnostics([Result("heart_rate", "bpm_classical", 72.4, .88,
+                                    ttl=8, timestamp=100.0)], now=101.0)
+    assert blocked["backends"][0]["measurement"]["bpm"] is None
+    assert blocked["backends"][0]["measurement"]["state"] == "blocked"
+
+
 def test_expired_measurement_is_not_presented_as_current():
     pipeline = _pipeline(
         {"capture_ready": True, "zone": "conversation", "guidance": "ready"},
@@ -122,7 +178,9 @@ def test_unavailable_and_fast_path_starvation_are_readable():
     showcase = {"capture_ready": True, "zone": "conversation", "guidance": "ready"}
     unavailable = _pipeline(showcase, [
         _backend("open-rppg", 0, 10, "dependency unavailable", available=False)])
-    assert unavailable.vitals_diagnostics([], now=100)["state"] == "unavailable"
+    unavailable_state = unavailable.vitals_diagnostics([], now=100)
+    assert unavailable_state["state"] == "unavailable"
+    assert unavailable_state["backends"][0]["measurement"]["state"] == "unavailable"
 
     no_face = _pipeline(showcase, [_backend()], outcome="no_face")
     assert "No current face" in no_face.vitals_diagnostics([], now=100)["guidance"]
@@ -134,10 +192,12 @@ def test_backend_rejection_and_failure_statuses_survive_composition():
     showcase = {"capture_ready": True, "zone": "conversation", "guidance": "ready"}
     statuses = ["motion rejected (22>18)", "face jitter rejected",
                 "warming up 4/10s (low light)", "inference failed: RuntimeError"]
-    for status in statuses:
+    expected_states = ["rejected", "rejected", "warming_up", "failed"]
+    for status, expected_state in zip(statuses, expected_states):
         pipeline = _pipeline(showcase, [_backend("open-rppg", status=status)])
         state = pipeline.vitals_diagnostics([], now=100)
         assert state["backends"][0]["status"] == status
+        assert state["backends"][0]["measurement"]["state"] == expected_state
 
 
 def test_openrppg_inference_failure_sets_readable_status():

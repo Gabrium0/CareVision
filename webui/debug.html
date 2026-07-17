@@ -46,6 +46,10 @@
     gap:9px; margin-top:14px; }
   .backend { background:#0d1117; border:1px solid var(--line); border-radius:7px; padding:10px; }
   .backend-head { display:flex; justify-content:space-between; gap:8px; font-weight:650; }
+  .backend-bpm { margin:10px 0 5px; font-size:27px; font-weight:750; color:#f0f6fc; }
+  .backend-bpm.rejected { color:#f2cc60; }
+  .backend-bpm.failed { color:#ff7b72; }
+  .backend-state { margin-bottom:7px; color:var(--muted); font-size:12px; }
   .progress { height:7px; margin:8px 0; overflow:hidden; border-radius:999px; background:#30363d; }
   .progress > span { display:block; height:100%; background:var(--blue); }
   .small { color:var(--dim); font-size:12px; overflow-wrap:anywhere; }
@@ -141,23 +145,39 @@
     const grid = el('div', null, 'backend-grid');
     for (const backend of (v.backends || [])) {
       const card = el('div', null, 'backend');
+      const displayName = backend.name === 'classical' ? 'Classical'
+        : String(backend.name || '').startsWith('open-rppg')
+          ? `Open-rPPG${backend.name === 'open-rppg' ? '' : ` (${backend.name.slice(10)})`}`
+          : shown(backend.name || 'Backend');
       const head = el('div', null, 'backend-head');
-      head.append(el('span', backend.name || 'backend'),
+      head.append(el('span', displayName),
         el('span', backend.available ? (backend.status || 'available') : 'unavailable',
           backend.available ? 'notice' : 'alert'));
       card.appendChild(head);
+      const measurement = backend.measurement || {};
+      const hasBpm = measurement.bpm !== null && measurement.bpm !== undefined
+        && Number.isFinite(Number(measurement.bpm));
+      const bpmClass = ['rejected', 'failed'].includes(measurement.state)
+        ? `backend-bpm ${measurement.state}` : 'backend-bpm';
+      card.appendChild(el('div', hasBpm ? `${Number(measurement.bpm).toFixed(1)} BPM` : '— BPM', bpmClass));
+      const measurementFacts = [measurement.state || 'warming_up'];
+      if (hasBpm) {
+        measurementFacts.push(`confidence ${shown(measurement.confidence)}`,
+          `quality ${shown(measurement.quality)}`,
+          `age ${shown(measurement.measurement_age_seconds)}s`);
+      }
+      if (measurement.rejection_reason) measurementFacts.push(measurement.rejection_reason);
+      card.appendChild(el('div', measurementFacts.join(' · '), 'backend-state'));
       const progress = Math.max(0, Math.min(1, Number(backend.progress || 0)));
       const bar = el('div', null, 'progress');
       const fill = el('span');
       fill.style.width = `${Math.round(progress * 100)}%`;
       bar.appendChild(fill);
       card.appendChild(bar);
-      const latest = ready && backend.latest && Number.isFinite(Number(backend.latest.bpm))
-        ? ` · latest ${Number(backend.latest.bpm).toFixed(1)} BPM` : '';
       card.appendChild(el('div',
         `${shown(backend.buffered_seconds)}/${shown(backend.required_seconds)}s · ` +
         `${shown(backend.samples)}/${shown(backend.required_samples)} samples · ` +
-        `${shown(backend.effective_sample_hz)} Hz${latest}`,
+        `${shown(backend.effective_sample_hz)} Hz`,
         'small'));
       card.appendChild(el('div',
         `accepted ${shown(backend.accepted)} · rejected ${shown(backend.rejected)} · inference ${shown(backend.inference_latency_ms)}ms`,
@@ -267,8 +287,8 @@
     renderAudio((current.system || {}).audio);
     heading('Runtime performance');
     tileGrid(current.performance);
-    heading('Gemini API control');
-    tileGrid((current.system || {}).gemini || {});
+    heading('Moondream API control');
+    tileGrid((current.system || {}).moondream || {});
     heading('NVIDIA skin VLM');
     jsonSection('Latest private request diagnostics',
       (current.system || {}).nvidia_skin || {

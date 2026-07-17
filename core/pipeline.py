@@ -402,6 +402,72 @@ class Pipeline:
                     guidance = (f"Collecting clean samples: {buffered:.1f}/{required:.1f}s"
                                 if required > 0 else "Waiting for a heart-rate result")
 
+        # Backend-specific BPM values are private comparison telemetry. Build
+        # them from short-lived Results rather than indefinitely cached model
+        # diagnostics so blocked or stale readings cannot look current.
+        for backend in backends:
+            name = str(backend.get("name") or "backend")
+            result_key = "bpm_" + name.replace("-", "_")
+            candidate = max((result for result in results
+                             if result.module == "heart_rate"
+                             and result.key == result_key
+                             and result.subject_id == "primary"),
+                            key=lambda result: result.timestamp, default=None)
+            age = max(0.0, now - candidate.timestamp) if candidate is not None else None
+            within_ttl = bool(candidate is not None and age is not None
+                              and age <= candidate.ttl)
+            candidate_fresh = bool(within_ttl and capture_ready)
+            candidate_bpm = None
+            if candidate_fresh:
+                try:
+                    value = float(candidate.value)
+                    candidate_bpm = value if 35.0 <= value <= 180.0 else None
+                except (TypeError, ValueError):
+                    candidate_bpm = None
+            candidate_fresh = bool(candidate_fresh and candidate_bpm is not None)
+
+            latest = dict(backend.get("latest") or {})
+            rejection = latest.get("rejected_reason")
+            status_text = str(backend.get("status") or latest.get("status") or "")
+            if not rejection and any(token in status_text.lower() for token in
+                                     ("rejected", "low sqi", "failed")):
+                rejection = status_text
+            if not capture_ready:
+                measurement_state = "blocked"
+            elif candidate is not None and not within_ttl:
+                measurement_state = "stale"
+            elif candidate_fresh and rejection:
+                measurement_state = "rejected"
+            elif candidate_fresh:
+                measurement_state = "accepted"
+            elif not backend.get("available"):
+                measurement_state = "unavailable"
+            elif "failed" in status_text.lower():
+                measurement_state = "failed"
+            elif "inferr" in status_text.lower() or backend.get("inference_pending"):
+                measurement_state = "inferring"
+            elif rejection:
+                measurement_state = "rejected"
+            else:
+                measurement_state = "warming_up"
+
+            backend["measurement"] = {
+                "bpm": round(candidate_bpm, 1) if candidate_fresh else None,
+                "confidence": candidate.confidence if candidate_fresh else None,
+                "quality": candidate.quality if candidate_fresh else None,
+                "measurement_age_seconds": round(age, 2) if candidate_fresh else None,
+                "state": measurement_state,
+                "accepted": bool(candidate_fresh and not rejection),
+                "rejection_reason": str(rejection)[:240] if rejection else None,
+            }
+            # Cached diagnostics remain useful for progress and error details,
+            # but their BPM can outlive the Result TTL. Keep BPM solely in the
+            # freshness-checked measurement object above.
+            if latest:
+                latest.pop("bpm", None)
+                latest.pop("raw_bpm", None)
+                backend["latest"] = latest
+
         return {
             "state": state,
             "bpm": round(bpm, 1) if bpm is not None else None,

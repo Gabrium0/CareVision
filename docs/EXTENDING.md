@@ -116,7 +116,7 @@ if r is not None and _ORDER[r.severity] >= _ORDER[Severity.NOTICE] and self._fre
         priority=60))
 ```
 
-`signature` gives no-repeat behavior; `priority` orders competing topics; Gemini
+`signature` gives no-repeat behavior; `priority` orders competing topics; Moondream
 phrases `llm_intent`+`detail`, falling back to `fallback` offline. ALERTs are
 **not** handled here — they go through `alerts/`.
 

@@ -12,8 +12,8 @@ a denial suppresses the topic for hours instead of arguing with the human.
 State machine per topic:  flagged -> asked -> confirmed | denied | unclear
 (unclear allows one re-ask; denied/confirmed enter a long cooldown).
 
-Answer interpretation prefers Gemini (a one-word classification call via
-`GeminiClient.classify_answer`) and falls back to keyword matching so the
+Answer interpretation prefers the configured language model (a one-word
+classification call) and falls back to keyword matching so the
 loop still works fully offline.
 
 The engine produces *data* (which question to ask, which conclusion is
@@ -112,13 +112,13 @@ class CorroborationEngine:
     """Tracks topic state; the VoiceAgent turns its output into Intents."""
 
     def __init__(self, rules: list[FollowUpRule] | None = None,
-                 gemini=None, answer_window: float = 30.0,
+                 language_model=None, answer_window: float = 30.0,
                  denied_cooldown: float = 4 * 3600.0,
                  concluded_cooldown: float = 4 * 3600.0,
                  max_asks: int = 2):
         self.rules = {r.topic: r for r in (rules if rules is not None
                                            else DEFAULT_RULES)}
-        self.gemini = gemini             # GeminiClient or None (keyword fallback)
+        self.language_model = language_model
         self.answer_window = answer_window
         self.denied_cooldown = denied_cooldown
         self.concluded_cooldown = concluded_cooldown
@@ -172,8 +172,9 @@ class CorroborationEngine:
     # ------------------------------------------------------------- answers
 
     def _interpret(self, rule: FollowUpRule, text: str) -> str:
-        if self.gemini is not None and getattr(self.gemini, "available", False):
-            verdict = self.gemini.classify_answer(rule.question, text)
+        if (self.language_model is not None
+                and getattr(self.language_model, "available", False)):
+            verdict = self.language_model.classify_answer(rule.question, text)
             if verdict in ("confirmed", "denied", "unclear"):
                 return verdict
         return interpret_answer_keywords(text)

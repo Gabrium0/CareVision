@@ -28,7 +28,7 @@ doc explains how the pieces fit together. To *extend* it, see
                             ▼                        ▼               ▼               ▼
                      AdvisorEngine            AlertManager      VoiceAgent      Dashboard/Overlay
                      (agent/advisor_engine)   (alerts/)         (agent/)        (output/) + webui
-                     post-hoc advice →         deterministic     Gemini speech   window + /data
+                     post-hoc advice →         deterministic     Moondream speech window + /data
                      back into Aggregator      notifications     + TTS
 ```
 
@@ -47,7 +47,7 @@ flowchart LR
   agg --> adv[AdvisorEngine]
   adv --> agg
   agg --> alert[AlertManager -> email/SMS/webhook]
-  agg --> agent[VoiceAgent -> Gemini + TTS]
+  agg --> agent[VoiceAgent -> Moondream + TTS]
   agg --> dash[Dashboard / Overlay window]
   agg --> web[webui: / companion + /data telemetry]
 ```
@@ -91,7 +91,7 @@ The video loop in `main.py` must never block. Heavy work runs off it:
 | `modules/` | The ~33 detectors. `modules/_util.py` = shared signal helpers (`TimedBuffer`, `bandpass`, FFT). |
 | `modules/backends/`, `modules/rppg_backends/`, `modules/emotion_backends/` | Multi-backend implementations (heuristic + tested models) shown side by side. |
 | `output/` | `aggregator` (person state), `dashboard` (window + `to_payload` for `/data`), `overlay`, legacy `greeting_engine`. |
-| `agent/` | The Gemini voice agent: `state` (memory), `policy` (what to say), `gemini_client`, `voice_agent`, `advisor_engine`, `env`. |
+| `agent/` | The Moondream voice agent: `state` (memory), `policy` (what to say), `moondream_client`, `voice_agent`, `advisor_engine`, `env`. |
 | `alerts/` | Deterministic caregiver alerting: `notifier` (channels), `manager` (confirm/dedupe/escalate). |
 | `audio/` | Offline text-to-speech. |
 | `webui/` | Stdlib web server: `/` companion text + `/data` full telemetry (SSE), pages `page.html` / `data.html`. |
@@ -105,7 +105,7 @@ The video loop in `main.py` must never block. Heavy work runs off it:
 - **`config/modules.yaml`** — enable/tune each module; params flow to the
   module's `__init__` via `build_enabled`. Also holds the `advice` section.
 - **`config/alerts.yaml`** — channels, confirm/cooldown/escalation, quiet hours.
-- **`.env`** — secrets only: `GEMINI_API_KEY`, SMTP/Twilio/webhook creds (see
+- **`.env`** — secrets only: `X-Moondream-Auth`, SMTP/Twilio/webhook creds (see
   `.env.example`). Never put secrets in yaml.
 
 ## Verification & docs guardrail

@@ -1,8 +1,8 @@
-"""VoiceAgent: orchestrates memory -> policy -> Gemini -> speech, plus ears.
+"""VoiceAgent: orchestrates memory -> policy -> Moondream -> speech, plus ears.
 
 Call `tick(snapshot)` once per frame (cheap; rate-limited internally). The agent
 updates its memory, lets the policy pick at most one thing to say, phrases it
-with Gemini (falling back to a templated line offline), speaks it via TTS, and
+with Moondream (falling back to a templated line offline), speaks it via TTS, and
 records it so it won't repeat. The last utterance is exposed for the dashboard.
 
 With a `Listener` (audio/stt.py) attached, the loop closes: heard utterances
@@ -20,7 +20,7 @@ import time
 from agent.state import ObservationMemory
 from agent.policy import Intent, Policy
 from agent.corroboration import CorroborationEngine
-from agent.gemini_client import GeminiClient
+from agent.moondream_client import MoondreamClient
 from agent.skin_dialogue import SkinDialogue
 from audio.tts import Speaker
 from core.elicitation import ElicitationState
@@ -41,19 +41,19 @@ _ASSESSMENT_QUESTIONS = {
 
 
 class VoiceAgent:
-    """Orchestrates memory -> policy -> Gemini -> speech (and listening)."""
+    """Orchestrates memory -> policy -> Moondream -> speech (and listening)."""
     def __init__(self, name: str = "there", speak: bool = True,
-                 model: str = "gemini-2.5-flash", listener=None,
-                 gemini_enabled: bool = True,
+                 model: str = "moondream3.1-9B-A2B", listener=None,
+                 moondream_enabled: bool = True,
                  **policy_kwargs):
         self.memory = ObservationMemory(name=name)
         self.memories: dict[str, ObservationMemory] = {"primary": self.memory}
         self.policy = Policy(**policy_kwargs)
-        self.gemini = GeminiClient(model=model, enabled=gemini_enabled)
+        self.moondream = MoondreamClient(model=model, enabled=moondream_enabled)
         self.speaker = Speaker(enabled=speak)
         self.listener = listener
-        self.corroboration = CorroborationEngine(gemini=self.gemini)
-        self.skin_dialogue = SkinDialogue(gemini=self.gemini)
+        self.corroboration = CorroborationEngine(language_model=self.moondream)
+        self.skin_dialogue = SkinDialogue(language_model=self.moondream)
         self.elicitation = ElicitationState.instance()
         self.workflows = WorkflowEngine.instance()
         self.events = EventStore.instance()
@@ -62,25 +62,26 @@ class VoiceAgent:
         self._actions: dict = {}       # intent signature -> post-speech callback
         self._safety_results: list[Result] = []
         self._conversation_results: list[Result] = []
-        gemini = self.gemini.status()
-        mode = ("Gemini" if gemini["active"] else
-                "Gemini disabled (templated)" if gemini["available"] else "templated")
+        moondream = self.moondream.status()
+        mode = ("Moondream" if moondream["active"] else
+                "Moondream disabled (templated)" if moondream["available"] else "templated")
         ears = "listening" if (listener is not None and
                                getattr(listener, "available", False)) else "speak-only"
         print(f"[agent] voice agent ready (name={name}, speech={mode}, {ears})")
 
-    def set_gemini_enabled(self, enabled: bool) -> dict:
-        """Control future Gemini calls without disabling templated speech."""
-        self.gemini.set_enabled(enabled)
-        return self.gemini.status()
+    def set_moondream_enabled(self, enabled: bool) -> dict:
+        """Control future Moondream calls without disabling templated speech."""
+        self.moondream.set_enabled(enabled)
+        return self.moondream.status()
 
-    def toggle_gemini(self) -> dict:
-        """Toggle future Gemini calls and return the new diagnostic state."""
-        self.gemini.toggle_enabled()
-        return self.gemini.status()
+    def toggle_moondream(self) -> dict:
+        """Toggle future Moondream calls and return the diagnostic state."""
+        self.moondream.toggle_enabled()
+        return self.moondream.status()
 
-    def gemini_status(self) -> dict:
-        return self.gemini.status()
+    def moondream_status(self) -> dict:
+        """Return safe Moondream transport diagnostics."""
+        return self.moondream.status()
 
     def request_test(self, test: str = "hold_still") -> None:
         """Queue a scripted test (the 't' hotkey path)."""
@@ -352,8 +353,8 @@ class VoiceAgent:
             suppress_routine=self.workflows.active("primary") is not None)
         if intent is None:
             return None
-        generated = self.gemini.generate(intent.llm_intent,
-                                         self.memory.context_text(), intent.detail)
+        generated = self.moondream.generate(intent.llm_intent,
+                                            self.memory.context_text(), intent.detail)
         if intent.signature.startswith("skin:"):
             text = self.skin_dialogue.safe_speech(generated, intent.fallback)
         else:

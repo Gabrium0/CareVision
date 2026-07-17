@@ -348,6 +348,10 @@ def test_debug_server_binds_loopback_and_serves_readable_private_dashboard():
             assert "textContent" in html
             assert "renderVitals" in html
             assert "Vitals diagnostics unavailable" in html
+            assert "Open-rPPG" in html
+            assert "Classical" in html
+            assert "backend-bpm" in html
+            assert "measurement.rejection_reason" in html
             assert "Audio & cough detection" in html
             assert "renderAudio" in html
             assert "latest_cough_confidence" in html

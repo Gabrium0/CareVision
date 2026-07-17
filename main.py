@@ -165,10 +165,10 @@ def main():
                          "requiring speech recognition")
     ap.add_argument("--whisper-model", default="base",
                     help="faster-whisper model size for --listen (default base)")
-    ap.add_argument("--voice-model", default="gemini-2.5-flash",
-                    help="Gemini model for the voice agent (key from .env)")
-    ap.add_argument("--no-gemini", action="store_true",
-                    help="start with Gemini API calls disabled; press M to toggle")
+    ap.add_argument("--voice-model", default="moondream3.1-9B-A2B",
+                    help="Moondream model for the voice agent (key from .env)")
+    ap.add_argument("--no-moondream", action="store_true",
+                    help="start with Moondream API calls disabled; press M to toggle")
     ap.add_argument("--enable-cloud-skin", action="store_true",
                     help="consent to upload sampled camera stills to the configured "
                          "NVIDIA skin-screening model for this run")
@@ -189,13 +189,17 @@ def main():
                     help="serve private raw diagnostics on localhost only")
     ap.add_argument("--debug-port", type=int, default=8771,
                     help="localhost private diagnostics port (default 8771)")
+    ap.add_argument("--caregiver-portal", action="store_true",
+                    help="serve the local caregiver review portal on loopback only")
+    ap.add_argument("--caregiver-port", type=int, default=8772,
+                    help="localhost caregiver portal port (default 8772)")
     args = ap.parse_args()
     if args.list_cameras:
         Camera.list_devices()
         return
     if args.debug_modules:
         os.environ["APP_DEBUG_MODULES"] = args.debug_modules
-    load_env()   # make .env keys (GEMINI_API_KEY, alert creds) available
+    load_env()   # make .env keys (X-Moondream-Auth, alert creds) available
 
     auto_resolution = args.resolution.strip().lower() == "auto"
     if auto_resolution:
@@ -238,10 +242,15 @@ def main():
     cam_state = {"current": primary_source}
 
     alerts_cfg = load_alerts_config()
+    event_store = EventStore.instance()
+    if args.caregiver_portal:
+        event_store.interrupt_active_cases()
     alert_mgr = AlertManager.from_config(alerts_cfg) if alerts_cfg.get("enabled", True) else None
+    if alert_mgr is not None and args.caregiver_portal:
+        alert_mgr.case_store = event_store
     voice_agent = VoiceAgent(name=args.name, speak=not args.no_voice,
                              model=args.voice_model,
-                             gemini_enabled=not args.no_gemini)
+                             moondream_enabled=not args.no_moondream)
     capabilities = CapabilityRegistry.instance()
     capabilities.set("camera", "hardware", CapabilityStatus.READY,
                      "replay" if str(args.source).startswith("replay:") else "live source")
@@ -297,6 +306,14 @@ def main():
                               primary_handler=primary_handler)
         web.start()
 
+    caregiver_server = None
+    if args.caregiver_portal:
+        from storage.history_store import HistoryStore
+        from webui.caregiver_server import CaregiverServer
+        caregiver_server = CaregiverServer(event_store, HistoryStore.instance(),
+                                            port=args.caregiver_port)
+        caregiver_server.start()
+
     display = not args.headless
     cv2 = None
     if display:
@@ -323,7 +340,7 @@ def main():
             "consent": {"cloud_skin": args.enable_cloud_skin,
                         "cloud_scene": args.enable_cloud_scene},
             "replay": pipeline.camera.replay_status(),
-            "gemini": voice_agent.gemini_status(),
+            "moondream": voice_agent.moondream_status(),
         }
         if private:
             audio_enabled = bool(args.listen or args.detect_cough or is_replay)
@@ -370,11 +387,11 @@ def main():
         parts = [f"{r.key}={r.value} ({r.confidence:.2f})" for r in sorted(rows, key=lambda r: r.key)]
         print("[vitals] " + " | ".join(parts))
 
-    def toggle_gemini() -> None:
-        status = voice_agent.toggle_gemini()
+    def toggle_moondream() -> None:
+        status = voice_agent.toggle_moondream()
         state = "ON" if status["enabled"] else "OFF"
         note = "" if status["available"] else " (API unavailable; templates remain active)"
-        print(f"[agent/gemini] Gemini {state}{note}")
+        print(f"[agent/moondream] Moondream {state}{note}")
 
     def on_frame(ctx, results):
         pipeline.runtime_metrics.note_capture(ctx.fps, ctx.timestamp,
@@ -403,7 +420,7 @@ def main():
         if auxiliary:
             aggregator.ingest(auxiliary)
             for result in auxiliary:
-                EventStore.instance().record_result(result)
+                event_store.record_result(result)
         snapshot = aggregator.snapshot()
         agent_snapshot = aggregator.agent_snapshot()
 
@@ -421,7 +438,7 @@ def main():
         if safety_results:
             aggregator.ingest(safety_results)
             for result in safety_results:
-                EventStore.instance().record_result(result)
+                event_store.record_result(result)
             if alert_mgr is not None:
                 alert_mgr.evaluate(aggregator.snapshot())
         if utterance:
@@ -455,7 +472,7 @@ def main():
                 panel = dashboard.render(snapshot, ctx.fps, last_greeting["text"],
                                          reasoning=voice_agent.reasoning_card(),
                                          performance=pipeline.runtime_metrics.snapshot(),
-                                         gemini=voice_agent.gemini_status())
+                                         moondream=voice_agent.moondream_status())
                 cv2.imshow("Detections — Data", panel)
             key = cv2.waitKey(1) & 0xFF
             if key == ord("q"):
@@ -463,7 +480,7 @@ def main():
             if key == ord("g"):
                 force_greet["v"] = True
             if key == ord("m"):
-                toggle_gemini()
+                toggle_moondream()
             if key == ord("t"):
                 print("[main] tremor test requested ('t')")
                 voice_agent.request_test()
@@ -476,7 +493,7 @@ def main():
         return True
 
     print("[main] starting; press 'q' to quit, 'g' to greet, 'm' to toggle "
-          "Gemini, 't' for a tremor test, 'c' to switch camera "
+          "Moondream, 't' for a tremor test, 'c' to switch camera "
           "(Ctrl+C in headless).")
     worker = None
     interrupted = False
@@ -529,7 +546,7 @@ def main():
                                     snapshot, performance["capture_fps"],
                                     last_greeting["text"], reasoning=reasoning,
                                     performance=performance,
-                                    gemini=voice_agent.gemini_status())
+                                    moondream=voice_agent.moondream_status())
                                 cv2.imshow("Detections — Data", panel)
                                 last_panel_at = now
                         pipeline.runtime_metrics.note_preview()
@@ -540,7 +557,7 @@ def main():
                 if key == ord("g"):
                     force_greet["v"] = True
                 if key == ord("m"):
-                    toggle_gemini()
+                    toggle_moondream()
                 if key == ord("t"):
                     print("[main] tremor test requested ('t')")
                     voice_agent.request_test()
@@ -574,6 +591,9 @@ def main():
             microphone.close()
         if debug_server is not None:
             debug_server.stop()
+        if caregiver_server is not None:
+            caregiver_server.stop()
+        event_store.flush()
         if display and cv2 is not None:
             cv2.destroyAllWindows()
     if interrupted:

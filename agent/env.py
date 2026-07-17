@@ -26,10 +26,11 @@ def load_env() -> None:
                     os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 
 
-def gemini_api_key() -> str | None:
-    """Return the Gemini API key from the environment, or None."""
+def moondream_api_key() -> str | None:
+    """Return the Moondream Cloud key without exposing it to diagnostics."""
     load_env()
-    return os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    return (os.environ.get("X-Moondream-Auth")
+            or os.environ.get("MOONDREAM_API_KEY"))
 
 
 def nvidia_api_key() -> str | None:

@@ -32,8 +32,8 @@ more informative, but the combined result still does not establish a diagnosis.
 6. The sharpest close-up is analyzed a second time. Only a valid close-up can
    create a public skin-change observation.
 7. `SkinDialogue` uses deterministic follow-up topics to ask up to three
-   customized questions. An available Gemini agent can phrase the approved
-   questions naturally; reviewed templates remain available when Gemini is off.
+   customized questions. An available Moondream agent can phrase the approved
+   questions naturally; reviewed templates remain available when Moondream is off.
 8. Answers are classified as `confirmed`, `denied`, or `unclear` and used to
    prepare a neutral monitoring or professional-review suggestion.
 
@@ -227,7 +227,7 @@ The debug output can include:
 - NVIDIA capability/consent state.
 - Latest NVIDIA request state, stage, timing, sanitized error, and exact raw
   model content under `system.nvidia_skin` (in memory only).
-- Gemini availability, enabled state, request counters, and error state.
+- Moondream availability, enabled state, request counters, and error state.
 - Capture, preview, analysis, and module-performance diagnostics.
 
 The debug endpoint binds to `127.0.0.1` and is separate from the normal
@@ -336,7 +336,7 @@ For the best demonstration:
 | Person does not provide a close-up | The request expires and enters a short cooldown without publishing a skin finding. |
 | No sharp close-up frame is collected | The close-up state resets without publishing a result. |
 | Microphone unavailable | Visual screening and the close-up can still complete, but spoken answers cannot be collected; the pending dialogue expires safely. |
-| Gemini unavailable or disabled | Deterministic templated questions and conclusions remain available. |
+| Moondream unavailable or disabled | Deterministic templated questions and conclusions remain available. |
 
 The local `rash` module remains available without NVIDIA as a coarse facial
 redness/texture heuristic. While a cloud skin dialogue is active—or during its

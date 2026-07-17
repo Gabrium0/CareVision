@@ -168,7 +168,7 @@ def _render_clothing_weather(img, snapshot, y: int) -> int:
 
 
 def render(snapshot, fps: float, greeting: str | None = None, reasoning: dict | None = None,
-           performance: dict | None = None, gemini: dict | None = None):
+           performance: dict | None = None, moondream: dict | None = None):
     """Render the data window image for the snapshot."""
     snapshot = [r for r in snapshot if r.visibility == Visibility.PUBLIC]
     MAX_H = 920
@@ -181,8 +181,8 @@ def render(snapshot, fps: float, greeting: str | None = None, reasoning: dict | 
                     f"analysis {perf.get('analysis_fps', 0):4.1f} fps")
     else:
         fps_line = f"{fps:4.1f} fps"
-    if gemini is not None:
-        fps_line += f"   Gemini {'ON' if gemini.get('active') else 'OFF'}"
+    if moondream is not None:
+        fps_line += f"   Moondream {'ON' if moondream.get('active') else 'OFF'}"
     _text(img, f"{fps_line}   {len(snapshot)} live signals", 16, 52, 0.45, (150, 150, 150))
     cv2.line(img, (16, 64), (_W - 16, 64), (70, 70, 72), 1)
 

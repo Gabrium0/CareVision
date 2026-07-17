@@ -2,7 +2,7 @@
 test, expressivity screening, and cross-session asymmetry baselines.
 
 Everything runs offline and synthetic: a fake Listener stands in for the
-microphone, Gemini is unavailable (keyword interpretation path), and
+microphone, Moondream is unavailable (keyword interpretation path), and
 HistoryStore-backed modules get temp-file stores (never data/history.db),
 following tests/grooming_test.py.
 

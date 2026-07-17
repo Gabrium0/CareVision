@@ -27,11 +27,14 @@ python main.py --source clip.mp4     # run on a video file
 python main.py --combined            # old single-window overlay instead
 python main.py --headless --name Margaret   # no window; prints greetings/alerts
 python main.py --enable-cloud-skin    # opt in to NVIDIA skin screening
-python main.py --source realsense --webui --debug-endpoint --no-gemini  # private debug, no Gemini calls initially
+python main.py --source realsense --webui --debug-endpoint --no-moondream  # private debug, no Moondream calls initially
 ```
-Windowed controls: `q` quit · `g` force a greeting · `m` toggle Gemini API calls ·
-`t` start a tremor test · `c` switch camera (see below). Use `--no-gemini` to
-guarantee that testing starts with Gemini disabled; templated speech remains active.
+Windowed controls: `q` quit · `g` force a greeting · `m` toggle Moondream API calls ·
+`t` start a tremor test · `c` switch camera (see below). Use `--no-moondream` to
+guarantee that testing starts with Moondream disabled; templated speech remains active.
+Set `X-Moondream-Auth` in `.env` to your Moondream Cloud API key (the conventional
+`MOONDREAM_API_KEY` name is also accepted). The credential is sent only to the
+Moondream API and is never included in logs or debug diagnostics.
 
 By default two windows open: **Camera** (video + face/pose boxes only) and
 **Detections — Data**, a readable dashboard with all signals. The vitals
@@ -88,7 +91,7 @@ original pixels.
 Pass `--debug-endpoint` for a readable, auto-refreshing private dashboard at
 `http://127.0.0.1:8771/debug`. Its programmatic JSON is available at
 `http://127.0.0.1:8771/debug/state`. Both include complete live result objects,
-including agent-only hypotheses and Gemini request counters. Use `--debug-port`
+including agent-only hypotheses and Moondream request counters. Use `--debug-port`
 to change the port. This is a separate localhost-only server;
 the LAN-facing `/data` dashboard remains public-only. Raw image/audio arrays,
 binary values, and data URLs are always redacted. The payload also includes
@@ -96,6 +99,23 @@ capture/preview/analysis rates, latency, skipped analysis frames, selected
 camera profile, and rPPG fast-path counters. Its always-visible Vitals panel
 shows current BPM when valid, or explains whether positioning is blocked,
 samples are warming up, inference is running, or a backend is unavailable.
+
+### Local caregiver review portal
+
+Pass `--caregiver-portal` to start the separate, loopback-only review portal at
+`http://127.0.0.1:8772/caregiver` (`--caregiver-port` changes the port). It is
+never exposed on the LAN and does not require `--webui` or `--debug-endpoint`:
+
+```bash
+python main.py --caregiver-portal
+```
+
+The portal provides privacy-safe 24-hour, 7-day, and 30-day trends, anonymous
+subject filters, durable alert cases, acknowledgement/resolution with a short
+caregiver note, JSON/CSV export, and expired-data cleanup. Acknowledgement
+pauses ordinary reminders while preserving deterministic escalation for an
+active unresolved signal. Raw media, private hypotheses, and biometric
+identity are excluded; the portal remains non-diagnostic.
 
 ### Heart rate: two backends, compared live
 The `heart_rate` module runs one or more rPPG backends and reports each one's

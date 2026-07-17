@@ -18,7 +18,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 
-from core.events import Result, Severity
+from core.events import Result, Severity, Visibility
 from alerts.notifier import build_channels
 
 
@@ -28,6 +28,7 @@ class _AlertState:
     first_notified: float | None = None
     last_notified: float | None = None
     escalated: bool = False
+    case_id: str | None = None
 
 
 @dataclass
@@ -39,6 +40,7 @@ class AlertManager:
     escalate_after: float = 300.0         # escalate if still active this long
     quiet_hours: tuple | None = None      # (start_hour, end_hour) or None
     quiet_suppress: tuple = ()            # alert keys held during quiet hours
+    case_store: object | None = None       # deterministic durable-case boundary
     _state: dict = field(default_factory=dict)
 
     @classmethod
@@ -62,15 +64,25 @@ class AlertManager:
         a, b = self.quiet_hours
         return a <= h < b if a <= b else (h >= a or h < b)
 
-    def _dispatch(self, subject: str, body: str) -> None:
+    def _dispatch(self, subject: str, body: str) -> list[tuple[str, bool]]:
+        outcomes = []
         for ch in self.channels:
-            ch.send(subject, body)
+            outcomes.append((str(getattr(ch, "name", "channel")), bool(ch.send(subject, body))))
+        return outcomes
+
+    def _notify(self, state: _AlertState, subject: str, body: str, now: float,
+                tier: str) -> None:
+        for channel, success in self._dispatch(subject, body):
+            if self.case_store is not None and state.case_id is not None:
+                self.case_store.record_case_delivery(
+                    state.case_id, channel, success, timestamp=now,
+                    notification=tier)
 
     def evaluate(self, snapshot: list[Result], now: float | None = None) -> None:
         """Evaluate the latest snapshot and act on it."""
         now = time.time() if now is None else now
-        active = {(r.module, r.key): r for r in snapshot
-                  if r.severity == Severity.ALERT}
+        active = {(r.subject_id, r.module, r.key): r for r in snapshot
+                  if r.severity == Severity.ALERT and r.visibility == Visibility.PUBLIC}
 
         for key, r in active.items():
             st = self._state.get(key)
@@ -78,27 +90,53 @@ class AlertManager:
                 st = self._state[key] = _AlertState(first_seen=now)
             if now - st.first_seen < self.confirm_seconds:
                 continue                                  # still confirming
-            if key in self.quiet_suppress and self._in_quiet_hours(now):
+            if st.case_id is None and self.case_store is not None:
+                opened = self.case_store.open_alert_case(r, timestamp=now)
+                st.case_id = opened["id"]
+                if opened.get("reused"):
+                    prior = self.case_store.case(st.case_id)
+                    sent = [action for action in prior.get("actions", [])
+                            if action["action"].endswith("_notification_sent")]
+                    if sent:
+                        st.first_notified = min(item["timestamp"] for item in sent)
+                        st.last_notified = max(item["timestamp"] for item in sent)
+                        st.escalated = any(item["action"].startswith("escalation_")
+                                           for item in sent)
+            case_status = None
+            if self.case_store is not None and st.case_id is not None:
+                case = self.case_store.case(st.case_id)
+                case_status = case["status"] if case is not None else None
+            if case_status == "resolved":
+                continue
+            quiet_key = (r.module, r.key)
+            if (key in self.quiet_suppress or quiet_key in self.quiet_suppress
+                    or r.key in self.quiet_suppress) and self._in_quiet_hours(now):
                 continue                                  # held during quiet hrs
 
             subject = str(r.message).split(" — ")[0][:80] or f"{r.module} alert"
             when = time.strftime("%H:%M:%S", time.localtime(now))
             if st.first_notified is None:
-                self._dispatch(subject, f"{r.message}\nDetected {when} "
-                                        f"(confidence {r.confidence:.2f}).")
+                self._notify(st, subject, f"{r.message}\nDetected {when} "
+                                          f"(confidence {r.confidence:.2f}).", now,
+                             "initial")
                 st.first_notified = st.last_notified = now
             elif (not st.escalated and now - st.first_notified >= self.escalate_after):
-                self._dispatch(f"ESCALATION: {subject}",
-                               f"{r.message}\nStill ongoing at {when} — no "
-                               "resolution since first alert. Please respond.")
+                self._notify(st, f"ESCALATION: {subject}",
+                             f"{r.message}\nStill ongoing at {when} — no "
+                             "resolution since first alert. Please respond.", now,
+                             "escalation")
                 st.escalated = True
                 st.last_notified = now
-            elif now - (st.last_notified or 0) >= self.cooldown_seconds:
-                self._dispatch(f"REMINDER: {subject}",
-                               f"{r.message}\nStill ongoing at {when}.")
+            elif case_status != "acknowledged" and \
+                    now - (st.last_notified or 0) >= self.cooldown_seconds:
+                self._notify(st, f"REMINDER: {subject}",
+                             f"{r.message}\nStill ongoing at {when}.", now,
+                             "reminder")
                 st.last_notified = now
 
         # clear state for alerts that resolved (no longer active)
         for key in list(self._state):
             if key not in active:
-                self._state.pop(key, None)
+                state = self._state.pop(key, None)
+                if self.case_store is not None and state and state.case_id is not None:
+                    self.case_store.mark_case_signal(state.case_id, False, timestamp=now)

@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Care Monitor — Caregiver Review</title>
+  <link rel="stylesheet" href="/caregiver/portal.css">
+  <script src="/caregiver/portal.js" defer></script>
+</head>
+<body>
+  <header>
+    <div><p class="eyebrow">LOCAL CARE REVIEW</p><h1>Caregiver portal</h1></div>
+    <div class="local">127.0.0.1 only · non-diagnostic</div>
+  </header>
+  <main>
+    <section class="controls" aria-label="Review filters">
+      <label>Subject<select id="subject"></select></label>
+      <label>Period<select id="range"><option>24h</option><option selected>7d</option><option>30d</option></select></label>
+      <label>Case status<select id="case-status"><option value="all">All</option><option value="open">Open</option><option value="acknowledged">Acknowledged</option><option value="resolved">Resolved</option></select></label>
+      <button id="refresh">Refresh</button><span id="connection" role="status">Connecting…</span>
+    </section>
+
+    <section><h2>Review summary</h2><div id="counts" class="metrics"></div></section>
+    <section><div class="section-head"><h2>Alert cases</h2><span id="case-count"></span></div><div id="cases" class="case-list"></div></section>
+    <section><h2>Trends</h2><p class="muted">Bucketed means with minimum–maximum bands; at most 300 points per series.</p><div id="trends" class="charts"></div></section>
+    <section class="split">
+      <div><h2>Export</h2><p class="muted">Exports contain retained summaries, cases, audit actions, and caregiver notes—never raw media.</p><div class="actions"><a id="json-export" class="button" href="#">Export JSON</a><a id="csv-export" class="button" href="#">Export CSV</a></div></div>
+      <div><h2>Retention</h2><div id="retention"></div><button id="purge" class="danger">Purge expired data</button></div>
+    </section>
+  </main>
+  <dialog id="case-dialog">
+    <form method="dialog" class="dialog-head"><h2 id="dialog-title">Case details</h2><button aria-label="Close">×</button></form>
+    <div id="case-detail"></div>
+    <label>Caregiver note<textarea id="case-note" maxlength="500" rows="3" placeholder="Plain text, up to 500 characters"></textarea></label>
+    <div class="actions"><button id="add-note">Add note</button><button id="ack">Acknowledge</button><button id="resolve" class="danger">Resolve</button></div>
+  </dialog>
+  <footer>Observations and deterministic workflow state only. This portal does not provide medical conclusions.</footer>
+</body>
+</html>
