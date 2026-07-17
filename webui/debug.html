@@ -88,6 +88,8 @@
   const status = document.getElementById('status');
   const statusText = document.getElementById('statusText');
   let current = null;
+  let renderDeferred = false;
+  const panelStates = new Map();
 
   function el(tag, text, className) {
     const n = document.createElement(tag);
@@ -112,6 +114,7 @@
   }
   function jsonSection(title, value, open=false) {
     const box = el('details', null, 'section');
+    box.dataset.stateKey = `section:${title}`;
     box.open = open;
     box.append(el('summary', title), el('pre', shown(value)));
     root.appendChild(box);
@@ -179,6 +182,7 @@
     card.appendChild(head);
     if (result.message) card.appendChild(el('div', result.message, 'message'));
     const value = el('details');
+    value.dataset.stateKey = `result:${result.module}:${result.key}`;
     value.open = typeof result.value !== 'object';
     value.append(el('summary', 'Value'), el('pre', shown(result.value)));
     card.appendChild(value);
@@ -193,8 +197,47 @@
     card.appendChild(meta);
     return card;
   }
+  function selectionInsideRoot() {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || !selection.rangeCount) return false;
+    return root.contains(selection.anchorNode) || root.contains(selection.focusNode);
+  }
+  function capturePanelState() {
+    for (const panel of root.querySelectorAll('details[data-state-key]')) {
+      const content = panel.querySelector('pre');
+      panelStates.set(panel.dataset.stateKey, {
+        open: panel.open,
+        scrollTop: content ? content.scrollTop : 0,
+        scrollLeft: content ? content.scrollLeft : 0,
+      });
+    }
+  }
+  function restorePanelState() {
+    for (const panel of root.querySelectorAll('details[data-state-key]')) {
+      const saved = panelStates.get(panel.dataset.stateKey);
+      if (!saved) continue;
+      panel.open = saved.open;
+      const content = panel.querySelector('pre');
+      if (content) {
+        const temporarilyOpen = !saved.open && (saved.scrollTop || saved.scrollLeft);
+        if (temporarilyOpen) {
+          panel.open = true;
+          void content.scrollHeight;
+        }
+        content.scrollTop = saved.scrollTop;
+        content.scrollLeft = saved.scrollLeft;
+        if (temporarilyOpen) panel.open = false;
+      }
+    }
+  }
   function render() {
     if (!current) return;
+    if (selectionInsideRoot()) {
+      renderDeferred = true;
+      return;
+    }
+    renderDeferred = false;
+    capturePanelState();
     root.replaceChildren();
     heading('Vitals');
     renderVitals((current.system || {}).vitals);
@@ -225,6 +268,7 @@
       jsonSection(key.replaceAll('_', ' '), system[key]);
     }
     jsonSection('Complete raw JSON', current);
+    restorePanelState();
   }
   async function refresh() {
     try {
@@ -240,6 +284,9 @@
     }
   }
   filter.addEventListener('input', render);
+  document.addEventListener('selectionchange', () => {
+    if (renderDeferred && !selectionInsideRoot()) render();
+  });
   refresh();
   setInterval(refresh, 1000);
 })();

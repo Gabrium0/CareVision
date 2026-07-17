@@ -298,6 +298,10 @@ def test_debug_server_binds_loopback_and_serves_readable_private_dashboard():
             assert "Vitals diagnostics unavailable" in html
             assert "NVIDIA skin VLM" in html
             assert "Latest private request diagnostics" in html
+            assert "capturePanelState" in html
+            assert "restorePanelState" in html
+            assert "scrollTop" in html
+            assert "selectionchange" in html
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/debug/state") as response:
             assert json.load(response) == {"ok": True}
         try:
