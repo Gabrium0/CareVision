@@ -70,8 +70,8 @@
     "semantic_hash": ""
   },
   "main.py": {
-    "mtime": 1784188749.2308116,
-    "ast_hash": "b88597867af1f19c11f943c9eca3c9c0",
+    "mtime": 1784279023.923767,
+    "ast_hash": "e3eee25a2e00644c21e80d89ef831887",
     "semantic_hash": ""
   },
   "modules/__init__.py": {
@@ -300,8 +300,8 @@
     "semantic_hash": "8a6643a420fdad6bfb583523bc6cef16"
   },
   "README.md": {
-    "mtime": 1784184933.62997,
-    "ast_hash": "e892cb2c315464c1bead441580f771e3",
+    "mtime": 1784281380.359663,
+    "ast_hash": "64562bbd753822aaa238a901f31682ee",
     "semantic_hash": ""
   },
   "detectionList.md": {
@@ -600,8 +600,8 @@
     "semantic_hash": ""
   },
   "pyproject.toml": {
-    "mtime": 1783487839.701207,
-    "ast_hash": "7a7a319aad748f50cfd4473eaeefb2e7",
+    "mtime": 1784272431.785083,
+    "ast_hash": "dbb40d6652340a7bb4ce823f0e61f12b",
     "semantic_hash": ""
   },
   "docs/ARCHITECTURE.md": {
@@ -790,8 +790,8 @@
     "semantic_hash": ""
   },
   "audio/stt.py": {
-    "mtime": 1784106783.6037538,
-    "ast_hash": "9d89477d06b3ec1b1c36e98e0f078519",
+    "mtime": 1784271630.1659393,
+    "ast_hash": "9a6c992baeb79d88e849b372efdd4779",
     "semantic_hash": ""
   },
   "core/elicitation.py": {
@@ -870,18 +870,18 @@
     "semantic_hash": ""
   },
   "audio/bus.py": {
-    "mtime": 1784106783.6017544,
-    "ast_hash": "820c0027fea5db50cb0022892d571423",
+    "mtime": 1784272528.5313227,
+    "ast_hash": "ed979fcd0c9af78070778085f9d21c6d",
     "semantic_hash": ""
   },
   "audio/intelligence.py": {
-    "mtime": 1784106783.602754,
-    "ast_hash": "5254716613174b6f77e5c6b22345de4b",
+    "mtime": 1784279373.526209,
+    "ast_hash": "bf4f880b7efcd9b2033b76d5d05cadb4",
     "semantic_hash": ""
   },
   "config/replay_scenarios.json": {
-    "mtime": 1784106783.6057541,
-    "ast_hash": "bb7f9c32b86dca76c0c183fa803d2524",
+    "mtime": 1784272433.0189118,
+    "ast_hash": "71e25812175d26fa2c884baed84b2e30",
     "semantic_hash": ""
   },
   "core/capabilities.py": {
@@ -970,8 +970,8 @@
     "semantic_hash": ""
   },
   "requirements-audio-events.txt": {
-    "mtime": 1784106783.7752314,
-    "ast_hash": "3b8027335feeba98449697a23f515385",
+    "mtime": 1784272792.7075226,
+    "ast_hash": "22f6c73757cfce1ad1d7e2bd0c754748",
     "semantic_hash": ""
   },
   "agent/routines.py": {
@@ -1010,8 +1010,8 @@
     "semantic_hash": ""
   },
   "docs/MULTIMODAL_SHOWCASE.md": {
-    "mtime": 1784106783.6117566,
-    "ast_hash": "2de2a4f91dd8d7be57c2be41bf931094",
+    "mtime": 1784271765.083292,
+    "ast_hash": "5eabc3542ed7891cd4eca8e19aa7cf25",
     "semantic_hash": ""
   },
   "requirements-sensors.txt": {
@@ -1025,13 +1025,13 @@
     "semantic_hash": ""
   },
   "tests/runtime_performance_test.py": {
-    "mtime": 1784193623.377714,
-    "ast_hash": "f3675889fd1f99e4edea562b9ae9d4ce",
+    "mtime": 1784279100.8673208,
+    "ast_hash": "41fd738a3379aa04640be98a3306b697",
     "semantic_hash": ""
   },
   "webui/debug_server.py": {
-    "mtime": 1784109011.1338098,
-    "ast_hash": "362a3084695cca98e5d4fbc844d8579e",
+    "mtime": 1784279374.64286,
+    "ast_hash": "d3a6e7f3a38490e9170efdc431c949b3",
     "semantic_hash": ""
   },
   "tests/attention_planner_test.py": {
@@ -1045,8 +1045,8 @@
     "semantic_hash": ""
   },
   "webui/debug.html": {
-    "mtime": 1784193770.556272,
-    "ast_hash": "0efd58e06eabc0c23a0cac045d2acfa0",
+    "mtime": 1784279025.1391964,
+    "ast_hash": "962805588174abfde42b4fab794c34a9",
     "semantic_hash": ""
   },
   "tests/vitals_debug_test.py": {
@@ -1097,6 +1097,156 @@
   "docs/SKIN_DETECTION.md": {
     "mtime": 1784192717.7702765,
     "ast_hash": "992456ea5eff30586e9e05fc87cfcec1",
+    "semantic_hash": ""
+  },
+  "audio/microphone.py": {
+    "mtime": 1784271629.0585165,
+    "ast_hash": "4934f4dafea468a95a563a635176f577",
+    "semantic_hash": ""
+  },
+  "scripts/fetch_coswara_fixtures.py": {
+    "mtime": 1784272338.255018,
+    "ast_hash": "66bf44797771332fdeb267e3d9af6787",
+    "semantic_hash": ""
+  },
+  "tests/audio_cough_test.py": {
+    "mtime": 1784279375.7894027,
+    "ast_hash": "67b437583e314dd242a8344018e20ff3",
+    "semantic_hash": ""
+  },
+  "tests/cough_audio_integration_test.py": {
+    "mtime": 1784272429.4495752,
+    "ast_hash": "ac370d43edbae69df9f5d5236c3b217b",
+    "semantic_hash": ""
+  },
+  "tests/fixtures/cough/ATTRIBUTION.json": {
+    "mtime": 1784272368.8019352,
+    "ast_hash": "be775ec40034c166b5ff3a5e660c2d37",
+    "semantic_hash": ""
+  },
+  "tests/fixtures/cough/README.md": {
+    "mtime": 1784272430.6345594,
+    "ast_hash": "682b9ee91e4d41f10a6964cef09e1915",
+    "semantic_hash": ""
+  },
+  "tests/fixtures/cough/breathing_deep_01.wav": {
+    "mtime": 1784272312.0588067,
+    "ast_hash": "a06ca112f3561e55098cc4370bb2768c",
+    "semantic_hash": ""
+  },
+  "tests/fixtures/cough/breathing_deep_02.wav": {
+    "mtime": 1784272314.9492924,
+    "ast_hash": "b1034c878ec22a81ef0142d3f2764481",
+    "semantic_hash": ""
+  },
+  "tests/fixtures/cough/breathing_shallow_01.wav": {
+    "mtime": 1784272315.4423115,
+    "ast_hash": "6fc1c45023d2214bf75cc2b69e0f26d8",
+    "semantic_hash": ""
+  },
+  "tests/fixtures/cough/breathing_shallow_02.wav": {
+    "mtime": 1784272317.5800612,
+    "ast_hash": "d6615a9f496f2a1f42d7369977b8df5e",
+    "semantic_hash": ""
+  },
+  "tests/fixtures/cough/cough_heavy_01.wav": {
+    "mtime": 1784272315.8480396,
+    "ast_hash": "e8e3849c2233438640ed18e7e336bf4c",
+    "semantic_hash": ""
+  },
+  "tests/fixtures/cough/cough_heavy_02.wav": {
+    "mtime": 1784272318.042577,
+    "ast_hash": "5218dff8d1e04a9394ef34ac8d1a5eb1",
+    "semantic_hash": ""
+  },
+  "tests/fixtures/cough/cough_heavy_03.wav": {
+    "mtime": 1784272318.4508803,
+    "ast_hash": "a9cfd428a31a6e6b7750497b0a92f020",
+    "semantic_hash": ""
+  },
+  "tests/fixtures/cough/cough_heavy_04.wav": {
+    "mtime": 1784272319.051458,
+    "ast_hash": "a04505d40a6eaec00960eb72b70be63f",
+    "semantic_hash": ""
+  },
+  "tests/fixtures/cough/cough_heavy_05.wav": {
+    "mtime": 1784272319.8516467,
+    "ast_hash": "6cabf7c4e581a5b829d3be22e0385b06",
+    "semantic_hash": ""
+  },
+  "tests/fixtures/cough/cough_heavy_06.wav": {
+    "mtime": 1784272320.3041813,
+    "ast_hash": "480a898537effa86d447e11c2ed33e2d",
+    "semantic_hash": ""
+  },
+  "tests/fixtures/cough/cough_shallow_01.wav": {
+    "mtime": 1784272321.0043836,
+    "ast_hash": "602d65060f2d7c8a5b137fbf1621f29f",
+    "semantic_hash": ""
+  },
+  "tests/fixtures/cough/cough_shallow_02.wav": {
+    "mtime": 1784272321.7977757,
+    "ast_hash": "78c7251b6cd427e6939c540ac3db15f9",
+    "semantic_hash": ""
+  },
+  "tests/fixtures/cough/cough_shallow_03.wav": {
+    "mtime": 1784272322.4397147,
+    "ast_hash": "a68b6cb3865852f7b4d8445dd8a588f6",
+    "semantic_hash": ""
+  },
+  "tests/fixtures/cough/cough_shallow_04.wav": {
+    "mtime": 1784272323.0556147,
+    "ast_hash": "8fc72f6de2f215daaa8969bdeeac5c9e",
+    "semantic_hash": ""
+  },
+  "tests/fixtures/cough/cough_shallow_05.wav": {
+    "mtime": 1784272323.6679742,
+    "ast_hash": "3ba9b76c209fe1fccc45603bb0cf68af",
+    "semantic_hash": ""
+  },
+  "tests/fixtures/cough/cough_shallow_06.wav": {
+    "mtime": 1784272324.2037377,
+    "ast_hash": "8dda23d9f7d4fe9a455246dba3fe2f1d",
+    "semantic_hash": ""
+  },
+  "tests/fixtures/cough/counting_fast_01.wav": {
+    "mtime": 1784272330.88842,
+    "ast_hash": "6e2ecaa7a62480f53b5e4f271aaddedc",
+    "semantic_hash": ""
+  },
+  "tests/fixtures/cough/counting_fast_02.wav": {
+    "mtime": 1784272331.7555032,
+    "ast_hash": "1e857deb93d21292d9743f0fdb4bbf46",
+    "semantic_hash": ""
+  },
+  "tests/fixtures/cough/counting_normal_01.wav": {
+    "mtime": 1784272328.645922,
+    "ast_hash": "a8b0e18eb8ff9e6991ed710d9291782e",
+    "semantic_hash": ""
+  },
+  "tests/fixtures/cough/counting_normal_02.wav": {
+    "mtime": 1784272330.2963693,
+    "ast_hash": "54fc684b89e859cd0d8694f181fcba64",
+    "semantic_hash": ""
+  },
+  "tests/fixtures/cough/vowel_a_01.wav": {
+    "mtime": 1784272324.936007,
+    "ast_hash": "1fc374a0b0b77726ee07734abfea1791",
+    "semantic_hash": ""
+  },
+  "tests/fixtures/cough/vowel_a_02.wav": {
+    "mtime": 1784272325.952464,
+    "ast_hash": "f4a1572c6a5197a6d385c2667c1fecda",
+    "semantic_hash": ""
+  },
+  "tests/fixtures/cough/vowel_a_03.wav": {
+    "mtime": 1784272326.6089256,
+    "ast_hash": "7acc0a91a9c39c97508d2cdea1ecc823",
+    "semantic_hash": ""
+  },
+  "tests/fixtures/cough/vowel_a_04.wav": {
+    "mtime": 1784272327.4867294,
+    "ast_hash": "c28bab6c10e4b0aaeff0c66abc089209",
     "semantic_hash": ""
   }
 }

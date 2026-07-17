@@ -1,0 +1,229 @@
+{
+  "title": "Coswara respiratory audio benchmark subset",
+  "original_repository": "https://github.com/iiscleap/Coswara-Data",
+  "original_commit": "4942c97e31de7180a93d17f2e7530a9c543cfd50",
+  "download_mirror": "https://huggingface.co/datasets/szzs1693/coswara-data",
+  "mirror_revision": "d61663c0c8098226f17b9628f6f24b5b5d2f85d9",
+  "license": "Creative Commons Attribution 4.0 International",
+  "license_url": "https://creativecommons.org/licenses/by/4.0/",
+  "citation": "Bhattacharya et al., Coswara: A respiratory sounds and symptoms dataset for remote screening of SARS-CoV-2 infection, Scientific Data 10, 397 (2023).",
+  "privacy": "No demographics, symptoms, diagnoses, transcripts, or raw identifiers retained.",
+  "fixtures": [
+    {
+      "file": "breathing_deep_01.wav",
+      "category": "breathing-deep",
+      "expected": "non_cough",
+      "quality_score": 2,
+      "source_identifier": "audio/train row 0",
+      "participant_hash": "fa9c9cdc609e",
+      "transform": "mono 16 kHz PCM16; threshold silence trim; max 4 seconds; no gain"
+    },
+    {
+      "file": "breathing_deep_02.wav",
+      "category": "breathing-deep",
+      "expected": "non_cough",
+      "quality_score": 2,
+      "source_identifier": "audio/train row 9",
+      "participant_hash": "00a0c1e00047",
+      "transform": "mono 16 kHz PCM16; threshold silence trim; max 4 seconds; no gain"
+    },
+    {
+      "file": "breathing_shallow_01.wav",
+      "category": "breathing-shallow",
+      "expected": "non_cough",
+      "quality_score": 2,
+      "source_identifier": "audio/train row 19",
+      "participant_hash": "9cdc10b99437",
+      "transform": "mono 16 kHz PCM16; threshold silence trim; max 4 seconds; no gain"
+    },
+    {
+      "file": "cough_heavy_01.wav",
+      "category": "cough-heavy",
+      "expected": "cough",
+      "quality_score": 2,
+      "source_identifier": "audio/train row 29",
+      "participant_hash": "9bd4970c227f",
+      "transform": "mono 16 kHz PCM16; threshold silence trim; max 4 seconds; no gain"
+    },
+    {
+      "file": "breathing_shallow_02.wav",
+      "category": "breathing-shallow",
+      "expected": "non_cough",
+      "quality_score": 2,
+      "source_identifier": "audio/train row 37",
+      "participant_hash": "70e0633362ae",
+      "transform": "mono 16 kHz PCM16; threshold silence trim; max 4 seconds; no gain"
+    },
+    {
+      "file": "cough_heavy_02.wav",
+      "category": "cough-heavy",
+      "expected": "cough",
+      "quality_score": 2,
+      "source_identifier": "audio/train row 47",
+      "participant_hash": "2f9f98bbfd8f",
+      "transform": "mono 16 kHz PCM16; threshold silence trim; max 4 seconds; no gain"
+    },
+    {
+      "file": "cough_heavy_03.wav",
+      "category": "cough-heavy",
+      "expected": "cough",
+      "quality_score": 2,
+      "source_identifier": "audio/train row 56",
+      "participant_hash": "884dd9e71bc2",
+      "transform": "mono 16 kHz PCM16; threshold silence trim; max 4 seconds; no gain"
+    },
+    {
+      "file": "cough_heavy_04.wav",
+      "category": "cough-heavy",
+      "expected": "cough",
+      "quality_score": 2,
+      "source_identifier": "audio/train row 65",
+      "participant_hash": "6513423a00ea",
+      "transform": "mono 16 kHz PCM16; threshold silence trim; max 4 seconds; no gain"
+    },
+    {
+      "file": "cough_heavy_05.wav",
+      "category": "cough-heavy",
+      "expected": "cough",
+      "quality_score": 2,
+      "source_identifier": "audio/train row 74",
+      "participant_hash": "4b24828f274e",
+      "transform": "mono 16 kHz PCM16; threshold silence trim; max 4 seconds; no gain"
+    },
+    {
+      "file": "cough_heavy_06.wav",
+      "category": "cough-heavy",
+      "expected": "cough",
+      "quality_score": 2,
+      "source_identifier": "audio/train row 83",
+      "participant_hash": "18dff22a968c",
+      "transform": "mono 16 kHz PCM16; threshold silence trim; max 4 seconds; no gain"
+    },
+    {
+      "file": "cough_shallow_01.wav",
+      "category": "cough-shallow",
+      "expected": "cough",
+      "quality_score": 1,
+      "source_identifier": "audio/train row 93",
+      "participant_hash": "2f9f69eb8038",
+      "transform": "mono 16 kHz PCM16; threshold silence trim; max 4 seconds; no gain"
+    },
+    {
+      "file": "cough_shallow_02.wav",
+      "category": "cough-shallow",
+      "expected": "cough",
+      "quality_score": 2,
+      "source_identifier": "audio/train row 102",
+      "participant_hash": "cd9c72f88a5d",
+      "transform": "mono 16 kHz PCM16; threshold silence trim; max 4 seconds; no gain"
+    },
+    {
+      "file": "cough_shallow_03.wav",
+      "category": "cough-shallow",
+      "expected": "cough",
+      "quality_score": 2,
+      "source_identifier": "audio/train row 111",
+      "participant_hash": "2f786022477e",
+      "transform": "mono 16 kHz PCM16; threshold silence trim; max 4 seconds; no gain"
+    },
+    {
+      "file": "cough_shallow_04.wav",
+      "category": "cough-shallow",
+      "expected": "cough",
+      "quality_score": 2,
+      "source_identifier": "audio/train row 120",
+      "participant_hash": "fccea1f5a678",
+      "transform": "mono 16 kHz PCM16; threshold silence trim; max 4 seconds; no gain"
+    },
+    {
+      "file": "cough_shallow_05.wav",
+      "category": "cough-shallow",
+      "expected": "cough",
+      "quality_score": 2,
+      "source_identifier": "audio/train row 138",
+      "participant_hash": "ea2a5b812966",
+      "transform": "mono 16 kHz PCM16; threshold silence trim; max 4 seconds; no gain"
+    },
+    {
+      "file": "cough_shallow_06.wav",
+      "category": "cough-shallow",
+      "expected": "cough",
+      "quality_score": 2,
+      "source_identifier": "audio/train row 147",
+      "participant_hash": "19d2915cfc01",
+      "transform": "mono 16 kHz PCM16; threshold silence trim; max 4 seconds; no gain"
+    },
+    {
+      "file": "vowel_a_01.wav",
+      "category": "vowel-a",
+      "expected": "non_cough",
+      "quality_score": 2,
+      "source_identifier": "audio/train row 157",
+      "participant_hash": "d8361880d719",
+      "transform": "mono 16 kHz PCM16; threshold silence trim; max 4 seconds; no gain"
+    },
+    {
+      "file": "vowel_a_02.wav",
+      "category": "vowel-a",
+      "expected": "non_cough",
+      "quality_score": 2,
+      "source_identifier": "audio/train row 166",
+      "participant_hash": "8d5110be8de7",
+      "transform": "mono 16 kHz PCM16; threshold silence trim; max 4 seconds; no gain"
+    },
+    {
+      "file": "vowel_a_03.wav",
+      "category": "vowel-a",
+      "expected": "non_cough",
+      "quality_score": 2,
+      "source_identifier": "audio/train row 175",
+      "participant_hash": "b2213ec5df5e",
+      "transform": "mono 16 kHz PCM16; threshold silence trim; max 4 seconds; no gain"
+    },
+    {
+      "file": "vowel_a_04.wav",
+      "category": "vowel-a",
+      "expected": "non_cough",
+      "quality_score": 2,
+      "source_identifier": "audio/train row 184",
+      "participant_hash": "52538decf9f1",
+      "transform": "mono 16 kHz PCM16; threshold silence trim; max 4 seconds; no gain"
+    },
+    {
+      "file": "counting_normal_01.wav",
+      "category": "counting-normal",
+      "expected": "non_cough",
+      "quality_score": 2,
+      "source_identifier": "audio/train row 196",
+      "participant_hash": "84f57714be64",
+      "transform": "mono 16 kHz PCM16; threshold silence trim; max 4 seconds; no gain"
+    },
+    {
+      "file": "counting_normal_02.wav",
+      "category": "counting-normal",
+      "expected": "non_cough",
+      "quality_score": 2,
+      "source_identifier": "audio/train row 205",
+      "participant_hash": "9fbab2154725",
+      "transform": "mono 16 kHz PCM16; threshold silence trim; max 4 seconds; no gain"
+    },
+    {
+      "file": "counting_fast_01.wav",
+      "category": "counting-fast",
+      "expected": "non_cough",
+      "quality_score": 2,
+      "source_identifier": "audio/train row 215",
+      "participant_hash": "57d802277ed8",
+      "transform": "mono 16 kHz PCM16; threshold silence trim; max 4 seconds; no gain"
+    },
+    {
+      "file": "counting_fast_02.wav",
+      "category": "counting-fast",
+      "expected": "non_cough",
+      "quality_score": 2,
+      "source_identifier": "audio/train row 224",
+      "participant_hash": "a36be15f0dd4",
+      "transform": "mono 16 kHz PCM16; threshold silence trim; max 4 seconds; no gain"
+    }
+  ]
+}

@@ -61,6 +61,40 @@ def build_debug_payload(results: list[Result], performance: dict,
                       "system": system or {}})
 
 
+def build_audio_debug_state(capabilities, detector, enabled: bool,
+                            mode: str) -> dict:
+    """Compose safe microphone/YAMNet telemetry for the private dashboard."""
+    def capability(name: str) -> dict:
+        item = capabilities.get(name)
+        if item is None:
+            return {"status": "unavailable", "detail": "not initialized",
+                    "updated_at": None}
+        status = item.status.value if isinstance(item.status, Enum) else item.status
+        return {"status": status, "detail": item.detail,
+                "updated_at": item.updated_at}
+
+    if detector is None:
+        diagnostics = {
+            "available": False,
+            "status": "disabled" if not enabled else "unavailable",
+            "mode": mode,
+            "worker_alive": False,
+            "windows_processed": 0,
+            "last_inference_at": None,
+            "latest_cough_confidence": 0.0,
+            "peak_cough_confidence": 0.0,
+            "max_scores": {},
+            "threshold": None,
+            "pending_cough_episode": False,
+            "pending_burst_count": 0,
+        }
+    else:
+        diagnostics = detector.diagnostics()
+    return {"enabled": bool(enabled), "mode": diagnostics.get("mode", mode),
+            "microphone": capability("microphone"),
+            "yamnet": capability("yamnet"), "detector": diagnostics}
+
+
 class DebugServer:
     """Serve a fresh provider snapshot on 127.0.0.1 only."""
 

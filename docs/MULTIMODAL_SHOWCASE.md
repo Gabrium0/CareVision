@@ -62,6 +62,12 @@ latency, turn gaps, interruptions, and change from the person's own baseline.
 Health-related sounds require repetition or corroboration. Smoke alarms and an
 explicit recognized call for help are deterministic non-medical safety paths.
 
+Use `python main.py --detect-cough` for opt-in cough-episode detection without
+installing Whisper. Install `requirements-audio-events.txt` first; YAMNet may
+download its model on first use. `--listen` and `--detect-cough` share one
+16 kHz mono microphone stream when enabled together. Only counted event
+summaries are persisted; raw microphone samples remain in bounded memory.
+
 Set `camera.location` to `living_room`, `kitchen`, `entryway`, or `bedroom`.
 Subject-specific history learns observed presence, occupancy, meal/drink
 opportunities, activity, leaving/returning, conversation, mobility-aid

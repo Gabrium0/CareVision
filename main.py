@@ -46,7 +46,8 @@ from agent.advisor_engine import AdvisorEngine
 from agent.voice_agent import VoiceAgent
 from agent.env import load_env
 from webui.server import CompanionServer
-from webui.debug_server import DebugServer, build_debug_payload
+from webui.debug_server import (DebugServer, build_audio_debug_state,
+                                build_debug_payload)
 from core.capabilities import CapabilityRegistry, CapabilityStatus
 from core.workflows import WorkflowEngine
 from storage.event_store import EventStore
@@ -159,6 +160,9 @@ def main():
     ap.add_argument("--listen", action="store_true",
                     help="enable the microphone listener (speech-to-text via "
                          "faster-whisper; pip install -r requirements-asr.txt)")
+    ap.add_argument("--detect-cough", action="store_true",
+                    help="enable local microphone cough-episode detection without "
+                         "requiring speech recognition")
     ap.add_argument("--whisper-model", default="base",
                     help="faster-whisper model size for --listen (default base)")
     ap.add_argument("--voice-model", default="gemini-2.5-flash",
@@ -247,25 +251,37 @@ def main():
     sensor_manager = SensorManager.from_config(config.get("sensors"), replay=is_replay)
     shared_signals = SharedSignals.instance()
     sound_detector = None
+    microphone = None
     replay_audio = None
-    if args.listen or is_replay:
+    if args.listen or args.detect_cough or is_replay:
         from audio.bus import AudioBus
         from audio.intelligence import SoundEventDetector
         audio_bus = AudioBus()
-        if args.listen:
+        if not is_replay:
+            from audio.microphone import MicrophoneProducer
+            microphone = MicrophoneProducer(audio_bus)
+        if args.listen and not is_replay:
             from audio.stt import Listener
             voice_agent.listener = Listener(model_size=args.whisper_model,
                                             speaker=voice_agent.speaker, audio_bus=audio_bus)
-        else:
+        elif is_replay:
             from audio.replay import ReplayAudioProducer, ReplayListener
             voice_agent.listener = ReplayListener()
             replay_audio = ReplayAudioProducer(audio_bus)
-        sound_detector = SoundEventDetector(audio_bus)
-        if voice_agent.listener.available:
-            capabilities.set("microphone", "hardware", CapabilityStatus.READY,
-                             "replay" if is_replay else "shared audio bus")
+        allowed_events = {"cough"} if args.detect_cough and not args.listen else None
+        sound_detector = SoundEventDetector(audio_bus, allowed_events=allowed_events)
+        microphone_ready = is_replay or bool(microphone and microphone.available)
+        if microphone_ready:
+            if is_replay:
+                capabilities.set("microphone", "hardware", CapabilityStatus.READY,
+                                 "replay")
             shared_signals.set("microphone_ready", True)
-            print("[agent] listener attached — the agent can hear replies")
+            if voice_agent.listener is not None:
+                print("[agent] listener attached — the agent can hear replies")
+            if args.detect_cough:
+                print("[audio] cough episode detection enabled")
+        else:
+            shared_signals.set("microphone_ready", False)
 
     else:
         capabilities.set("microphone", "hardware", CapabilityStatus.UNAVAILABLE, "disabled")
@@ -310,6 +326,11 @@ def main():
             "gemini": voice_agent.gemini_status(),
         }
         if private:
+            audio_enabled = bool(args.listen or args.detect_cough or is_replay)
+            audio_mode = "cough_only" if args.detect_cough and not args.listen \
+                else "broad_listening"
+            system["audio"] = build_audio_debug_state(
+                capabilities, sound_detector, audio_enabled, audio_mode)
             system["vitals"] = pipeline.vitals_diagnostics(
                 list(results or []), now=time.time(), performance=performance)
             skin_vision = next((module for module in pipeline.scheduler.modules
@@ -549,6 +570,8 @@ def main():
         sensor_manager.close()
         if sound_detector is not None:
             sound_detector.close()
+        if microphone is not None:
+            microphone.close()
         if debug_server is not None:
             debug_server.stop()
         if display and cv2 is not None:

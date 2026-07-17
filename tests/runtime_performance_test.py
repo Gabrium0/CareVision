@@ -19,7 +19,8 @@ from core.pipeline import Pipeline
 from core.realsense_camera import RealSenseCamera
 from core.runtime_metrics import RuntimeMetrics
 from core.scheduler import Scheduler
-from webui.debug_server import DebugServer, build_debug_payload, safe_json
+from webui.debug_server import (DebugServer, build_audio_debug_state,
+                                build_debug_payload, safe_json)
 
 
 def test_runtime_metrics_separate_capture_preview_and_analysis():
@@ -282,6 +283,57 @@ def test_private_debug_payload_includes_nvidia_skin_diagnostics():
     assert payload["system"]["nvidia_skin"] == diagnostic
 
 
+def test_audio_debug_state_reports_ready_disabled_and_unavailable():
+    class Registry:
+        def __init__(self, microphone, yamnet):
+            self.items = {"microphone": microphone, "yamnet": yamnet}
+
+        def get(self, name):
+            return self.items.get(name)
+
+    class Capability:
+        def __init__(self, status, detail):
+            self.status = status
+            self.detail = detail
+            self.updated_at = 123.0
+
+    class Detector:
+        def diagnostics(self):
+            return {"available": True, "status": "ready", "mode": "cough_only",
+                    "worker_alive": True, "windows_processed": 4,
+                    "last_inference_at": 125.0,
+                    "latest_cough_confidence": .42,
+                    "peak_cough_confidence": .8, "threshold": .35,
+                    "pending_cough_episode": True, "pending_burst_count": 1}
+
+    ready_registry = Registry(Capability("ready", "16 kHz mono"),
+                              Capability("ready", "cough-only"))
+    ready = build_audio_debug_state(ready_registry, Detector(), True, "cough_only")
+    assert ready["enabled"] is True
+    assert ready["microphone"]["status"] == "ready"
+    assert ready["detector"]["latest_cough_confidence"] == .42
+    assert ready["detector"]["pending_cough_episode"] is True
+
+    disabled_registry = Registry(Capability("unavailable", "disabled"),
+                                 Capability("unavailable", "disabled"))
+    disabled = build_audio_debug_state(
+        disabled_registry, None, False, "broad_listening")
+    assert disabled["detector"]["status"] == "disabled"
+
+    unavailable = build_audio_debug_state(
+        disabled_registry, None, True, "cough_only")
+    assert unavailable["enabled"] is True
+    assert unavailable["detector"]["status"] == "unavailable"
+
+
+def test_audio_debug_payload_redacts_any_accidental_raw_samples():
+    audio = {"detector": {"status": "ready",
+                           "accidental_samples": np.ones(10, dtype=np.float32)}}
+    payload = build_debug_payload([], {}, {"audio": audio})
+    assert payload["system"]["audio"]["detector"]["accidental_samples"] == \
+        "<redacted-media>"
+
+
 def test_debug_server_binds_loopback_and_serves_readable_private_dashboard():
     server = DebugServer(lambda: {"ok": True}, port=0)
     server.start()
@@ -296,6 +348,9 @@ def test_debug_server_binds_loopback_and_serves_readable_private_dashboard():
             assert "textContent" in html
             assert "renderVitals" in html
             assert "Vitals diagnostics unavailable" in html
+            assert "Audio & cough detection" in html
+            assert "renderAudio" in html
+            assert "latest_cough_confidence" in html
             assert "NVIDIA skin VLM" in html
             assert "Latest private request diagnostics" in html
             assert "capturePanelState" in html

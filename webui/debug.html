@@ -168,6 +168,28 @@
     panel.appendChild(grid);
     root.appendChild(panel);
   }
+  function renderAudio(audio) {
+    const a = audio || {};
+    const detector = a.detector || {};
+    const microphone = a.microphone || {};
+    const yamnet = a.yamnet || {};
+    tileGrid({
+      enabled: a.enabled === true,
+      mode: a.mode || detector.mode || 'disabled',
+      microphone: `${microphone.status || 'unavailable'} · ${microphone.detail || 'no detail'}`,
+      yamnet: `${yamnet.status || 'unavailable'} · ${yamnet.detail || 'no detail'}`,
+      detector_status: detector.status || 'unavailable',
+      worker_alive: detector.worker_alive === true,
+      windows_processed: detector.windows_processed || 0,
+      last_inference_at: detector.last_inference_at
+        ? new Date(detector.last_inference_at * 1000).toLocaleTimeString() : '—',
+      latest_cough_confidence: detector.latest_cough_confidence,
+      peak_cough_confidence: detector.peak_cough_confidence,
+      threshold: detector.threshold,
+      pending_cough_episode: detector.pending_cough_episode === true,
+      pending_burst_count: detector.pending_burst_count || 0,
+    });
+  }
   function resultCard(result) {
     const card = el('article', null, 'result');
     const head = el('div', null, 'result-head');
@@ -241,6 +263,8 @@
     root.replaceChildren();
     heading('Vitals');
     renderVitals((current.system || {}).vitals);
+    heading('Audio & cough detection');
+    renderAudio((current.system || {}).audio);
     heading('Runtime performance');
     tileGrid(current.performance);
     heading('Gemini API control');

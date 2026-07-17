@@ -187,8 +187,11 @@ python main.py --enable-cloud-skin                 # skin stills only
 python main.py --enable-cloud-scene                # room stills only
 python main.py --assessment arm_drift              # one guided protocol
 python main.py --source replay:kitchen_spill --headless
-pip install -r requirements-audio-events.txt       # optional YAMNet backend
 ```
+
+For opt-in local microphone cough detection, including setup and debug
+verification, see [Microphone cough detection](#microphone-cough-detection)
+below.
 
 Available assessment names are `sit_to_stand`, `timed_up_and_go`, `arm_drift`,
 `finger_tapping`, `balance`, `guided_gait`, `facial_movement`, `read_aloud`, and
@@ -197,7 +200,52 @@ Available assessment names are `sit_to_stand`, `timed_up_and_go`, `arm_drift`,
 status, workflow progress, confidence and quality, and a privacy-filtered event
 timeline. Raw frames, audio, embeddings, and private hypotheses are never stored.
 See [docs/MULTIMODAL_SHOWCASE.md](docs/MULTIMODAL_SHOWCASE.md) for complete
-Phase 1â€“7 consent, replay, assessment, tracking, routine, and hardware setup.
+Phase 1–7 consent, replay, assessment, tracking, routine, and hardware setup.
+
+### Microphone cough detection
+
+Install the optional local audio-event dependencies, then opt in to cough
+detection and the localhost debug dashboard:
+
+```bash
+pip install -r requirements-audio-events.txt
+python main.py --detect-cough --debug-endpoint
+```
+
+YAMNet may download its model on first use, so that first launch can require an
+internet connection and take longer. Cough detection does not require Whisper
+or `faster-whisper`. If `--listen` is also supplied (after installing
+`requirements-asr.txt`), speech recognition and the broader sound-event
+taxonomy share the same physical 16 kHz mono microphone stream; the device is
+not opened twice.
+
+Open `http://127.0.0.1:8771/debug` for the readable private dashboard or
+`http://127.0.0.1:8771/debug/state` for JSON. A healthy **Audio & cough
+detection** panel reports the microphone and YAMNet as `ready`, the detector
+worker as alive, and a `windows_processed` count that continues to increase.
+The latest and peak cough confidence update as audio windows are classified.
+A completed `sound_event.cough_episode` appears in Results and Timeline only
+after consecutive qualifying windows confirm a burst and approximately three
+seconds of quiet close the episode; nearby bursts are counted together.
+
+Only the completed episode summary—count, timestamps, confidence, quality, and
+evidence window—is eligible for event persistence. Raw microphone samples,
+embeddings, and spectrograms are neither persisted nor included in debug
+telemetry. YAMNet is a non-diagnostic wellness/showcase classifier; a detected
+cough-like sound does not identify an illness.
+
+The checked-in real-audio integration benchmark exercises the production
+YAMNet path against 24 privacy-minimized Coswara cough and non-cough fixtures:
+
+```bash
+python -m pytest -s tests/cough_audio_integration_test.py
+```
+
+The test prints per-category detections, maximum cough confidence, episode
+counts, recall, and false-positive rate. It skips with an explicit reason when
+the optional backend or model is unavailable. Source revision, CC BY 4.0
+license, citation, and transformations are documented in the
+[fixture attribution notes](tests/fixtures/cough/README.md).
 
 RGB video never supplies reliable blood pressure, SpO2, temperature, or weight;
 those values are presented as measurements only when an appropriate sensor

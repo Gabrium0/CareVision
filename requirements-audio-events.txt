@@ -1,3 +1,6 @@
 # Optional YAMNet general sound-event backend. The app self-disables without it.
+sounddevice>=0.4
 tensorflow>=2.16
 tensorflow-hub>=0.16
+# tensorflow-hub 0.16 still imports pkg_resources, removed in setuptools 81.
+setuptools<81

@@ -33,11 +33,12 @@ class AudioBus:
         with self._lock:
             queues = list(self._queues.values())
         for q in queues:
+            queued_item = (item[0].copy(), item[1])
             try:
-                q.put_nowait(item)
+                q.put_nowait(queued_item)
             except queue.Full:
                 try:
                     q.get_nowait()
-                    q.put_nowait(item)
+                    q.put_nowait(queued_item)
                 except (queue.Empty, queue.Full):
                     pass
