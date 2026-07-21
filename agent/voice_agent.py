@@ -32,7 +32,10 @@ from core.events import PersistencePolicy, Result, Severity
 _TEST_TRIGGERS = ("check my hand", "check my tremor", "test my hand",
                   "test my tremor", "am i shaking", "tremor test",
                   "check my hands", "test my hands")
+_ARM_TRIGGERS = ("check my arm", "check my arms", "look at my arm",
+                 "check my skin", "look at my skin", "arm check")
 _HOLD_STILL_SECONDS = 10.0     # ~2 s to comply + 8 s of sampling
+_ARM_CHECK_SECONDS = 12.0      # ~2 s positioning + 10 s of arm sampling
 _ASSESSMENT_QUESTIONS = {
     "symptoms": "Did you notice any discomfort, weakness, dizziness, or other symptoms during that?",
     "progression": "Has this movement or task changed recently compared with what is normal for you?",
@@ -52,16 +55,21 @@ class VoiceAgent:
         self.moondream = MoondreamClient(model=model, enabled=moondream_enabled)
         self.speaker = Speaker(enabled=speak)
         self.listener = listener
-        self.corroboration = CorroborationEngine(language_model=self.moondream)
-        self.skin_dialogue = SkinDialogue(language_model=self.moondream)
+        # Answer interpretation runs synchronously inside tick(), so keep it
+        # deterministic/local; only natural-language generation uses cloud.
+        self.corroboration = CorroborationEngine(language_model=None)
+        self.skin_dialogue = SkinDialogue(language_model=None)
         self.elicitation = ElicitationState.instance()
         self.workflows = WorkflowEngine.instance()
         self.events = EventStore.instance()
         self.last_utterance = ""
         self._test_requested = False
+        self._arm_check_requested = False
         self._actions: dict = {}       # intent signature -> post-speech callback
         self._safety_results: list[Result] = []
         self._conversation_results: list[Result] = []
+        self._pending_speech: tuple[str, object, float, float] | None = None
+        self._cloud_speech_deadline = 0.75
         moondream = self.moondream.status()
         mode = ("Moondream" if moondream["active"] else
                 "Moondream disabled (templated)" if moondream["available"] else "templated")
@@ -84,9 +92,16 @@ class VoiceAgent:
         return self.moondream.status()
 
     def request_test(self, test: str = "hold_still") -> None:
-        """Queue a scripted test (the 't' hotkey path)."""
+        """Queue a scripted test (the 't'/'a' hotkey path)."""
         if test in PROTOCOLS:
             self.workflows.start(test)
+        elif test == "arm_check":
+            now = time.time()
+            if (self._arm_check_requested or
+                    (self.elicitation.test == "arm_check"
+                     and now < self.elicitation.until + 50.0)):
+                return
+            self._arm_check_requested = True
         else:
             self._test_requested = True
 
@@ -144,6 +159,8 @@ class VoiceAgent:
                     persistence=PersistencePolicy.EVENT))
             if any(t in low for t in _TEST_TRIGGERS):
                 self._test_requested = True
+            if any(t in low for t in _ARM_TRIGGERS):
+                self._arm_check_requested = True
         return heard, handled
 
     def pop_safety_results(self) -> list[Result]:
@@ -222,6 +239,19 @@ class VoiceAgent:
                 "still as you can for about eight seconds?", 90))
             self._actions[sig] = self._begin_hold_still
 
+        # 1b) Scripted arm check: speak the instruction, then open the window.
+        if self._arm_check_requested and not self.elicitation.active(now=now):
+            sig = f"elicit-arm:{int(now)}"
+            extra.append(Intent(
+                "elicit_test", sig,
+                "Ask them, warmly, to hold a forearm up toward the camera "
+                "with the skin facing the lens and keep it steady for about "
+                "ten seconds.", "",
+                "Could you hold your forearm up toward the camera, skin "
+                "facing the lens, and keep it steady for about ten seconds?",
+                90))
+            self._actions[sig] = self._begin_arm_check
+
         # 2) Report a fresh scripted-test result.
         res = self.memory.get("tremor", "tremor_test")
         if res is not None:
@@ -234,6 +264,31 @@ class VoiceAgent:
                     "Tell them the result of the little hold-still exercise "
                     "in one kind sentence; do not diagnose.",
                     str(res.message), str(res.message), 85))
+
+        # 2b) Report a fresh arm-check result.
+        res = self.memory.get("arm_skin", "arm_check")
+        if res is not None:
+            first = self.memory.first_seen.get(
+                ("arm_skin", "arm_check", str(res.value)))
+            if first is not None and now - first <= 12.0:
+                sig = f"arm_check_result:{int(first)}"
+                extra.append(Intent(
+                    "conclusion", sig,
+                    "Tell them what the quick arm skin check showed in one "
+                    "kind, non-diagnostic sentence.",
+                    str(res.message), str(res.message), 85))
+
+        vlm_arm = self.memory.get("skin_vision", "arm_check")
+        if vlm_arm is not None:
+            first = self.memory.first_seen.get(
+                ("skin_vision", "arm_check", str(vlm_arm.value)))
+            if first is not None and now - first <= 12.0:
+                sig = f"vlm_arm_check_result:{int(first)}"
+                extra.append(Intent(
+                    "conclusion", sig,
+                    "Report the NVIDIA arm VLM result in one cautious sentence; "
+                    "keep it separate from the local camera screening and do not diagnose.",
+                    str(vlm_arm.message), str(vlm_arm.message), 86))
 
         # 3) Guided skin close-up, questions, or safe conclusion.
         skin_prompt = self.skin_dialogue.next_prompt(now)
@@ -298,6 +353,10 @@ class VoiceAgent:
         self.elicitation.begin("hold_still", _HOLD_STILL_SECONDS)
         self._test_requested = False
 
+    def _begin_arm_check(self) -> None:
+        self.elicitation.begin("arm_check", _ARM_CHECK_SECONDS)
+        self._arm_check_requested = False
+
     def reasoning_card(self) -> dict | None:
         """A compact, non-diagnostic explanation for the showcase dashboard."""
         skin = self.skin_dialogue.reasoning_card()
@@ -348,13 +407,29 @@ class VoiceAgent:
                 if not (r.module == "rash" and r.key.startswith("rash"))]
         self.corroboration.observe(corroboration_snapshot, now)
         extra = self._extra_intents(now, heard, handled)
+        if self._pending_speech is not None:
+            request_id, pending_intent, requested_mono, requested_at = self._pending_speech
+            done, generated = self.moondream.poll_generation(request_id)
+            if done or time.monotonic() - requested_mono >= self._cloud_speech_deadline:
+                self._pending_speech = None
+                text = generated or pending_intent.fallback
+                return self._speak_intent(pending_intent, text, requested_at)
+            return None
         intent = self.policy.next_intent(
             self.memory, now, extra=extra,
             suppress_routine=self.workflows.active("primary") is not None)
         if intent is None:
             return None
-        generated = self.moondream.generate(intent.llm_intent,
-                                            self.memory.context_text(), intent.detail)
+        request_id = self.moondream.submit_generation(
+            intent.llm_intent, self.memory.context_text(), intent.detail)
+        if request_id is not None:
+            self._pending_speech = (request_id, intent, time.monotonic(), now)
+            return None
+        return self._speak_intent(intent, intent.fallback, now)
+
+    def _speak_intent(self, intent, candidate: str, now: float) -> str:
+        """Apply safety wording and commit one selected intent after generation."""
+        generated = candidate
         if intent.signature.startswith("skin:"):
             text = self.skin_dialogue.safe_speech(generated, intent.fallback)
         else:
@@ -379,6 +454,7 @@ class VoiceAgent:
 
     def close(self) -> None:
         """Release any resources (models, threads, sockets) held here."""
+        self.moondream.close()
         self.speaker.close()
         if self.listener is not None:
             self.listener.close()

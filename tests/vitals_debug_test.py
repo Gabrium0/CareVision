@@ -8,11 +8,13 @@ import queue
 from pathlib import Path
 from types import SimpleNamespace
 
+import numpy as np
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core.events import Result
 from core.pipeline import Pipeline
-from modules.rppg_backends.openrppg import OpenRPPGBackend
+from modules.rppg_backends.openrppg import OpenRPPGBackend, _cpu_allocation
 
 
 class _Heart:
@@ -213,6 +215,31 @@ def test_openrppg_inference_failure_sets_readable_status():
     backend._infer = fail
     assert backend._compute_tensor(object(), 30.0, 10.0) is None
     assert backend._status == "inference failed: RuntimeError"
+
+
+def test_openrppg_auto_cpu_budget_and_cached_freshness():
+    reserved, worker = _cpu_allocation("auto")
+    assert reserved + worker >= 1
+    if reserved + worker > 1:
+        assert reserved >= 1 and worker >= 1
+
+    backend = OpenRPPGBackend.__new__(OpenRPPGBackend)
+    backend._cached = {"bpm": 72.0}
+    backend.result_fresh_seconds = 10.0
+    backend._last_completed_at = time.time() - 11.0
+    assert backend._fresh_cached() is None
+    backend._last_completed_at = time.time()
+    assert backend._fresh_cached() == {"bpm": 72.0}
+
+
+def test_openrppg_uniform_sampling_bounds_cpu_tensor_rate():
+    timestamps = np.arange(0.0, 10.0, 1.0 / 30.0)
+    indices = OpenRPPGBackend._uniform_indices(timestamps, 8.0)
+    selected = timestamps[indices]
+    assert 75 <= len(indices) <= 81
+    assert len(indices) == len(set(indices.tolist()))
+    effective_hz = (len(selected) - 1) / (selected[-1] - selected[0])
+    assert 7.5 <= effective_hz <= 8.5
 
 
 def test_openrppg_reacquires_after_three_stable_candidate_boxes():

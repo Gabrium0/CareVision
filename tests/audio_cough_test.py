@@ -4,6 +4,8 @@ from __future__ import annotations
 import threading
 import time
 import json
+import builtins
+import queue
 import sys
 import types
 from pathlib import Path
@@ -14,7 +16,8 @@ import pytest
 from audio.bus import AudioBus
 from audio.intelligence import SoundEventDetector
 from audio.microphone import MicrophoneProducer
-from audio.stt import Listener
+import audio.stt as stt_module
+from audio.stt import Listener, _whisper_worker
 from core.events import PersistencePolicy
 from core.context import FrameContext
 from modules.replay_events import ReplayEvents
@@ -31,6 +34,33 @@ class _SequenceModel:
         cough = next(self._scores, 0.0)
         scores = np.array([[cough, 1.0 - cough]], dtype=np.float32)
         return scores, np.empty((0,)), np.empty((0,))
+
+
+class _FakeProcess:
+    """Small multiprocessing.Process stand-in for listener lifecycle tests."""
+
+    def __init__(self, alive=True, exitcode=None):
+        self.alive = alive
+        self.exitcode = exitcode
+        self.join_calls = []
+        self.terminated = False
+
+    def is_alive(self):
+        return self.alive
+
+    def join(self, timeout=None):
+        self.join_calls.append(timeout)
+
+    def terminate(self):
+        self.terminated = True
+        self.alive = False
+
+
+def _fake_stt_worker(listener):
+    listener._segments = queue.Queue()
+    listener._worker_out = queue.Queue()
+    listener._worker = _FakeProcess()
+    return True
 
 
 def _detector(scores, **kwargs):
@@ -167,8 +197,8 @@ def test_microphone_failure_is_nonfatal():
 
 def test_whisper_listener_segments_shared_bus_without_opening_mic(monkeypatch):
     """STT consumes the producer bus and has no sounddevice dependency of its own."""
-    monkeypatch.setitem(sys.modules, "faster_whisper", types.ModuleType("faster_whisper"))
-    monkeypatch.setattr(Listener, "_transcribe_loop", lambda self: None)
+    monkeypatch.setattr(stt_module, "_dependency_available", lambda: True)
+    monkeypatch.setattr(Listener, "_start_worker", _fake_stt_worker)
     bus = AudioBus()
     listener = Listener(audio_bus=bus, min_voiced_seconds=.3, silence_seconds=.8)
     for index in range(4):
@@ -181,6 +211,178 @@ def test_whisper_listener_segments_shared_bus_without_opening_mic(monkeypatch):
     segment = listener._segments.get_nowait()[0]
     listener.close()
     assert len(segment) >= 4 * 1600
+
+
+def test_listener_dependency_probe_does_not_import_native_asr(monkeypatch):
+    """The parent checks package presence without loading CTranslate2 DLLs."""
+    imported = []
+    real_import = builtins.__import__
+
+    def guarded_import(name, *args, **kwargs):
+        if name == "faster_whisper" or name.startswith("ctranslate2"):
+            imported.append(name)
+            raise AssertionError(f"native ASR imported in parent: {name}")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", guarded_import)
+    monkeypatch.setattr(stt_module.importlib.util, "find_spec", lambda _name: object())
+    monkeypatch.setattr(Listener, "_start_worker", _fake_stt_worker)
+
+    listener = Listener(audio_bus=AudioBus())
+    listener.close()
+
+    assert imported == []
+
+
+def test_whisper_worker_emits_bounded_ready_and_result_messages(monkeypatch):
+    """The child returns transcript summaries, never the raw audio array."""
+    words = [types.SimpleNamespace(start=0.0, end=0.2),
+             types.SimpleNamespace(start=0.9, end=1.1)]
+    segments = [types.SimpleNamespace(text=" hello ", words=words)]
+
+    class FakeWhisperModel:
+        def __init__(self, model_size, device, compute_type):
+            assert (model_size, device, compute_type) == ("base", "cpu", "int8")
+
+        def transcribe(self, audio, **kwargs):
+            assert kwargs["word_timestamps"] is True
+            assert len(audio) == 16000
+            return iter(segments), object()
+
+    fake_module = types.ModuleType("faster_whisper")
+    fake_module.WhisperModel = FakeWhisperModel
+    monkeypatch.setitem(sys.modules, "faster_whisper", fake_module)
+    in_q, out_q = queue.Queue(), queue.Queue()
+    in_q.put((np.zeros(16000, dtype=np.float32), 10.0, 11.0, 2))
+    in_q.put(None)
+
+    _whisper_worker(in_q, out_q, "base", "en")
+
+    ready, result = out_q.get_nowait(), out_q.get_nowait()
+    assert {key: ready[key] for key in ("event", "model", "device")} == {
+        "event": "ready", "model": "base", "device": "cpu"}
+    assert ready["pid"] > 0
+    assert ready["native_runtime"]["torch_import_blocked"] is True
+    assert ready["native_runtime"]["torch_loaded"] is False
+    assert result == {"event": "result", "text": "hello", "timestamp": 10.0,
+                      "ended_at": 11.0, "interruptions": 2, "duration": 1.0,
+                      "word_count": 2, "pauses": 1}
+    assert "audio" not in result
+
+
+def test_whisper_worker_reports_load_and_transcription_errors(monkeypatch):
+    """Worker failures are sanitized into protocol messages instead of escaping."""
+    original_meta_path = tuple(sys.meta_path)
+    class LoadFailure:
+        def __init__(self, *_args, **_kwargs):
+            raise RuntimeError("broken native runtime")
+
+    fake_module = types.ModuleType("faster_whisper")
+    fake_module.WhisperModel = LoadFailure
+    monkeypatch.setitem(sys.modules, "faster_whisper", fake_module)
+    out_q = queue.Queue()
+    _whisper_worker(queue.Queue(), out_q, "base", "en")
+    assert tuple(sys.meta_path) == original_meta_path
+    message = out_q.get_nowait()
+    assert message["event"] == "error" and message["phase"] == "load"
+    assert "broken native runtime" in message["error"]
+
+    class TranscriptionFailure:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def transcribe(self, *_args, **_kwargs):
+            raise ValueError("bad segment")
+
+    fake_module.WhisperModel = TranscriptionFailure
+    in_q, out_q = queue.Queue(), queue.Queue()
+    in_q.put((np.zeros(10, dtype=np.float32), 1.0, 2.0, 0))
+    in_q.put(None)
+    _whisper_worker(in_q, out_q, "base", "en")
+    assert tuple(sys.meta_path) == original_meta_path
+    assert out_q.get_nowait()["event"] == "ready"
+    message = out_q.get_nowait()
+    assert message["event"] == "error" and message["phase"] == "transcribe"
+    assert "bad segment" in message["error"]
+
+
+def test_listener_worker_failure_is_nonfatal_and_close_is_bounded(capsys):
+    """A dead native worker disables listening; repeated close remains safe."""
+    listener = Listener(enabled=False, audio_bus=AudioBus())
+    listener.available = True
+    listener._worker_out = queue.Queue()
+    listener._worker = _FakeProcess(alive=False, exitcode=127)
+
+    assert listener.pop_utterances() == []
+    assert listener.available is False
+    assert "exited unexpectedly" in capsys.readouterr().out
+
+    listener._segments = queue.Queue()
+    listener._worker_out = queue.Queue()
+    worker = _FakeProcess(alive=True)
+    listener._worker = worker
+    listener.close()
+    listener.close()
+
+    assert worker.terminated is True
+    assert worker.join_calls == [2.0, 0.5]
+
+
+def test_listener_worker_start_failure_disables_only_listening(capsys):
+    """Process creation errors stay inside the optional listener boundary."""
+    class BrokenContext:
+        def Queue(self):
+            return queue.Queue()
+
+        def Process(self, **_kwargs):
+            class BrokenProcess:
+                def start(self):
+                    raise OSError("spawn denied")
+            return BrokenProcess()
+
+    listener = Listener(enabled=False, audio_bus=AudioBus())
+    listener._ctx = BrokenContext()
+
+    assert listener._start_worker() is False
+    assert listener._worker is None
+    assert listener._segments is None and listener._worker_out is None
+    assert "spawn denied" in capsys.readouterr().out
+    listener.close()
+
+
+def test_listener_publishes_worker_summary_with_parent_history_metrics():
+    """Transcript timing and history calculations remain in the parent process."""
+    class FakeHistory:
+        def __init__(self):
+            self.added = []
+
+        def mean_since(self, *_args):
+            return 100.0
+
+        def add(self, *args):
+            self.added.append(args)
+
+    listener = Listener(enabled=False, audio_bus=AudioBus())
+    listener._history = FakeHistory()
+    listener._last_agent_speech = 9.0
+    listener._last_user_end = 8.0
+    listener._publish_result({"text": "hello there", "timestamp": 10.0,
+                              "ended_at": 12.0, "duration": 2.0,
+                              "word_count": 4, "pauses": 1,
+                              "interruptions": 2})
+
+    assert listener.pop_utterances() == [("hello there", 10.0)]
+    metrics = listener.pop_metrics()
+    assert metrics == [{"timestamp": 10.0, "duration": 2.0, "word_count": 4,
+                        "words_per_minute": 120.0, "pauses": 1,
+                        "pause_frequency": 0.5, "response_latency": 1.0,
+                        "turn_gap": 2.0, "interruptions": 2,
+                        "baseline_change": 0.2, "quality": 1.0}]
+    assert listener._history.added == [
+        ("speech_timing", "words_per_minute", 120.0, 10.0),
+        ("speech_timing", "pause_frequency", 0.5, 10.0),
+    ]
+    listener.close()
 
 
 def test_replay_cough_episode_keeps_counted_payload():

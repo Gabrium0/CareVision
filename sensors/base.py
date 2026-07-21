@@ -40,7 +40,7 @@ class UnavailableSensor(SensorAdapter):
     """Named placeholder that degrades gracefully when hardware is absent."""
     def __init__(self, name: str, reason: str = "not configured"):
         self.name, self.reason = name, reason
-        CapabilityRegistry.instance().set(name, "sensor", CapabilityStatus.UNAVAILABLE, reason)
+        CapabilityRegistry.instance().set(name, "sensor", CapabilityStatus.UNCONFIGURED, reason)
 
     def poll(self, now: float | None = None) -> list[SensorReading]:
         """Unavailable adapters simply produce no data."""
@@ -56,7 +56,7 @@ class SensorManager:
         for adapter in self.adapters:
             if registry.get(adapter.name) is None:
                 registry.set(adapter.name, "sensor",
-                             CapabilityStatus.READY if adapter.available else CapabilityStatus.UNAVAILABLE,
+                             CapabilityStatus.READY if adapter.available else CapabilityStatus.UNCONFIGURED,
                              "connected" if adapter.available else "not connected")
 
     @classmethod

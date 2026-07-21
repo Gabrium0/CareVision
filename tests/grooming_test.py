@@ -47,6 +47,10 @@ def _make_ctx(texture_level: float, ts: float) -> FrameContext:
 def _fresh_module(tmp_dir: Path) -> Grooming:
     mod = Grooming()
     mod.store = HistoryStore(path=tmp_dir / "grooming_test.db")
+    for key in ("hair_texture", "jaw_texture"):
+        mod.store.rolling_mean("grooming", key, mod.recent_seconds)
+        mod.store.rolling_mean("grooming", key, mod.baseline_seconds)
+    assert mod.store.wait_aggregates()
     return mod
 
 
@@ -59,7 +63,7 @@ def test_no_report_with_consistent_texture():
                 assert mod.process(_make_ctx(5.0, now - d * DAY)) is None
             assert mod.process(_make_ctx(5.0, now)) is None
         finally:
-            mod.store.conn.close()   # release the sqlite file (Windows locks it otherwise)
+            mod.store.close()   # stop async writer/aggregate workers before releasing Windows file
     print("[grooming-test] steady texture over a week -> no report OK")
 
 
@@ -81,7 +85,7 @@ def test_reports_sustained_rise_vs_weekly_baseline():
             for res in r:
                 assert res.severity.value == "notice", res.severity
         finally:
-            mod.store.conn.close()
+            mod.store.close()
     print("[grooming-test] sustained rise vs weekly baseline reports OK")
 
 
@@ -93,7 +97,7 @@ def test_no_report_before_baseline_exists():
         try:
             assert mod.process(_make_ctx(40.0, time.time())) is None
         finally:
-            mod.store.conn.close()
+            mod.store.close()
     print("[grooming-test] no baseline yet -> no report OK")
 
 

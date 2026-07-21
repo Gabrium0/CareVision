@@ -91,7 +91,8 @@ class FacialAsymmetry(DetectionModule):
         window = self.history_days * 86400.0
         for name, value in self.baseline.items():
             key = f"base_{name}_{mode}"
-            hist = store.mean_since("facial_asymmetry", key, window)
+            mean = getattr(store, "rolling_mean", None) or store.mean_since
+            hist = mean("facial_asymmetry", key, window)
             if hist is not None and value - hist > self.trend_margin:
                 results.append(self.result(
                     f"asymmetry_trend_{name}", round(value - hist, 3),

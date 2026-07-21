@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import threading
 import time
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Future
 
 import cv2
 import numpy as np
@@ -30,6 +30,9 @@ from core.debug import log as debug_log
 from core.events import Severity
 from core.registry import register
 from core.shared_signals import SharedSignals
+from core.one_flight import DaemonOneFlight
+from core.runtime_resources import apply_loaded_limits
+from core.capabilities import CapabilityRegistry, CapabilityStatus
 from modules.base import DetectionModule
 from modules._util import roi_patch
 from extractors import pose as P
@@ -87,12 +90,16 @@ class Clothing(DetectionModule):
         self._last_sleeve = None
         self._last_latency_ms = 0.0
         self._lock = threading.Lock()
-        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="clothing")
+        self._executor = DaemonOneFlight("clothing-model")
         self._load_future: Future | None = None
         self._load_started: float | None = None
         self._inference_future: Future | None = None
         self._stopping = threading.Event()
         self._shared_signals = SharedSignals.instance()
+        self._device = "uninitialized"
+        self._model_name = None
+        self._load_latency_ms = 0.0
+        self._load_deadline_exceeded = False
 
     # ---- model loading ----------------------------------------------------
     @staticmethod
@@ -128,19 +135,31 @@ class Clothing(DetectionModule):
         with self._lock:
             self._pipe = pipe
             self._task = task
+            self._model_name = name
             self._cached["status"] = "clothing model ready; waiting for first frame"
         print(f"[clothing] loaded {task} model {name}")
+        CapabilityRegistry.instance().set(
+            self.name, "model", CapabilityStatus.READY,
+            f"{task} model loaded on {self._device}")
         return True
 
     def _load(self) -> None:
         """Load cached candidates first, then optionally download only primary."""
+        started = time.perf_counter()
         try:
             from transformers import pipeline
+            import torch
+            apply_loaded_limits("maximum")
+            device = 0 if torch.cuda.is_available() else -1
+            self._device = "cuda:0" if device == 0 else "cpu"
         except Exception as exc:  # noqa: BLE001
             detail = self._exception_detail(exc)
+            self._load_latency_ms = (time.perf_counter() - started) * 1000.0
             print(f"[clothing] dependencies unavailable ({detail})")
             with self._lock:
                 self._cached["status"] = f"clothing dependencies unavailable: {detail}"
+            CapabilityRegistry.instance().set(
+                self.name, "model", CapabilityStatus.UNCONFIGURED, detail)
             return
         candidates = self._candidates()
         last_detail = "unknown error"
@@ -148,8 +167,9 @@ class Clothing(DetectionModule):
             if self._stopping.is_set():
                 return
             try:
-                pipe = pipeline(task, model=name, local_files_only=True)
+                pipe = pipeline(task, model=name, local_files_only=True, device=device)
                 self._set_loaded(pipe, task, name)
+                self._load_latency_ms = (time.perf_counter() - started) * 1000.0
                 return
             except Exception as exc:  # noqa: BLE001
                 last_detail = self._exception_detail(exc)
@@ -159,8 +179,9 @@ class Clothing(DetectionModule):
             with self._lock:
                 self._cached["status"] = "downloading clothing model"
             try:
-                pipe = pipeline(task, model=name)
+                pipe = pipeline(task, model=name, device=device)
                 self._set_loaded(pipe, task, name)
+                self._load_latency_ms = (time.perf_counter() - started) * 1000.0
                 return
             except Exception as exc:  # noqa: BLE001
                 last_detail = self._exception_detail(exc)
@@ -169,6 +190,9 @@ class Clothing(DetectionModule):
             return
         with self._lock:
             self._cached["status"] = f"clothing model unavailable: {last_detail}"
+        CapabilityRegistry.instance().set(
+            self.name, "model", CapabilityStatus.FAILED, last_detail)
+        self._load_latency_ms = (time.perf_counter() - started) * 1000.0
 
     def start(self) -> None:
         """Begin model preload without waiting for a scheduled camera frame."""
@@ -178,6 +202,8 @@ class Clothing(DetectionModule):
                 return
             self._load_attempted = True
             self._cached["status"] = "loading clothing model"
+            CapabilityRegistry.instance().set(
+                self.name, "model", CapabilityStatus.LOADING, "loading model")
             self._load_started = time.monotonic()
             self._load_future = self._executor.submit(self._load)
 
@@ -201,6 +227,11 @@ class Clothing(DetectionModule):
             with self._lock:
                 if self._pipe is None:
                     self._cached["status"] = "clothing model load timed out"
+                    if not self._load_deadline_exceeded:
+                        self._load_deadline_exceeded = True
+                        CapabilityRegistry.instance().set(
+                            self.name, "model", CapabilityStatus.DEGRADED,
+                            "model load exceeded deadline; late recovery remains possible")
 
     # ---- geometry ---------------------------------------------------------
     def _torso_crop(self, ctx: FrameContext) -> np.ndarray | None:
@@ -353,6 +384,9 @@ class Clothing(DetectionModule):
         ranked = self._fuse_sleeve(ranked, sleeve)
         self._last_top = [(l, round(s, 3)) for l, s in ranked[:5]]
         label, score = ranked[0]
+        # Sleeve fusion is a ranking bias and can raise an adjusted score
+        # above one; never publish that adjustment as probability/confidence.
+        score = max(0.0, min(1.0, float(score)))
         with self._lock:
             if score < self.min_confidence:
                 self._cached = {"clothing": "unknown", "confidence": round(score, 2),
@@ -413,7 +447,7 @@ class Clothing(DetectionModule):
         self._shared_signals.set("clothing", snapshot, ctx.timestamp)
 
         label = snapshot.get("clothing", "...")
-        conf = float(snapshot.get("confidence", 0.0))
+        conf = max(0.0, min(1.0, float(snapshot.get("confidence", 0.0))))
         results = [
             self.result("upper_body", label, conf, Severity.INFO,
                         f"Clothing detected: {label}" if label not in ("...", "unknown") else "", ttl=12.0),
@@ -430,4 +464,18 @@ class Clothing(DetectionModule):
         for future in (self._load_future, self._inference_future):
             if future is not None:
                 future.cancel()
-        self._executor.shutdown(wait=True, cancel_futures=True)
+        self._executor.shutdown(wait=True, cancel_futures=True, timeout=1.0)
+
+    def diagnostics(self) -> dict:
+        self._refresh_load_state()
+        with self._lock:
+            status = str(self._cached.get("status", "unknown"))
+            ready = self._pipe is not None
+        return {"status": "ready" if ready else (
+                    "degraded" if self._load_deadline_exceeded else "loading"),
+                "ready": ready, "device": self._device,
+                "model": self._model_name, "task": self._task,
+                "load_latency_ms": round(self._load_latency_ms, 1),
+                "load_deadline_exceeded": self._load_deadline_exceeded,
+                "inference_latency_ms": round(self._last_latency_ms, 1),
+                "detail": status, "worker": self._executor.diagnostics()}

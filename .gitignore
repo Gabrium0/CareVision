@@ -3,7 +3,8 @@ __pycache__/
 data/
 models/*.task
 models/*.onnx
+runtime-models/
+assets/skin_models/*.onnx
 tests/synthetic_clip.mp4
 .venv/
 .env
-

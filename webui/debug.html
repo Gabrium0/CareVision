@@ -193,11 +193,16 @@
     const detector = a.detector || {};
     const microphone = a.microphone || {};
     const yamnet = a.yamnet || {};
+    const stt = a.stt || {};
     tileGrid({
       enabled: a.enabled === true,
       mode: a.mode || detector.mode || 'disabled',
       microphone: `${microphone.status || 'unavailable'} · ${microphone.detail || 'no detail'}`,
       yamnet: `${yamnet.status || 'unavailable'} · ${yamnet.detail || 'no detail'}`,
+      whisper_status: stt.status || 'unavailable',
+      whisper_worker_alive: stt.worker_alive === true,
+      whisper_model: stt.model || '—',
+      whisper_load_latency_ms: stt.load_latency_ms,
       detector_status: detector.status || 'unavailable',
       worker_alive: detector.worker_alive === true,
       windows_processed: detector.windows_processed || 0,
@@ -281,6 +286,8 @@
     renderDeferred = false;
     capturePanelState();
     root.replaceChildren();
+    heading('Runtime health');
+    tileGrid(current.health || {status:'unavailable'});
     heading('Vitals');
     renderVitals((current.system || {}).vitals);
     heading('Audio & cough detection');
@@ -294,6 +301,12 @@
       (current.system || {}).nvidia_skin || {
         available:false, status:'unavailable', last_attempt:null
       }, true);
+    heading('History writer');
+    tileGrid((current.system || {}).history_writer || {alive:false, status:'unavailable'});
+    heading('Native runtime budgets');
+    tileGrid((current.system || {}).runtime_resources || {status:'unavailable'});
+    heading('FashionCLIP lifecycle');
+    tileGrid((current.system || {}).clothing || {status:'unconfigured'});
 
     const needle = filter.value.trim().toLowerCase();
     const all = current.results || [];

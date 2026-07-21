@@ -129,6 +129,7 @@ class ReplayCamera:
         if isinstance(spec, dict) and spec.get("video"):
             self._video_path = (path.parent / str(spec["video"])).resolve()
         self._duration = float(spec.get("duration", 0)) if isinstance(spec, dict) else 0.0
+        self._realtime = bool(spec.get("realtime", False)) if isinstance(spec, dict) else False
         self._pose_profile = str(spec.get("pose_profile", "")) if isinstance(spec, dict) else ""
         self._face_profile = str(spec.get("face_profile", "")) if isinstance(spec, dict) else ""
         self._people = int(spec.get("people", 1)) if isinstance(spec, dict) else 1
@@ -184,6 +185,10 @@ class ReplayCamera:
                     else:
                         due.append(event)
                 ts = epoch + offset
+                if self._realtime:
+                    delay = ts - time.time()
+                    if delay > 0:
+                        time.sleep(delay)
                 for hook in self._hooks:
                     hook(frame, ts)
                 ctx = FrameContext(frame=frame, timestamp=ts, frame_index=index,

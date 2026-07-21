@@ -98,7 +98,7 @@ class SceneVision(DetectionModule):
         self._capture_started: float | None = None
         self._last_capture_frame = -1e9
         self._hazard_history: deque[tuple[float, tuple[str, ...]]] = deque(maxlen=8)
-        status = CapabilityStatus.READY if self.available else CapabilityStatus.UNAVAILABLE
+        status = CapabilityStatus.READY if self.available else CapabilityStatus.UNCONFIGURED
         detail = "consented background VLM" if self.available else "requires --enable-cloud-scene and key"
         CapabilityRegistry.instance().set("nvidia_scene", "cloud", status, detail)
 

@@ -193,7 +193,9 @@ class _FakeListener:
 
 def _agent():
     from agent.voice_agent import VoiceAgent
-    return VoiceAgent(name="Ada", speak=False, listener=_FakeListener())
+    # Corroboration tests exercise deterministic local wording, not cloud timing.
+    return VoiceAgent(name="Ada", speak=False, listener=_FakeListener(),
+                      moondream_enabled=False)
 
 
 def test_voice_agent_full_corroboration_loop():
@@ -280,6 +282,10 @@ def test_expressivity_flags_flat_affect_vs_history():
         mod = Expressivity(store_every=5.0, low_hits_needed=2)
         mod.store = HistoryStore(path=Path(tmp) / "expr.db")
         try:
+            day_seconds = mod.history_days * 86400.0
+            mod.store.rolling_mean("expressivity", "smile_mean", day_seconds)
+            mod.store.rolling_mean("expressivity", "expr_std", day_seconds)
+            assert mod.store.wait_aggregates()
             now = _time.time()
             # History: a lively month. Today's constant smile=0.18 span is a
             # 0.30 smile-level metric (span / 0.6 face width), so history
@@ -299,7 +305,7 @@ def test_expressivity_flags_flat_affect_vs_history():
             assert "smile_level" in keys and "expression_variance" in keys
             assert "expressivity_low" in keys
         finally:
-            mod.store.conn.close()
+            mod.store.close()
 
 
 # -------------------------------------------- cross-session asymmetry trend
@@ -320,6 +326,8 @@ def test_asymmetry_trend_vs_stored_history():
     with tempfile.TemporaryDirectory() as tmp:
         store = HistoryStore(path=Path(tmp) / "asym.db")
         try:
+            store.rolling_mean("facial_asymmetry", "base_mouth_2d", 30 * 86400.0)
+            assert store.wait_aggregates()
             now = _time.time()
             for d in range(3):                       # symmetric history
                 store.add("facial_asymmetry", "base_mouth_2d", 0.0,
@@ -336,4 +344,4 @@ def test_asymmetry_trend_vs_stored_history():
             assert store.mean_since("facial_asymmetry", "base_mouth_2d",
                                     3600.0) is not None
         finally:
-            store.conn.close()
+            store.close()

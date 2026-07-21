@@ -24,7 +24,13 @@ import os
 import threading
 import time
 import traceback
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
+
+from core.runtime_resources import (apply_loaded_limits, configure_environment,
+                                    diagnostics as runtime_resource_diagnostics)
+
+configure_environment("maximum")
 
 if os.environ.get("DEEPFACE_WORKER") != "1":
     os.environ.setdefault("KERAS_BACKEND", "jax")
@@ -51,6 +57,7 @@ from webui.debug_server import (DebugServer, build_audio_debug_state,
 from core.capabilities import CapabilityRegistry, CapabilityStatus
 from core.workflows import WorkflowEngine
 from storage.event_store import EventStore
+from storage.history_store import HistoryStore
 from sensors import SensorManager
 from core.shared_signals import SharedSignals
 from core.events import PersistencePolicy, Result, Severity
@@ -74,7 +81,9 @@ def load_alerts_config():
 
 
 def build_pipeline(source, config, camera_opts=None, max_staleness: float = 0.25,
-                   analysis_width: int = 960):
+                   analysis_width: int = 960, face_analysis_width: int = 640,
+                   fast_path_mode: str = "tracked",
+                   quality_profile: str = "maximum"):
     """Discover modules and assemble the full processing pipeline."""
     discover("modules")
     modules = build_enabled(config)
@@ -83,12 +92,18 @@ def build_pipeline(source, config, camera_opts=None, max_staleness: float = 0.25
             module.input_width = analysis_width
     registry = CapabilityRegistry.instance()
     for module in modules:
-        available = getattr(module, "available", True)
-        registry.set(module.name, "model", CapabilityStatus.READY if available
-                     else CapabilityStatus.UNAVAILABLE,
-                     "enabled" if available else "optional dependency, model, credential, or consent unavailable")
+        lifecycle = getattr(module, "capability_status", None)
+        if lifecycle is not None:
+            status, detail = lifecycle()
+        elif hasattr(module, "available") and not getattr(module, "available"):
+            status, detail = CapabilityStatus.UNCONFIGURED, "optional capability is not configured"
+        elif callable(getattr(module, "start", None)):
+            status, detail = CapabilityStatus.LOADING, "model startup pending"
+        else:
+            status, detail = CapabilityStatus.READY, "enabled"
+        registry.set(module.name, "model", status, detail)
     print(f"[main] enabled modules: {', '.join(m.name for m in modules)}")
-    extractors = [FaceExtractor(input_width=analysis_width),
+    extractors = [FaceExtractor(input_width=face_analysis_width),
                   PoseExtractor(input_width=analysis_width), MotionExtractor()]
     scheduler = Scheduler(modules)
     aggregator = Aggregator()
@@ -99,7 +114,11 @@ def build_pipeline(source, config, camera_opts=None, max_staleness: float = 0.25
                         showcase_gate=ShowcaseGate.from_config(config),
                         camera_location=(config.get("camera") or {}).get("location"),
                         tracking_enabled=bool((config.get("tracking") or {}).get("enabled", False)),
-                        background_analysis=not str(source).startswith("replay:"))
+                        background_analysis=not str(source).startswith("replay:"),
+                        fast_path_mode=fast_path_mode,
+                        analysis_width=analysis_width,
+                        quality_profile=quality_profile,
+                        runtime_config=config.get("runtime"))
     return pipeline, aggregator
 
 
@@ -115,6 +134,9 @@ def main():
     ap.add_argument("--list-cameras", action="store_true",
                     help="probe camera indices, print index+resolution, and exit")
     ap.add_argument("--headless", action="store_true", help="no display window")
+    ap.add_argument("--dev-mode", action="store_true",
+                    help="disable heavyweight/network optional backends for local "
+                         "debug replay (used by dev.py)")
     ap.add_argument("--name", default="there", help="person's name for greetings")
     ap.add_argument("--max-frames", type=int, default=None)
     ap.add_argument("--combined", action="store_true",
@@ -135,6 +157,11 @@ def main():
                     help="max seconds the vitals fast-path may reuse a detected face "
                          "bbox before pausing rather than sampling a stale ROI "
                          "(default 0.25)")
+    ap.add_argument("--vitals-fast-path-mode",
+                    choices=("strict", "extended", "tracked"), default="tracked",
+                    help="vitals ROI reuse mode: strict 250ms lease, extended 750ms "
+                         "stationary lease, or guarded optical-flow tracking "
+                         "(default tracked)")
     ap.add_argument("--fps", type=float, default=30.0,
                     help="requested capture fps (default 30)")
     ap.add_argument("--resolution", default="auto",
@@ -147,6 +174,14 @@ def main():
     ap.add_argument("--analysis-width", type=int, default=960,
                     help="maximum width passed to MediaPipe; coordinates and rPPG crops "
                          "remain at capture resolution (default 960)")
+    ap.add_argument("--face-analysis-width", type=int, default=640,
+                    help="maximum width for authoritative face detection; rPPG still "
+                         "uses original capture pixels (default 640)")
+    ap.add_argument("--quality-profile", choices=("maximum", "balanced", "realtime"),
+                    default="maximum",
+                    help="analysis policy: maximum preserves high-detail ROIs and "
+                         "reduces cadence first; balanced/realtime trade spatial "
+                         "detail for latency (default maximum)")
     ap.add_argument("--vitals-log-every", type=float, default=10.0,
                     help="seconds between terminal vitals summaries; 0 disables")
     ap.add_argument("--alert-cooldown", type=float, default=30.0,
@@ -194,6 +229,7 @@ def main():
     ap.add_argument("--caregiver-port", type=int, default=8772,
                     help="localhost caregiver portal port (default 8772)")
     args = ap.parse_args()
+    apply_loaded_limits(args.quality_profile)
     if args.list_cameras:
         Camera.list_devices()
         return
@@ -220,6 +256,16 @@ def main():
                    "min_fps": args.min_fps}
 
     config = load_config()
+    if args.dev_mode:
+        modules = config.get("modules", {})
+        for name in ("clothing", "weather"):
+            modules.get(name, {})["enabled"] = False
+        heart_rate = modules.get("heart_rate", {})
+        heart_rate["backends"] = [backend for backend in heart_rate.get("backends", [])
+                                  if backend != "openrppg"]
+        emotion = modules.get("emotion", {})
+        emotion["backends"] = [backend for backend in emotion.get("backends", [])
+                               if backend != "deepface"]
     skin_cfg = config.get("modules", {}).get("skin_vision", {})
     skin_cfg["consent"] = bool(args.enable_cloud_skin)
     scene_cfg = config.get("modules", {}).get("scene_vision", {})
@@ -232,9 +278,17 @@ def main():
         emotion["backends"] = [b for b in emotion.get("backends", []) if b != "deepface"]
     pipeline, aggregator = build_pipeline(args.source, config, camera_opts,
                                           max_staleness=args.vitals_max_staleness,
-                                          analysis_width=args.analysis_width)
-    print(f"[main] MediaPipe analysis width <= {args.analysis_width}px; "
-          "rPPG uses original capture pixels")
+                                          analysis_width=args.analysis_width,
+                                          face_analysis_width=args.face_analysis_width,
+                                          fast_path_mode=args.vitals_fast_path_mode,
+                                          quality_profile=args.quality_profile)
+    # Start FashionCLIP before audio/native workers compete for CPU and import
+    # bandwidth. Its loader is asynchronous, so CLI and camera startup remain
+    # responsive and Pipeline.run's repeated preload is idempotent.
+    pipeline.preload_modules()
+    print(f"[main] face analysis width <= {args.face_analysis_width}px; "
+          f"background analysis width <= {args.analysis_width}px; "
+          f"quality={args.quality_profile}; rPPG uses original capture pixels")
     is_replay = str(args.source).startswith("replay:")
     # Runtime camera toggle ('c'): start on --source, swap to --alt-source and
     # back. Both use the same camera_opts so the laptop view is unchanged.
@@ -255,7 +309,7 @@ def main():
     capabilities.set("camera", "hardware", CapabilityStatus.READY,
                      "replay" if str(args.source).startswith("replay:") else "live source")
     if capabilities.get("nvidia_skin") is None:
-        capabilities.set("nvidia_skin", "cloud", CapabilityStatus.UNAVAILABLE,
+        capabilities.set("nvidia_skin", "cloud", CapabilityStatus.UNCONFIGURED,
                          "skin module is not enabled")
     sensor_manager = SensorManager.from_config(config.get("sensors"), replay=is_replay)
     shared_signals = SharedSignals.instance()
@@ -293,22 +347,25 @@ def main():
             shared_signals.set("microphone_ready", False)
 
     else:
-        capabilities.set("microphone", "hardware", CapabilityStatus.UNAVAILABLE, "disabled")
+        capabilities.set("microphone", "hardware", CapabilityStatus.UNCONFIGURED, "disabled")
         shared_signals.set("microphone_ready", False)
     if args.assessment:
         WorkflowEngine.instance().start(args.assessment)
 
     web = None
+    web_publish_executor = None
+    web_publish_state = {"future": None, "last": -1e9}
     if args.webui:
         control = pipeline.camera.replay_control if is_replay else None
         primary_handler = pipeline.tracker.set_primary if args.enable_multi_person else None
         web = CompanionServer(port=args.webui_port, control_handler=control,
                               primary_handler=primary_handler)
         web.start()
+        web_publish_executor = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="web-publish")
 
     caregiver_server = None
     if args.caregiver_portal:
-        from storage.history_store import HistoryStore
         from webui.caregiver_server import CaregiverServer
         caregiver_server = CaregiverServer(event_store, HistoryStore.instance(),
                                             port=args.caregiver_port)
@@ -344,10 +401,12 @@ def main():
         }
         if private:
             audio_enabled = bool(args.listen or args.detect_cough or is_replay)
-            audio_mode = "cough_only" if args.detect_cough and not args.listen \
-                else "broad_listening"
+            audio_mode = ("replay" if is_replay else
+                          "cough_only" if args.detect_cough and not args.listen else
+                          "broad_listening")
             system["audio"] = build_audio_debug_state(
-                capabilities, sound_detector, audio_enabled, audio_mode)
+                capabilities, sound_detector, audio_enabled, audio_mode,
+                voice_agent.listener)
             system["vitals"] = pipeline.vitals_diagnostics(
                 list(results or []), now=time.time(), performance=performance)
             skin_vision = next((module for module in pipeline.scheduler.modules
@@ -358,6 +417,14 @@ def main():
                 else {"available": False, "status": "unavailable",
                       "last_attempt": None}
             )
+            system["history_writer"] = HistoryStore.instance().diagnostics()
+            system["runtime_resources"] = runtime_resource_diagnostics()
+            system["model_workers"] = {
+                module.name: module.diagnostics()
+                for module in pipeline.scheduler.modules
+                if module.name == "clothing" and hasattr(module, "diagnostics")}
+            system["clothing"] = system["model_workers"].get(
+                "clothing", {"status": "unconfigured", "ready": False})
         return system
 
     debug_server = None
@@ -447,11 +514,27 @@ def main():
                 web.publish(utterance)
 
         # mirror the full detections window to the /data web endpoint
-        if web is not None:
-            performance = pipeline.runtime_metrics.snapshot()
-            web.publish_data(snapshot, ctx.fps, last_greeting["text"],
-                             reasoning=voice_agent.reasoning_card(),
-                             system=system_snapshot(), performance=performance)
+        if web is not None and web_publish_executor is not None:
+            pending: Future | None = web_publish_state["future"]
+            if pending is not None and pending.done():
+                try:
+                    pending.result()
+                except Exception as exc:  # noqa: BLE001
+                    print(f"[webui] data publication failed ({type(exc).__name__})")
+                web_publish_state["future"] = None
+                pending = None
+            if pending is None and ctx.timestamp - web_publish_state["last"] >= 0.5:
+                stable_snapshot = list(snapshot)
+                greeting = last_greeting["text"]
+                reasoning = voice_agent.reasoning_card()
+                performance = pipeline.runtime_metrics.snapshot()
+                def publish_data_snapshot():
+                    web.publish_data(
+                        stable_snapshot, ctx.fps, greeting, reasoning=reasoning,
+                        system=system_snapshot(), performance=performance)
+                web_publish_state["future"] = web_publish_executor.submit(
+                    publish_data_snapshot)
+                web_publish_state["last"] = ctx.timestamp
 
         print_vitals(snapshot)
 
@@ -484,6 +567,9 @@ def main():
             if key == ord("t"):
                 print("[main] tremor test requested ('t')")
                 voice_agent.request_test()
+            if key == ord("a"):
+                print("[main] arm skin check requested ('a')")
+                voice_agent.request_test("arm_check")
             if key == ord("c") and primary_source != alt_source:
                 nxt = alt_source if cam_state["current"] == primary_source else primary_source
                 print(f"[camera] switching -> {nxt}")
@@ -549,7 +635,9 @@ def main():
                                     moondream=voice_agent.moondream_status())
                                 cv2.imshow("Detections — Data", panel)
                                 last_panel_at = now
-                        pipeline.runtime_metrics.note_preview()
+                        pipeline.runtime_metrics.note_preview(
+                            overlay_timestamp=(analyzed_ctx.timestamp
+                                               if analyzed_ctx is not None else None))
                 key = cv2.waitKey(1) & 0xFF
                 if key == ord("q"):
                     pipeline.request_stop()
@@ -561,6 +649,9 @@ def main():
                 if key == ord("t"):
                     print("[main] tremor test requested ('t')")
                     voice_agent.request_test()
+                if key == ord("a"):
+                    print("[main] arm skin check requested ('a')")
+                    voice_agent.request_test("arm_check")
                 if key == ord("c") and primary_source != alt_source:
                     nxt = alt_source if cam_state["current"] == primary_source else primary_source
                     print(f"[camera] switching -> {nxt}")
@@ -583,6 +674,11 @@ def main():
             worker.join()
         interrupted = True
     finally:
+        if web_publish_executor is not None:
+            pending = web_publish_state.get("future")
+            if pending is not None:
+                pending.cancel()
+            web_publish_executor.shutdown(wait=False, cancel_futures=True)
         voice_agent.close()
         sensor_manager.close()
         if sound_detector is not None:

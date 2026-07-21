@@ -26,7 +26,7 @@ from core.context import FrameContext
 from core.events import Severity
 from core.registry import register
 from modules.base import DetectionModule
-from modules._util import TimedBuffer, face_skin_mask, pooled_skin_sample, roi_patch
+from modules._util import TimedBuffer, face_skin_region, pooled_skin_sample, roi_patch
 from extractors import face_landmarks as FL
 
 
@@ -71,10 +71,13 @@ class SkinColor(DetectionModule):
 
     def process(self, ctx: FrameContext):
         """Run this detector on the current frame; return Result(s) or None."""
-        mask = face_skin_mask(ctx)
+        region = face_skin_region(ctx)
+        if region is None:
+            return None
+        frame, mask, _ = region
         if mask is None or mask.sum() < 500:
             return None
-        skin = ctx.frame[mask > 0]
+        skin = frame[mask > 0]
         raw_chroma = _norm_chroma(skin)      # [r, g, b] normalized, this frame only
         chroma = pooled_skin_sample(self.cheek_buf, raw_chroma, ctx.timestamp)
         ready = self.base.update(chroma, ctx.timestamp)

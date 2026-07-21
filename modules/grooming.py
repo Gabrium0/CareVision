@@ -50,6 +50,11 @@ class Grooming(DetectionModule):
     def __init__(self, **params):
         super().__init__(**params)
         self.store = HistoryStore.instance()
+        rolling = getattr(self.store, "rolling_mean", None)
+        if rolling is not None:
+            for key in ("hair_texture", "jaw_texture"):
+                rolling("grooming", key, self.recent_seconds)
+                rolling("grooming", key, self.baseline_seconds)
 
     def _rois(self, ctx: FrameContext):
         """(hair_patch, jaw_patch) cropped from the face bbox/landmarks, or
@@ -65,8 +70,9 @@ class Grooming(DetectionModule):
 
     def _drift_result(self, key: str, label: str):
         """A Result if `key`'s recent mean has risen vs its weekly baseline, else None."""
-        recent = self.store.mean_since("grooming", key, self.recent_seconds)
-        baseline = self.store.mean_since("grooming", key, self.baseline_seconds)
+        mean = getattr(self.store, "rolling_mean", None) or self.store.mean_since
+        recent = mean("grooming", key, self.recent_seconds)
+        baseline = mean("grooming", key, self.baseline_seconds)
         if recent is None or baseline is None or baseline < 1e-3:
             return None
         ratio = recent / baseline

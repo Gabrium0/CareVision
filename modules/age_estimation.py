@@ -14,6 +14,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from core.capabilities import CapabilityStatus
 from core.context import FrameContext
 from core.events import Severity
 from core.registry import register
@@ -59,3 +60,8 @@ class AgeEstimation(DetectionModule):
         self._emitted = True
         return self.result("age_range", _BUCKETS[i], float(probs[i]),
                            Severity.INFO, f"Estimated age {_BUCKETS[i]}", ttl=120.0)
+
+    def capability_status(self):
+        if self.session is None:
+            return CapabilityStatus.UNCONFIGURED, "models/age_googlenet.onnx is not installed"
+        return CapabilityStatus.READY, "ONNX age model loaded"

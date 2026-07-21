@@ -105,8 +105,9 @@ class Expressivity(DetectionModule):
             self._last_store = ctx.timestamp
             store = self.store
             day_seconds = self.history_days * 86400.0
-            hist_smile = store.mean_since("expressivity", "smile_mean", day_seconds)
-            hist_std = store.mean_since("expressivity", "expr_std", day_seconds)
+            mean = getattr(store, "rolling_mean", None) or store.mean_since
+            hist_smile = mean("expressivity", "smile_mean", day_seconds)
+            hist_std = mean("expressivity", "expr_std", day_seconds)
             store.add("expressivity", "smile_mean", smile_mean, ts=ctx.timestamp)
             store.add("expressivity", "expr_std", expr_std, ts=ctx.timestamp)
             store.add("expressivity", "blink_rate", blink_rate, ts=ctx.timestamp)

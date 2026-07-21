@@ -141,6 +141,7 @@ def test_classical_diagnostics_are_safe_during_updates():
         snapshot = backend.diagnostics()
         assert 0.0 <= snapshot["progress"] <= 1.0
         assert "latest" in snapshot
+        time.sleep(0.001)  # yield so this lock-contention test cannot starve its writer
     worker.join()
     face.close()
     hr.close()

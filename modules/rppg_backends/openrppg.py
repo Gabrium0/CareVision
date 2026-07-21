@@ -36,14 +36,26 @@ import numpy as np
 
 from core.context import FrameContext
 from core.debug import log as debug_log
-from modules._util import patch_brightness
+from modules._util import patch_brightness, rppg_input_quality
 from .base import RPPGBackend
 
 
-def _limit_cpu_worker(reserved_cores: int) -> None:
-    """Leave CPU capacity for MediaPipe; best-effort and Windows-safe."""
+def _cpu_allocation(reserved_cores: int | str) -> tuple[int, int]:
+    """Return (reserved, worker) cores, with a conservative automatic split."""
     count = max(1, os.cpu_count() or 1)
-    worker_cores = max(1, count - max(0, int(reserved_cores)))
+    if str(reserved_cores).lower() == "auto":
+        # CPU JAX can otherwise starve MediaPipe, optical flow, and the camera
+        # coordinator. Keep roughly three quarters of logical CPUs available
+        # to the parent; the worker remains below-normal priority as well.
+        reserved = min(count - 1, max(1, (count * 3 + 3) // 4)) if count > 1 else 0
+    else:
+        reserved = max(0, min(count - 1, int(reserved_cores)))
+    return reserved, max(1, count - reserved)
+
+
+def _limit_cpu_worker(reserved_cores: int | str) -> tuple[int, int]:
+    """Leave CPU capacity for MediaPipe; best-effort and Windows-safe."""
+    reserved, worker_cores = _cpu_allocation(reserved_cores)
     try:
         if os.name == "nt":
             import ctypes
@@ -55,9 +67,11 @@ def _limit_cpu_worker(reserved_cores: int) -> None:
             os.sched_setaffinity(0, set(range(worker_cores)))
     except Exception:  # noqa: BLE001
         pass
+    return reserved, worker_cores
 
 
-def _openrppg_worker(in_q, out_q, model_name: str | None, reserved_cores: int) -> None:
+def _openrppg_worker(in_q, out_q, model_name: str | None,
+                     reserved_cores: int | str) -> None:
     """Persistent model owner. The parent validates generation-tagged results."""
     os.environ.setdefault("KERAS_BACKEND", "jax")
     try:
@@ -66,12 +80,16 @@ def _openrppg_worker(in_q, out_q, model_name: str | None, reserved_cores: int) -
         devices = jax.devices()
         device_desc = ", ".join(str(device) for device in devices)
         gpu = any(getattr(device, "platform", "").lower() == "gpu" for device in devices)
+        resolved_reserved = 0
+        worker_cores = os.cpu_count() or 1
         if not gpu:
-            _limit_cpu_worker(reserved_cores)
+            resolved_reserved, worker_cores = _limit_cpu_worker(reserved_cores)
         started = time.time()
         model = rppg.Model() if not model_name else rppg.Model(model_name)
         out_q.put({"event": "ready", "device": device_desc,
                    "resource_mode": "gpu" if gpu else "cpu_limited",
+                   "cpu_reserved_cores": resolved_reserved,
+                   "worker_cores": worker_cores,
                    "load_latency_ms": (time.time() - started) * 1000.0,
                    "pid": os.getpid()})
     except Exception as exc:  # noqa: BLE001
@@ -81,7 +99,7 @@ def _openrppg_worker(in_q, out_q, model_name: str | None, reserved_cores: int) -
         item = in_q.get()
         if item is None:
             return
-        job_id, generation, tensor_rgb, fps, span = item
+        job_id, generation, tensor_rgb, fps, span, capture_quality = item
         started = time.perf_counter()
         try:
             with model:
@@ -93,6 +111,7 @@ def _openrppg_worker(in_q, out_q, model_name: str | None, reserved_cores: int) -
             bvp, bts = model.bvp()
             out_q.put({"event": "result", "job_id": job_id,
                        "generation": generation, "span": span, "fps": fps,
+                       "capture_quality": capture_quality,
                        "res": res, "bvp": np.asarray(bvp), "bts": bts,
                        "latency_ms": (time.perf_counter() - started) * 1000.0})
         except Exception as exc:  # noqa: BLE001
@@ -113,10 +132,13 @@ class OpenRPPGBackend(RPPGBackend):
                  face_jitter_threshold: float | None = 0.25,
                  face_reacquire_frames: int = 3,
                  inference_timeout_seconds: float = 90.0,
-                 cpu_reserved_cores: int = 2,
+                 cpu_reserved_cores: int | str = "auto",
                  async_inference: bool = True,
                  brightness_normalize: bool = True,
-                 brightness_target: float = 110.0):
+                 brightness_target: float = 110.0,
+                 result_fresh_seconds: float = 15.0,
+                 cpu_inference_hz: float = 8.0,
+                 gpu_inference_hz: float = 20.0):
         self.window_seconds = window_seconds
         self.brightness_normalize = brightness_normalize
         self.brightness_target = brightness_target
@@ -129,7 +151,7 @@ class OpenRPPGBackend(RPPGBackend):
         self.face_jitter_threshold = face_jitter_threshold
         self.face_reacquire_frames = max(1, int(face_reacquire_frames))
         self.inference_timeout_seconds = max(10.0, float(inference_timeout_seconds))
-        self.cpu_reserved_cores = max(0, int(cpu_reserved_cores))
+        self.cpu_reserved_cores = cpu_reserved_cores
         self.async_inference = async_inference
         self.model_name = model or "default"
         self.label = "open-rppg" if model is None else f"open-rppg-{self.model_name}"
@@ -153,7 +175,15 @@ class OpenRPPGBackend(RPPGBackend):
         self._reject_motion = 0
         self._reject_jitter = 0
         self._reject_no_face = 0
+        self._quality_events: deque[tuple[float, str]] = deque()
+        self._brightness = 128.0
         self._last_latency_ms = 0.0
+        self._last_completed_at = 0.0
+        self.result_fresh_seconds = max(1.0, float(result_fresh_seconds))
+        self.cpu_inference_hz = max(6.5, float(cpu_inference_hz))
+        self.gpu_inference_hz = max(self.cpu_inference_hz, float(gpu_inference_hz))
+        self._last_inference_sample_hz = 0.0
+        self._last_inference_frames = 0
         self._ctx = get_context("spawn")
         self._in_q = None
         self._out_q = None
@@ -163,6 +193,8 @@ class OpenRPPGBackend(RPPGBackend):
         self._worker_pid = None
         self._worker_device = None
         self._resource_mode = None
+        self._resolved_cpu_reserved_cores = None
+        self._worker_cores = None
         self._load_latency_ms = 0.0
         self._job_id = 0
         self._active_job_id: int | None = None
@@ -177,12 +209,14 @@ class OpenRPPGBackend(RPPGBackend):
             self._cv2 = cv2
             self._log_runtime()
             self.available = True
-            self._start_worker()
+            self._worker_state = "configured"
         except Exception as e:  # noqa: BLE001
             print(f"[open-rppg] unavailable ({type(e).__name__}: {e}); "
                   "falling back to classical only")
 
     def _start_worker(self) -> None:
+        if self._proc is not None and self._proc.is_alive():
+            return
         self._in_q = self._ctx.Queue(maxsize=1)
         self._out_q = self._ctx.Queue()
         model = None if self.model_name == "default" else self.model_name
@@ -194,6 +228,11 @@ class OpenRPPGBackend(RPPGBackend):
         self._worker_ready = False
         self._worker_state = "loading model"
         self._worker_pid = self._proc.pid
+
+    def start(self) -> None:
+        """Start the isolated model worker after higher-priority GPU warm-up."""
+        if self.available:
+            self._start_worker()
 
     def _stop_worker(self) -> None:
         proc = self._proc
@@ -226,30 +265,79 @@ class OpenRPPGBackend(RPPGBackend):
         """Feed one frame's data into the backend's rolling state."""
         if not self.available:
             return
+        if self._proc is None:
+            self._start_worker()
         if ctx.face is None:
             self._reject_no_face += 1
+            self._record_quality(ctx.timestamp, "no_face")
             return
         if self.motion_threshold is not None and ctx.motion_energy > self.motion_threshold:
             self._reject_motion += 1
+            self._record_quality(ctx.timestamp, "motion")
             self._status = f"motion rejected ({ctx.motion_energy:.0f}>{self.motion_threshold:.0f})"
             return
         if not self._stable_face(ctx.face.bbox):
             self._reject_jitter += 1
+            self._record_quality(ctx.timestamp, "jitter")
             self._status = "face jitter rejected"
             return
         crop = ctx.face.crop
         if crop is None or crop.size == 0:
             return
         face128 = self._cv2.resize(crop, (128, 128))   # BGR uint8
+        brightness = patch_brightness(face128)
+        self._brightness = 0.9 * self._brightness + 0.1 * brightness
         if self.brightness_normalize:
             face128 = self._boost_brightness(face128)
         with self._lock:
             self.ts.append(ctx.timestamp)
             self.crops.append(face128)
             self._accepted += 1
+            self._quality_events.append((ctx.timestamp, "accepted"))
+            self._prune_quality_events(ctx.timestamp)
             while self.ts and ctx.timestamp - self.ts[0] > self.window_seconds:
                 self.ts.popleft()
                 self.crops.popleft()
+
+    def _record_quality(self, timestamp: float, outcome: str) -> None:
+        with self._lock:
+            self._quality_events.append((timestamp, outcome))
+            self._prune_quality_events(timestamp)
+
+    def _prune_quality_events(self, timestamp: float) -> None:
+        while (self._quality_events and
+               timestamp - self._quality_events[0][0] > self.window_seconds):
+            self._quality_events.popleft()
+
+    def _fresh_cached(self, now: float | None = None) -> dict | None:
+        cached = getattr(self, "_cached", None)
+        if cached is None:
+            return None
+        completed = float(getattr(self, "_last_completed_at", 0.0) or 0.0)
+        if completed <= 0.0:  # compatibility for injected test/debug readings
+            return cached
+        age = (now or time.time()) - completed
+        return cached if age <= getattr(self, "result_fresh_seconds", 15.0) else None
+
+    def latest_reading(self) -> dict | None:
+        """Return the latest non-stale summary without scheduling inference."""
+        self._drain_worker()
+        reading = self._fresh_cached()
+        return dict(reading) if reading is not None else None
+
+    @staticmethod
+    def _uniform_indices(timestamps: np.ndarray, target_hz: float) -> np.ndarray:
+        """Choose nearest source frames on a uniform temporal grid."""
+        if len(timestamps) < 2:
+            return np.arange(len(timestamps), dtype=np.int64)
+        step = 1.0 / max(1e-6, float(target_hz))
+        grid = np.arange(float(timestamps[0]), float(timestamps[-1]) + step * 0.25, step)
+        right = np.searchsorted(timestamps, grid, side="left")
+        right = np.clip(right, 0, len(timestamps) - 1)
+        left = np.clip(right - 1, 0, len(timestamps) - 1)
+        choose_left = np.abs(timestamps[left] - grid) <= np.abs(timestamps[right] - grid)
+        indices = np.where(choose_left, left, right)
+        return np.unique(indices.astype(np.int64))
 
     def diagnostics(self) -> dict:
         """Return a thread-safe snapshot without exposing face crops."""
@@ -257,7 +345,8 @@ class OpenRPPGBackend(RPPGBackend):
         with self._lock:
             samples = len(self.ts)
             span = (self.ts[-1] - self.ts[0]) if samples > 1 else 0.0
-            latest = dict(self._cached) if self._cached else None
+            fresh = self._fresh_cached()
+            latest = dict(fresh) if fresh else None
             accepted = self._accepted
             rejected = {
                 "motion": self._reject_motion,
@@ -271,11 +360,17 @@ class OpenRPPGBackend(RPPGBackend):
                        self._job_generation == self._generation)
             stale_pending = (self._job_generation is not None and
                              self._job_generation != self._generation)
+            rolling = list(getattr(self, "_quality_events", ()))
+            brightness = float(getattr(self, "_brightness", 128.0))
+            completed = float(getattr(self, "_last_completed_at", 0.0) or 0.0)
         required_samples = 16
         sample_progress = min(1.0, samples / required_samples)
         time_progress = min(1.0, span / max(self.min_seconds, 1e-6))
         ready = samples >= required_samples and span >= self.min_seconds
         sample_hz = ((samples - 1) / span if samples > 1 and span > 0 else 0.0)
+        rolling_acceptance = (sum(outcome == "accepted" for _, outcome in rolling) /
+                              len(rolling) if rolling else 0.0)
+        inference_age = max(0.0, time.time() - completed) if completed else None
         # Derive the visible state from the same sample/generation snapshot.
         # This prevents a reset from leaving the global card on "inferring"
         # while the backend card correctly reports an empty warm-up buffer.
@@ -297,6 +392,8 @@ class OpenRPPGBackend(RPPGBackend):
             "required_samples": required_samples,
             "sample_progress": round(sample_progress, 3),
             "effective_sample_hz": round(sample_hz, 2),
+            "rolling_acceptance_ratio": round(rolling_acceptance, 3),
+            "input_brightness": round(brightness, 1),
             "progress": round(min(time_progress, sample_progress), 3),
             "ready": ready,
             "status": status, "accepted": accepted, "rejected": rejected,
@@ -309,9 +406,19 @@ class OpenRPPGBackend(RPPGBackend):
             "worker_pid": self._worker_pid,
             "worker_device": self._worker_device,
             "resource_mode": self._resource_mode,
+            "cpu_reserved_cores": getattr(self, "_resolved_cpu_reserved_cores", None),
+            "worker_cores": getattr(self, "_worker_cores", None),
             "worker_load_latency_ms": round(self._load_latency_ms, 1),
             "worker_restarts": self._restart_count,
             "stale_results_discarded": self._stale_discard_count,
+            "inference_age_seconds": (round(inference_age, 1)
+                                      if inference_age is not None else None),
+            "result_fresh_seconds": getattr(self, "result_fresh_seconds", 15.0),
+            "inference_sample_hz": round(getattr(self, "_last_inference_sample_hz", 0.0), 2),
+            "inference_frames": getattr(self, "_last_inference_frames", 0),
+            "inference_target_hz": (getattr(self, "gpu_inference_hz", 20.0)
+                                    if self._resource_mode == "gpu"
+                                    else getattr(self, "cpu_inference_hz", 8.0)),
             "latest": latest,
         }
 
@@ -327,6 +434,10 @@ class OpenRPPGBackend(RPPGBackend):
             self._candidate_bbox = None
             self._candidate_count = 0
             self._bpm_history.clear()
+            if hasattr(self, "_quality_events"):
+                self._quality_events.clear()
+            self._last_completed_at = 0.0
+            self._last_infer = 0.0
             self._generation += 1
 
     def _bbox_close(self, bbox: tuple, reference: tuple) -> bool:
@@ -420,18 +531,19 @@ class OpenRPPGBackend(RPPGBackend):
                             f"{span:.0f}/{self.min_seconds:.0f}s")
             if self._low_light:
                 self._status += " (low light)"
-            return self._cached
+            return self._fresh_cached(now)
 
         if self._job_generation is not None:
             self._status = ("inferring" if self._job_generation == self._generation
                             else "waiting for stale inference to finish")
-            return self._cached
+            return self._fresh_cached(now)
         if not self._worker_ready:
             self._status = self._worker_state
-            return self._cached
+            return self._fresh_cached(now)
 
-        if now - self._last_infer < self.infer_every:
-            return self._cached
+        throttle_anchor = self._last_completed_at or self._last_infer
+        if now - throttle_anchor < self.infer_every:
+            return self._fresh_cached(now)
         self._last_infer = now
         self._status = "inferring"
 
@@ -441,24 +553,47 @@ class OpenRPPGBackend(RPPGBackend):
         with self._lock:
             n = len(self.ts)
             span = (self.ts[-1] - self.ts[0]) if n > 1 else 0.0
-            tensor_bgr = np.stack(list(self.crops))
-        fps = n / max(span, 1e-6)
+            source_ts = np.asarray(self.ts, dtype=np.float64)
+            source_crops = list(self.crops)
+            events = list(self._quality_events)
+            brightness = float(self._brightness)
+        target_hz = (self.gpu_inference_hz if self._resource_mode == "gpu"
+                     else self.cpu_inference_hz)
+        indices = self._uniform_indices(source_ts, target_hz)
+        selected_ts = source_ts[indices]
+        tensor_bgr = np.stack([source_crops[int(index)] for index in indices])
+        selected_span = (float(selected_ts[-1] - selected_ts[0])
+                         if len(selected_ts) > 1 else 0.0)
+        fps = ((len(selected_ts) - 1) / selected_span if selected_span > 0 else target_hz)
+        intervals = np.diff(source_ts)
+        mean_interval = float(np.mean(intervals)) if len(intervals) else 0.0
+        regularity = (max(0.0, 1.0 - float(np.std(intervals)) / mean_interval)
+                      if mean_interval > 0 else 0.0)
+        acceptance = (sum(outcome == "accepted" for _, outcome in events) /
+                      len(events) if events else 1.0)
+        capture_hz = ((len(source_ts) - 1) / span if len(source_ts) > 1 and span > 0 else 0.0)
+        capture_quality = rppg_input_quality(
+            brightness, capture_hz, acceptance_ratio=acceptance, regularity=regularity)
+        self._last_inference_sample_hz = float(fps)
+        self._last_inference_frames = len(indices)
         tensor_rgb = np.ascontiguousarray(tensor_bgr[..., ::-1], dtype=np.uint8)
         if not self.async_inference:
-            self._cached = self._compute_tensor(tensor_rgb, float(fps), span)
-            return self._cached
+            self._cached = self._compute_tensor(tensor_rgb, float(fps), span,
+                                                capture_quality)
+            self._last_completed_at = time.time()
+            return self._fresh_cached()
         self._job_id += 1
         self._active_job_id = self._job_id
         self._job_generation = self._generation
         self._job_started_at = now
         try:
             self._in_q.put_nowait((self._job_id, self._generation, tensor_rgb,
-                                   float(fps), span))
+                                   float(fps), span, capture_quality))
         except queue.Full:
             self._active_job_id = None
             self._job_generation = None
             self._status = "worker queue busy"
-        return self._cached
+        return self._fresh_cached(now)
 
     def _drain_worker(self) -> None:
         if self._proc is None:
@@ -478,6 +613,8 @@ class OpenRPPGBackend(RPPGBackend):
                 self._worker_pid = msg.get("pid")
                 self._worker_device = msg.get("device")
                 self._resource_mode = msg.get("resource_mode")
+                self._resolved_cpu_reserved_cores = msg.get("cpu_reserved_cores")
+                self._worker_cores = msg.get("worker_cores")
                 self._load_latency_ms = float(msg.get("load_latency_ms") or 0.0)
                 print(f"[open-rppg] worker ready ({self._resource_mode}, {self._worker_device})")
             elif event == "result":
@@ -488,7 +625,9 @@ class OpenRPPGBackend(RPPGBackend):
                 if generation == self._generation:
                     self._cached = self._build_result(
                         msg.get("res"), np.asarray(msg.get("bvp")), msg.get("bts"),
-                        float(msg.get("fps")), float(msg.get("span")))
+                        float(msg.get("fps")), float(msg.get("span")),
+                        msg.get("capture_quality"))
+                    self._last_completed_at = time.time()
                 else:
                     self._stale_discard_count += 1
                 self._active_job_id = None
@@ -498,6 +637,7 @@ class OpenRPPGBackend(RPPGBackend):
                 if msg.get("job_id") == self._active_job_id:
                     self._active_job_id = None
                     self._job_generation = None
+                    self._last_completed_at = time.time()
                 self._status = error
                 if msg.get("job_id") is None:
                     self._worker_state = "unavailable"
@@ -510,7 +650,8 @@ class OpenRPPGBackend(RPPGBackend):
         if not self._proc.is_alive() and self._worker_state != "unavailable":
             self._restart_worker("worker exited; restarting")
 
-    def _compute_tensor(self, tensor_rgb: np.ndarray, fps: float, span: float) -> dict | None:
+    def _compute_tensor(self, tensor_rgb: np.ndarray, fps: float, span: float,
+                        capture_quality: float | None = None) -> dict | None:
         t0 = time.perf_counter()
         try:
             res, bvp, bts = self._infer(tensor_rgb, fps)
@@ -519,16 +660,17 @@ class OpenRPPGBackend(RPPGBackend):
             with self._lock:
                 self._last_latency_ms = (time.perf_counter() - t0) * 1000.0
                 self._status = f"inference failed: {type(e).__name__}"
-            return self._cached
+            return self._fresh_cached()
         with self._lock:
             self._last_latency_ms = (time.perf_counter() - t0) * 1000.0
-        return self._build_result(res, bvp, bts, fps, span)
+        return self._build_result(res, bvp, bts, fps, span, capture_quality)
 
-    def _build_result(self, res, bvp, bts, fps: float, span: float) -> dict | None:
+    def _build_result(self, res, bvp, bts, fps: float, span: float,
+                      capture_quality: float | None = None) -> dict | None:
         if not res or res.get("hr") is None or not np.isfinite(res["hr"]):
             with self._lock:
                 self._status = "inference returned no valid heart rate"
-            return self._cached
+            return self._fresh_cached()
 
         sqi = float(res.get("SQI") or 0.0)
         raw_bpm = float(res["hr"])
@@ -539,7 +681,16 @@ class OpenRPPGBackend(RPPGBackend):
             # Penalize unstable recent HR estimates without fully discarding a usable SQI reading.
             sqi *= max(0.5, 1.0 - jitter / 20.0)
         confidence = round(max(0.0, min(1.0, sqi)), 2)
-        out = {"raw_bpm": round(bpm, 1), "raw_confidence": confidence}
+        with self._lock:
+            events = list(getattr(self, "_quality_events", ()))
+            brightness = float(getattr(self, "_brightness", 128.0))
+        acceptance = (sum(outcome == "accepted" for _, outcome in events) /
+                      len(events) if events else 1.0)
+        quality = (float(capture_quality) if capture_quality is not None else
+                   rppg_input_quality(brightness, fps, acceptance_ratio=acceptance,
+                                      target_hz=min(8.0, fps)))
+        out = {"raw_bpm": round(bpm, 1), "raw_confidence": confidence,
+               "quality": round(quality, 3), "inferred_at": time.time()}
         hrv_required = self.hrv_min_seconds * 0.95
         out["status"] = ("ready" if span >= hrv_required
                           else f"waiting for clean HRV window {span:.0f}/{self.hrv_min_seconds:.0f}s")

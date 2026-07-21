@@ -27,7 +27,9 @@ class FaceExtractor:
     def __init__(self, smooth: bool = True, input_width: int = 960):
         # One-Euro de-jitter on face landmarks steadies emotion/asymmetry/EAR;
         # face motion is low-frequency so this does not blur any measured signal.
-        self._smoother = OneEuroArray(mincutoff=1.5, beta=0.05) if smooth else None
+        self._smooth_enabled = bool(smooth)
+        self._smoother = (OneEuroArray(mincutoff=1.5, beta=0.05)
+                          if self._smooth_enabled else None)
         self.input_width = max(320, int(input_width))
         if not _MODEL.exists():
             raise FileNotFoundError(
@@ -87,6 +89,11 @@ class FaceExtractor:
                             crop=ctx.frame[y1:y2, x1:x2],
                             has_iris=pts.shape[0] >= 478)
         ctx.person_present = True
+
+    def reset(self) -> None:
+        """Discard subject-bound smoothing after a camera/source switch."""
+        self._smoother = (OneEuroArray(mincutoff=1.5, beta=0.05)
+                          if self._smooth_enabled else None)
 
     def close(self) -> None:
         """Release any resources (models, threads, sockets) held here."""

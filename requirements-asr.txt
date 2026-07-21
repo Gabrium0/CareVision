@@ -1,4 +1,6 @@
 # Optional extra: speech-to-text listener for the voice agent (--listen).
 # Install alongside requirements.txt:  pip install -r requirements-asr.txt
+# faster-whisper runs in a spawned process. Keep that isolation: on Windows,
+# CTranslate2 and CUDA-enabled PyTorch bundle incompatible cudnn64_9.dll files.
 sounddevice>=0.4
 faster-whisper>=1.0

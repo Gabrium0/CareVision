@@ -5,6 +5,15 @@
 camera:
   location: unspecified       # living_room | kitchen | entryway | bedroom
 
+# The CLI --quality-profile selects the effective policy. Maximum keeps native
+# 1920x1080 detail crops and sheds cadence before spatial resolution.
+runtime:
+  quality_profile: maximum
+  fast_sampler_target_hz: 12.0
+  native_thread_budget: auto
+  detail_roi_caps: {maximum: 640, balanced: 480, realtime: 320}
+  background_budgets_ms: {maximum: 350, balanced: 225, realtime: 150}
+
 tracking:
   enabled: false              # opt in with --enable-multi-person
 
@@ -29,9 +38,13 @@ modules:
     openrppg_face_jitter_threshold: 0.25
     openrppg_face_reacquire_frames: 3
     openrppg_inference_timeout_seconds: 90.0
-    openrppg_cpu_reserved_cores: 2
+    openrppg_cpu_reserved_cores: auto  # reserve ~75% of logical CPUs for capture/MediaPipe
+    openrppg_result_fresh_seconds: 15.0  # never publish an old neural estimate as current
+    openrppg_cpu_inference_hz: 8.0       # bounded uniform tensor on CPU
+    openrppg_gpu_inference_hz: 20.0      # retain more temporal detail on GPU
     openrppg_async_inference: true     # keeps CPU-only Open-RPPG from freezing camera frames
     debug_backend_values: true        # true shows raw per-backend vitals; false emits trusted canonical bpm
+    min_canonical_quality: 0.35        # low-quality backend candidates remain debug-only
   respiration:
     enabled: true
     window_seconds: 25
@@ -74,6 +87,11 @@ modules:
     enabled: true
   rash:
     enabled: true
+  arm_skin:                   # rash/bruise/dryness/dark spots on bare arms
+    enabled: true             # pose-driven ROIs; depth (D435i) adds mm sizing
+    rash_notice: 0.02
+    rash_warning: 0.06
+    dryness_notice: 0.04
   skin_vision:
     enabled: true
     consent: false                 # runtime --enable-cloud-skin is required
@@ -83,11 +101,34 @@ modules:
     request_timeout: 25.0
     max_image_dim: 1024
     jpeg_quality: 85
+    manual_retry_deadline: 45.0
+    manual_retry_max_image_dim: 768
+    manual_retry_jpeg_quality: 80
+    manual_retry_max_tokens: 450
     closeup_seconds: 10.0
     closeup_positioning_delay: 2.0
     min_confidence: 0.35
     min_facial_confidence: 0.45
     min_face_crop_size: 64
+    min_arm_crop_size: 64          # bare-arm crop panel in the preliminary scan
+    local_classifier:
+      enabled: true
+      mode: debug                  # screening requires a validated calibration file
+      backend: auto               # TensorRT on Jetson; PyTorch reference fallback
+      model: LaurianeMD/vit-skin-disease
+      revision: 1b4fccab2c8b83bf6964e394c40f0dcdd21b1d1c
+      target_labels: [vitiligo]
+      calibration_file: assets/skin_models/vit_skin_calibration.json
+      onnx_file: assets/skin_models/vit_skin.onnx
+      tensorrt_engine: runtime-models/vit_skin_orin_fp16.engine
+      download_if_missing: false  # use the export/setup tool explicitly
+      cache_dir: runtime-models/huggingface
+      load_timeout_seconds: 120.0
+      device: auto
+      min_sharpness: 25.0
+      min_brightness: 25.0
+      max_brightness: 230.0
+      max_clipped_fraction: 0.55
   scene_vision:
     enabled: true
     consent: false

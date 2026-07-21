@@ -9,8 +9,13 @@ from enum import Enum
 
 class CapabilityStatus(Enum):
     """Operational state exposed to the showcase dashboard."""
+    LOADING = "loading"
     READY = "ready"
     DEGRADED = "degraded"
+    FAILED = "failed"
+    UNCONFIGURED = "unconfigured"
+    # Backward-compatible for older integrations; new registration code must
+    # distinguish failed from intentionally unconfigured.
     UNAVAILABLE = "unavailable"
 
 

@@ -1,4 +1,5 @@
 {
+  "dev_hot_reload": {"duration": 86400, "fps": 12, "realtime": true, "events": [{"at": 0.1, "module": "presence", "key": "present", "value": true, "message": "Hot-reload development fixture"}]},
   "healthy_greeting": {"duration": 3, "events": [{"at": 0.1, "module": "presence", "key": "present", "value": true, "message": "Person present"}]},
   "sit_to_stand": {"duration": 45, "pose_profile": "sit_to_stand", "events": [{"at": 0.1, "module": "assessment_request", "key": "protocol", "value": "sit_to_stand", "message": "Start sit-to-stand replay"}, {"at": 22, "type": "answer", "text": "No discomfort"}, {"at": 32, "type": "answer", "text": "No recent change"}, {"at": 42, "type": "answer", "text": "No warning signs"}]},
   "timed_up_and_go": {"duration": 34, "pose_profile": "timed_up_and_go", "events": [{"at": 0.1, "module": "assessment_request", "key": "protocol", "value": "timed_up_and_go", "message": "Start Timed Up and Go replay"}]},

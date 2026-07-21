@@ -15,7 +15,7 @@ from core.context import FrameContext
 from core.events import Severity
 from core.registry import register
 from modules.base import DetectionModule
-from modules._util import polygon_mask
+from modules._util import face_color_plane, face_skin_region, polygon_mask
 from extractors import face_landmarks as FL
 
 
@@ -27,13 +27,17 @@ class DryLips(DetectionModule):
 
     def process(self, ctx: FrameContext):
         """Run this detector on the current frame; return Result(s) or None."""
-        px = ctx.face_px()
-        mask = polygon_mask(ctx.frame.shape, px[FL.OUTER_LIPS])
+        region = face_skin_region(ctx)
+        if region is None:
+            return None
+        frame, _, (x1, y1, _, _) = region
+        px = ctx.face_px() - np.array([x1, y1], dtype=np.float32)
+        mask = polygon_mask(frame.shape, px[FL.OUTER_LIPS])
         if mask.sum() < 120:
             return None
         m = mask > 0
-        gray = cv2.cvtColor(ctx.frame, cv2.COLOR_BGR2GRAY).astype(np.float32)
-        hsv = cv2.cvtColor(ctx.frame, cv2.COLOR_BGR2HSV)
+        gray = face_color_plane(ctx, "gray").astype(np.float32)
+        hsv = face_color_plane(ctx, "hsv")
         blur = cv2.GaussianBlur(gray, (0, 0), 2)
         texture = np.abs(gray - blur)[m].mean()
         sat = float(hsv[:, :, 1][m].mean())

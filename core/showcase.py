@@ -62,8 +62,14 @@ class ShowcaseGate:
         distance = self._distance(ctx)
         face_px = 0 if ctx.face is None else min(ctx.face.bbox[2] - ctx.face.bbox[0],
                                                   ctx.face.bbox[3] - ctx.face.bbox[1])
-        # BGR luma approximation; avoids making this policy layer depend on OpenCV.
-        brightness = float(np.dot(ctx.frame[..., :3], (0.114, 0.587, 0.299)).mean())
+        # Exposure is a low-frequency scene property. Sampling a bounded grid
+        # avoids allocating/processing a full 1080p float luma image in the
+        # authoritative geometry loop.
+        h, w = ctx.frame.shape[:2]
+        stride = max(1, min(max(1, h // 120), max(1, w // 160)))
+        sample = ctx.frame[::stride, ::stride, :3]
+        channel_mean = sample.reshape(-1, 3).mean(axis=0)
+        brightness = float(np.dot(channel_mean, (0.114, 0.587, 0.299)))
         face_count = int(ctx.extras.get("face_count", 0))
         pose_count = int(ctx.extras.get("pose_count", 0))
         multiple = face_count > 1 or pose_count > 1

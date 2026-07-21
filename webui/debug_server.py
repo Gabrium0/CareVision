@@ -56,13 +56,77 @@ def serialize_result(result: Result) -> dict:
 
 def build_debug_payload(results: list[Result], performance: dict,
                         system: dict | None = None) -> dict:
-    return safe_json({"timestamp": time.time(), "performance": performance,
+    system = system or {}
+    components = {
+        "runtime": (performance.get("health") or {}).get("status", "healthy"),
+        "moondream": _component_state(system.get("moondream"), optional=True),
+        "nvidia_skin": _component_state(system.get("nvidia_skin"), optional=True),
+        "vitals": _component_state(system.get("vitals")),
+        "audio": _component_state(system.get("audio")),
+        "history_writer": _component_state(system.get("history_writer")),
+        "runtime_resources": _component_state(system.get("runtime_resources")),
+        "clothing": _component_state(system.get("clothing"), optional=True),
+    }
+    reasons = list((performance.get("health") or {}).get("reasons", []))
+    reasons.extend(name + "_degraded" for name, state in components.items()
+                   if state == "degraded" and name != "runtime")
+    overall = "failed" if "failed" in components.values() else (
+        "degraded" if reasons else "healthy")
+    component_actions = {
+        "moondream_degraded": "check Moondream credential, quota, and provider status",
+        "nvidia_skin_degraded": "inspect NVIDIA HTTP or schema validation diagnostics",
+        "audio_degraded": "inspect microphone and Whisper worker state",
+        "history_writer_degraded": "inspect SQLite writer failures or queue pressure",
+        "runtime_resources_degraded": "inspect native thread-pool configuration",
+        "clothing_degraded": "inspect FashionCLIP CUDA model lifecycle",
+    }
+    health = {"status": overall, "reasons": reasons,
+              "components": components,
+              "actions": list((performance.get("health") or {}).get("actions", []))
+                         + [component_actions[r] for r in reasons if r in component_actions]}
+    return safe_json({"timestamp": time.time(), "health": health,
+                      "performance": performance,
                       "results": [serialize_result(r) for r in results],
-                      "system": system or {}})
+                      "system": system})
+
+
+def _component_state(value: Any, optional: bool = False) -> str:
+    """Normalize heterogeneous diagnostics without treating opt-outs as faults."""
+    if not isinstance(value, dict):
+        return "unconfigured"
+    if value.get("enabled") is False or value.get("consent") is False:
+        return "unconfigured"
+    if value.get("available") is False:
+        return "unconfigured"
+    if "alive" in value and value.get("alive") is False:
+        return "failed"
+    if (value.get("failures", 0) or value.get("aggregate_failures", 0)
+            or value.get("dropped", 0)):
+        return "degraded"
+    stt = value.get("stt")
+    if value.get("enabled") and isinstance(stt, dict) \
+            and stt.get("status") in ("failed", "unavailable"):
+        return "degraded"
+    status = str(value.get("status") or value.get("state") or "").lower()
+    if status == "degraded":
+        return "degraded"
+    if status in ("failed", "error"):
+        return "degraded" if optional else "failed"
+    if status in ("unavailable", "invalid_response"):
+        return "degraded"
+    # A person being outside the capture gate is actionable guidance, not a
+    # software/component failure.
+    if status == "blocked":
+        return "healthy"
+    if (value.get("authorization_failed")
+            or value.get("circuit_state") in ("open", "authorization_failed")
+            or value.get("failures", 0) >= 3):
+        return "degraded"
+    return "healthy"
 
 
 def build_audio_debug_state(capabilities, detector, enabled: bool,
-                            mode: str) -> dict:
+                            mode: str, listener=None) -> dict:
     """Compose safe microphone/YAMNet telemetry for the private dashboard."""
     def capability(name: str) -> dict:
         item = capabilities.get(name)
@@ -90,9 +154,17 @@ def build_audio_debug_state(capabilities, detector, enabled: bool,
         }
     else:
         diagnostics = detector.diagnostics()
-    return {"enabled": bool(enabled), "mode": diagnostics.get("mode", mode),
+    listener_state = (listener.diagnostics() if listener is not None
+                      and hasattr(listener, "diagnostics") else
+                      {"status": ("not_applicable" if mode == "replay" else
+                                  "disabled" if not enabled else "unavailable"),
+                       "available": False, "worker_alive": False,
+                       "worker_ready": False})
+    resolved_mode = mode if mode == "replay" else diagnostics.get("mode", mode)
+    return {"enabled": bool(enabled), "mode": resolved_mode,
             "microphone": capability("microphone"),
-            "yamnet": capability("yamnet"), "detector": diagnostics}
+            "yamnet": capability("yamnet"), "detector": diagnostics,
+            "stt": listener_state}
 
 
 class DebugServer:

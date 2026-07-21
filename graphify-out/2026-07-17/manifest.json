@@ -30,8 +30,8 @@
     "semantic_hash": ""
   },
   "core/pipeline.py": {
-    "mtime": 1784183719.6433444,
-    "ast_hash": "b68d3de11fc4b2c06297dc0377099259",
+    "mtime": 1784285850.1432693,
+    "ast_hash": "6319f4c35718336447b9302436f41d12",
     "semantic_hash": ""
   },
   "core/registry.py": {
@@ -80,8 +80,8 @@
     "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
   },
   "modules/_util.py": {
-    "mtime": 1783577800.9056602,
-    "ast_hash": "2d3aa19a2d547afb9fdc69cd2eb6a9ba",
+    "mtime": 1784285905.1392832,
+    "ast_hash": "5939d333aba170d2b8b890d5af6f910f",
     "semantic_hash": ""
   },
   "modules/activity_level.py": {
@@ -180,8 +180,8 @@
     "semantic_hash": ""
   },
   "modules/heart_rate.py": {
-    "mtime": 1784179620.4925714,
-    "ast_hash": "20e838193488d1d9dcb3c6d6867f8e64",
+    "mtime": 1784286199.3689225,
+    "ast_hash": "c779612b5d12140c58879b5b92e1af51",
     "semantic_hash": ""
   },
   "modules/masked_face.py": {
@@ -285,8 +285,8 @@
     "semantic_hash": ""
   },
   "config/modules.yaml": {
-    "mtime": 1784191444.186807,
-    "ast_hash": "3b0e9c32404a580b03d33f1acde92693",
+    "mtime": 1784286200.22311,
+    "ast_hash": "3f6eb0a2046bb068004f1ec24cc1a5b4",
     "semantic_hash": ""
   },
   "docs/RESEARCH.md": {
@@ -300,8 +300,8 @@
     "semantic_hash": "8a6643a420fdad6bfb583523bc6cef16"
   },
   "README.md": {
-    "mtime": 1784284344.736305,
-    "ast_hash": "09afaf4809cb35fe31e9696fa515ea5f",
+    "mtime": 1784286455.7747498,
+    "ast_hash": "c4fdc886efe58009c21e7e01dff952f9",
     "semantic_hash": ""
   },
   "detectionList.md": {
@@ -330,13 +330,13 @@
     "semantic_hash": ""
   },
   "modules/rppg_backends/classical.py": {
-    "mtime": 1784178015.458265,
-    "ast_hash": "77baa9de75c96b35e874158f5e86de04",
+    "mtime": 1784285906.0190823,
+    "ast_hash": "f7578660375a105edf16f1658a56a141",
     "semantic_hash": ""
   },
   "modules/rppg_backends/openrppg.py": {
-    "mtime": 1784179990.1614134,
-    "ast_hash": "9a19fb16fbca757cdc851bd8e05f0ab9",
+    "mtime": 1784286340.743881,
+    "ast_hash": "1678e786b4113c3424bb908af29d7eb8",
     "semantic_hash": ""
   },
   "output/dashboard.py": {
@@ -410,8 +410,8 @@
     "semantic_hash": ""
   },
   "tests/benchmark_rppg_models.py": {
-    "mtime": 1783413791.735203,
-    "ast_hash": "be2dd3e27bf2ca89a618f5910a8418b4",
+    "mtime": 1784286351.5164056,
+    "ast_hash": "118111c997d6b8c9dca277c306a12700",
     "semantic_hash": ""
   },
   ".opencode/skills/graphify/SKILL.md": {
@@ -615,8 +615,8 @@
     "semantic_hash": ""
   },
   "tests/rppg_signal_test.py": {
-    "mtime": 1783507002.7950153,
-    "ast_hash": "493821499dc977cae8b5cde5dd4521d1",
+    "mtime": 1784286383.7879138,
+    "ast_hash": "07f4efb5ede0e0fe279185e4555e4fb7",
     "semantic_hash": ""
   },
   "agent/AGENTS.md": {
@@ -725,8 +725,8 @@
     "semantic_hash": ""
   },
   "tests/heart_rate_canonical_test.py": {
-    "mtime": 1783587399.9800441,
-    "ast_hash": "be77ecd5773d1233a496cb4d390a282b",
+    "mtime": 1784286384.700288,
+    "ast_hash": "6e3095322b2d9076d187faa18dcc7860",
     "semantic_hash": ""
   },
   "docs/REALSENSE_D435I.md": {
@@ -1020,8 +1020,8 @@
     "semantic_hash": ""
   },
   "tests/runtime_performance_test.py": {
-    "mtime": 1784279100.8673208,
-    "ast_hash": "41fd738a3379aa04640be98a3306b697",
+    "mtime": 1784285860.0767965,
+    "ast_hash": "b7779c2a0443ccd66e3bba92b97f436c",
     "semantic_hash": ""
   },
   "webui/debug_server.py": {
@@ -1035,13 +1035,13 @@
     "semantic_hash": ""
   },
   "webui/debug.html": {
-    "mtime": 1784284091.5472329,
-    "ast_hash": "c77b1b5bdb7c9c5149b6e279146c34cd",
+    "mtime": 1784284920.5217364,
+    "ast_hash": "730beb45b9d6b4be164eee572ad3842a",
     "semantic_hash": ""
   },
   "tests/vitals_debug_test.py": {
-    "mtime": 1784180564.2676506,
-    "ast_hash": "54ec0d609303431dff58855ca61767aa",
+    "mtime": 1784286385.654817,
+    "ast_hash": "9777e05cdf187d0842cdd53312c6cc3a",
     "semantic_hash": ""
   },
   "tests/persistence_batching_test.py": {
@@ -1267,6 +1267,11 @@
   "tests/moondream_toggle_test.py": {
     "mtime": 1784284343.803088,
     "ast_hash": "bd2b50717933b42018960f1943a10163",
+    "semantic_hash": ""
+  },
+  "tests/rppg_benchmark_test.py": {
+    "mtime": 1784286386.5529952,
+    "ast_hash": "fd5fb37444d74735be8052e8af79078f",
     "semantic_hash": ""
   }
 }

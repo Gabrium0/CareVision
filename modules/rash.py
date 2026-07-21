@@ -17,7 +17,7 @@ from core.context import FrameContext
 from core.events import Severity
 from core.registry import register
 from modules.base import DetectionModule
-from modules._util import face_skin_mask
+from modules._util import face_color_plane, face_skin_region
 
 
 @register("rash")
@@ -28,12 +28,15 @@ class Rash(DetectionModule):
 
     def process(self, ctx: FrameContext):
         """Run this detector on the current frame; return Result(s) or None."""
-        mask = face_skin_mask(ctx)
+        region = face_skin_region(ctx)
+        if region is None:
+            return None
+        frame, mask, _ = region
         if mask is None or mask.sum() < 800:
             return None
-        lab = cv2.cvtColor(ctx.frame, cv2.COLOR_BGR2LAB)
+        lab = face_color_plane(ctx, "lab")
         a = lab[:, :, 1].astype(np.float32)         # green-red; high = red
-        gray = cv2.cvtColor(ctx.frame, cv2.COLOR_BGR2GRAY).astype(np.float32)
+        gray = face_color_plane(ctx, "gray").astype(np.float32)
 
         skin = mask > 0
         a_skin = a[skin]

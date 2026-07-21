@@ -26,6 +26,16 @@ def test_result_metadata_is_backward_compatible():
     assert result.visibility == Visibility.PUBLIC
 
 
+def test_capability_registry_exposes_lifecycle_states():
+    registry = CapabilityRegistry()
+    for status in (CapabilityStatus.LOADING, CapabilityStatus.READY,
+                   CapabilityStatus.DEGRADED, CapabilityStatus.FAILED,
+                   CapabilityStatus.UNCONFIGURED):
+        registry.set(status.value, "model", status)
+    assert {item["status"] for item in registry.snapshot()} == {
+        "loading", "ready", "degraded", "failed", "unconfigured"}
+
+
 def test_event_store_refuses_private_and_raw_media(tmp_path):
     """Agent-only results and ndarray payloads never enter SQLite."""
     store = EventStore(tmp_path / "events.sqlite3")

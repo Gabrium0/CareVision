@@ -41,7 +41,8 @@ import numpy as np
 from core.context import FrameContext
 from modules._util import (TimedBuffer, dominant_frequency, bandpass,
                            peak_intervals, roi_patch, patch_brightness,
-                           low_light_factor, chrom, pos, mouth_aspect_ratio)
+                           low_light_factor, rppg_input_quality, chrom, pos,
+                           mouth_aspect_ratio)
 from extractors import face_landmarks as FL
 from .base import RPPGBackend
 
@@ -67,6 +68,7 @@ class ClassicalBackend(RPPGBackend):
         self._lock = threading.Lock()
         self._accepted = 0
         self._rejected_no_roi = 0
+        self._quality_events: deque[tuple[float, bool]] = deque()
         self._last_reading: dict | None = None
         # compute() only ever runs on the heavy-loop thread (see
         # modules/heart_rate.py), so this needs no lock of its own.
@@ -97,6 +99,8 @@ class ClassicalBackend(RPPGBackend):
         if not pixels:
             with self._lock:
                 self._rejected_no_roi += 1
+                self._quality_events.append((ctx.timestamp, False))
+                self._prune_quality_events(ctx.timestamp)
             return
         px = np.concatenate(pixels, axis=0).astype(np.float64)   # BGR
         # store as (R, G, B) so chrom/pos get channels in the expected order
@@ -106,6 +110,12 @@ class ClassicalBackend(RPPGBackend):
             self.buf.push(ctx.timestamp, rgb_mean)
             self._brightness = 0.9 * self._brightness + 0.1 * bright
             self._accepted += 1
+            self._quality_events.append((ctx.timestamp, True))
+            self._prune_quality_events(ctx.timestamp)
+
+    def _prune_quality_events(self, now: float) -> None:
+        while self._quality_events and now - self._quality_events[0][0] > self.window_seconds:
+            self._quality_events.popleft()
 
     def diagnostics(self) -> dict:
         """Return a thread-safe snapshot without copying raw signal samples."""
@@ -116,11 +126,14 @@ class ClassicalBackend(RPPGBackend):
             latest = dict(self._last_reading) if self._last_reading else None
             accepted = self._accepted
             rejected = self._rejected_no_roi
+            rolling = list(self._quality_events)
         required = 6.0
         sample_progress = min(1.0, samples / self.required_samples)
         time_progress = min(1.0, span / required)
         ready = samples >= self.required_samples and span >= required
         sample_hz = ((samples - 1) / span if samples > 1 and span > 0 else 0.0)
+        rolling_accepted = sum(accepted for _, accepted in rolling)
+        rolling_total = len(rolling)
         return {
             "name": self.label, "available": True,
             "samples": samples, "buffered_seconds": round(span, 1),
@@ -134,6 +147,8 @@ class ClassicalBackend(RPPGBackend):
                        f"warming up: {samples}/{self.required_samples} samples, "
                        f"{span:.0f}/{required:.0f}s"),
             "accepted": accepted, "rejected": {"no_roi": rejected},
+            "rolling_acceptance_ratio": round(rolling_accepted / rolling_total, 3)
+            if rolling_total else 0.0,
             "inference_latency_ms": 0.0, "latest": latest,
             "brightness": round(brightness, 1),
         }
@@ -145,6 +160,7 @@ class ClassicalBackend(RPPGBackend):
             self._last_reading = None
             self._bpm_history.clear()
             self._last_mar = None
+            self._quality_events.clear()
 
     def _snapshot(self):
         """Thread-safe copy of the buffer + brightness for compute() to use."""
@@ -200,7 +216,19 @@ class ClassicalBackend(RPPGBackend):
             conf *= max(0.5, 1.0 - jitter / 20.0)
         conf = round(max(0.0, min(1.0, conf)), 2)
 
-        out = {"bpm": round(bpm, 1), "confidence": conf}
+        intervals = np.diff(t)
+        mean_interval = float(np.mean(intervals)) if len(intervals) else 0.0
+        regularity = (max(0.0, 1.0 - float(np.std(intervals)) / mean_interval)
+                      if mean_interval > 0 else 0.0)
+        with self._lock:
+            rolling = list(self._quality_events)
+        acceptance = (sum(accepted for _, accepted in rolling) / len(rolling)
+                      if rolling else 0.0)
+        effective_hz = ((len(t) - 1) / span if len(t) > 1 and span > 0 else 0.0)
+        quality = round(rppg_input_quality(brightness, effective_hz,
+                                           acceptance, regularity), 2)
+
+        out = {"bpm": round(bpm, 1), "confidence": conf, "quality": quality}
         rr = peak_intervals(filt, fs, min_distance_s=0.4)
         if len(rr) >= 4:
             rr_ms = rr * 1000.0

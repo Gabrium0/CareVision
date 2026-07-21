@@ -1,3 +1,12 @@
+## Autonomous runtime verification (recommended)
+
+For runtime, UI, configuration, integration, health, or performance changes,
+prefer the hot-reload workflow in [docs/AI_DEVELOPMENT.md](docs/AI_DEVELOPMENT.md):
+keep `python dev.py` running, observe the `[reload]`/`[main]`/`[debug]` logs, and
+use `http://127.0.0.1:8771/debug/state` as the live acceptance gate. Focused
+checks are sufficient for documentation-only and isolated pure-function work.
+Never expose `.env` values, credentials, raw media, or provider responses in logs.
+
 ## graphify
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.

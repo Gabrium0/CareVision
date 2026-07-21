@@ -61,6 +61,87 @@ Heavy network inference runs in a single-worker background executor, so the
 camera capture thread does not wait for NVIDIA. Only one skin request can be in
 flight at a time. Composites and individual frames are never written to disk.
 
+## Optional local vitiligo corroboration
+
+`SkinVision` can also load the pinned `LaurianeMD/vit-skin-disease` ViT as an
+experimental, close-up-only classifier. It is not run during passive camera
+screening. The same sharpest close-up selected for NVIDIA is analyzed by the
+local backend after the positioning window closes, so local inference never
+blocks camera capture or safety modules.
+
+The first milestone recognizes only the model's `vitiligo` label. The private
+debug analysis also retains every other Model 1 class and its score from the
+same full 22-class softmax distribution. These `label_scores` are sorted from
+highest to lowest, are not renormalized after excluding vitiligo, and are
+explicitly marked `calibrated: false`. They are experimental model scores, not
+diagnostic probabilities, and cannot affect fusion or public output. In
+particular, `Unknown Normal` is never interpreted as evidence of normal skin.
+
+Other model classes remain unsupported findings. An unknown, normal,
+low-confidence, high-entropy, poor-focus, or badly exposed image causes
+abstention rather than a "normal" result. The repository calibration file is
+deliberately marked `validated: false`; therefore the default `debug` mode can
+produce only agent-only debug evidence. Do not switch to `screening` until a
+person-disjoint external evaluation has produced and reviewed a validated
+calibration file.
+
+When a calibrated local vitiligo signal agrees with an NVIDIA `discoloration`
+observation, the public wording remains neutral: `Possible pigment change`.
+The condition name stays inside the private analysis and remains subject to the
+existing dashboard, persistence, alert, and speech-disclosure guards. When the
+two sources disagree, the local signal does not change public output.
+
+Two interchangeable runtimes implement the same preprocessing and abstention
+contract:
+
+- PyTorch is the full-precision reference backend for RTX A2000 development.
+- TensorRT FP16 is preferred automatically on an aarch64 Jetson when a valid
+  device-built engine and matching metadata are present. Failure falls back to
+  PyTorch without disabling the rest of CareVision.
+
+Install the optional development dependencies with
+`pip install -r requirements-skin.txt`. Keep NVIDIA's JetPack-compatible
+PyTorch package on Jetson instead of installing a generic CUDA wheel.
+
+Provision the pinned fallback weights into the configured cache on both the
+development machine and Jetson. Runtime startup is cache-only by default:
+
+```bash
+python tools/cache_skin_model.py
+```
+
+Export the pinned ONNX graph on the development machine:
+
+```bash
+python tools/export_skin_classifier.py
+```
+
+Copy the ONNX file and its `.json` metadata to the Jetson, then build the engine
+on that Jetson. TensorRT engines are GPU, TensorRT, and JetPack specific and are
+ignored by Git:
+
+```bash
+python tools/build_skin_tensorrt.py
+```
+
+On the Jetson, verify label-map and top-label parity, every class-probability
+delta, FP16 latency, and at least 25% memory headroom using representative
+close-ups:
+
+```bash
+python tools/verify_skin_backends.py data/skin-parity-images
+```
+
+For calibration, provide a CSV with `path,label,person_id,split` and optional
+`skin_tone,camera,lighting,body_region` columns. Labels are `vitiligo` or
+`negative`; splits are `calibration` or `test`. The tool refuses people shared
+across splits and remains debug-only unless the reviewed run explicitly uses
+`--approve`:
+
+```bash
+python tools/calibrate_skin_classifier.py data/skin-eval.csv
+```
+
 ## Structured NVIDIA result
 
 Both preliminary and close-up responses must contain one JSON object matching
@@ -219,20 +300,27 @@ The debug output can include:
 - `skin_vision.closeup_request`, containing the preliminary region, features,
   confidence, possible conditions, follow-up topics, and close-up duration.
 - `skin_vision.analysis`, containing the validated close-up's internal likely-
-  condition hypotheses and topics.
+  condition hypotheses, topics, and private local-classifier output. The local
+  output includes vitiligo's targeted probability plus all non-vitiligo
+  `label_scores` marked as uncalibrated experimental scores.
 - Public `skin_vision.visible_skin_change` results.
 - Confidence, quality, severity, visibility, source, location, correlation ID,
   conversation tags, TTL, and persistence policy.
 - Active workflow and reasoning state.
 - NVIDIA capability/consent state.
-- Latest NVIDIA request state, stage, timing, sanitized error, and exact raw
-  model content under `system.nvidia_skin` (in memory only).
+- Latest NVIDIA request state, stage, timing, sanitized HTTP/validation error,
+  missing fields, repair-attempt state, and backoff/circuit state.
 - Moondream availability, enabled state, request counters, and error state.
 - Capture, preview, analysis, and module-performance diagnostics.
 
 The debug endpoint binds to `127.0.0.1` and is separate from the normal
 dashboard. Raw image arrays, audio arrays, bytes, binary values, and data URLs
 are displayed as `<redacted-media>` rather than serialized.
+
+Provider output is never copied verbatim into debug state. The complete JSON
+contract is placed in the prompt as well as `response_format`, because a hosted
+endpoint may ignore schema enforcement. Invalid prose or partial JSON receives
+one bounded repair attempt and can never create or dismiss a finding.
 
 ## Configuration
 
@@ -254,6 +342,10 @@ skin_vision:
   request_timeout: 25.0
   max_image_dim: 1024
   jpeg_quality: 85
+  manual_retry_deadline: 45.0
+  manual_retry_max_image_dim: 768
+  manual_retry_jpeg_quality: 80
+  manual_retry_max_tokens: 450
   closeup_seconds: 10.0
   closeup_positioning_delay: 2.0
   min_confidence: 0.35
@@ -306,6 +398,12 @@ For the best demonstration:
    the close-up window.
 5. Answer each question after the agent finishes speaking.
 
+Use `--quality-profile maximum` for evaluation. Face/pose geometry remains
+bounded for throughput, while local skin modules and manual arm checks derive
+their ROIs from the original capture. Repeated LAB/HSV/grayscale conversions are
+cached per ROI. An undersized or unstable ROI is unavailable evidence, never a
+negative/clear finding.
+
 ### Expected output
 
 - **Terminal:** cloud capability status, enabled model, sanitized API failures,
@@ -330,18 +428,56 @@ For the best demonstration:
 | Person or sufficient skin not visible | No preliminary request is scheduled or the response is rejected as not usable. |
 | Poor image or confidence below threshold | No finding, hypothesis, or question workflow is created. |
 | Missing/small face crop | Skin screening may continue from the whole frame, but every facial cue is suppressed. |
-| Invalid structured response | The attempt is marked `invalid_response`; raw model content remains visible only in localhost diagnostics. |
+| Invalid structured response | The attempt is marked `invalid_response`; localhost diagnostics retain only bounded validation details, never raw provider content. |
 | Invalid model JSON | The response is rejected and the module enters sanitized exponential backoff. |
 | Timeout, rate limit, or API outage | Capture continues; the worker backs off and retries later without blocking the camera. |
+| Manual arm request times out or receives a retryable HTTP failure | One compact retry is allowed inside a 45-second total deadline. The result is explicitly marked unavailable if both attempts fail; failure is never reported as clear skin. |
 | Person does not provide a close-up | The request expires and enters a short cooldown without publishing a skin finding. |
 | No sharp close-up frame is collected | The close-up state resets without publishing a result. |
 | Microphone unavailable | Visual screening and the close-up can still complete, but spoken answers cannot be collected; the pending dialogue expires safely. |
 | Moondream unavailable or disabled | Deterministic templated questions and conclusions remain available. |
 
+Manual arm results identify their source. `local_arm_skin` is the deterministic
+camera heuristic; `nvidia_vlm` is the separately completed cloud assessment.
+The private debug state reports `sampling`, `pending`, `succeeded`, or
+`unavailable`, plus a correlation ID and sanitized attempt metadata.
+
+MediaPipe may print `portable_clearcut_uploader` with
+`FAILED_PRECONDITION: Not valid for uploading until`. This is an internal,
+nonfatal telemetry cooldown and is intentionally excluded from runtime health.
+It is not globally suppressed because doing so could hide unrelated native
+errors.
+
 The local `rash` module remains available without NVIDIA as a coarse facial
 redness/texture heuristic. While a cloud skin dialogue is active—or during its
 cooldown—`SkinDialogue` suppresses the local `skin_changes` conversation topic
 so the person is not asked about the same visible change twice.
+
+## Arm screening
+
+Arms get a dedicated local + cloud path at conversation distance (0.8–1.5 m):
+
+- **Local (`arm_skin` module, offline)**: pose landmarks (shoulder/elbow/
+  wrist) define oriented upper-arm/forearm ROIs. Skin is isolated by chroma
+  against the person's own face skin (classic YCrCb range when no face is
+  visible), enclosed discolored regions are filled back in so bruise or rash
+  centers are not dropped, and — on a RealSense — a depth gate removes
+  background seen past the arm. Sleeved arms are skipped automatically when
+  skin covers too little of the ROI. Screens for rash-like red patchy
+  clusters, bruise-like purple/dark patches (sized in cm from depth),
+  dry/scaling texture, and lesion-sized dark spots (2–15 mm via depth) whose
+  daily count is compared against a trailing-week baseline so tattoos and
+  long-standing moles do not re-flag. LOW reliability, screening only.
+- **Cloud**: when a bare arm is visible, the preliminary composite adds an
+  enlarged arm-crop panel (side by side with the face crop when both
+  qualify), so the vision model sees arm detail that would otherwise be a
+  sliver of the whole frame. Configured by `min_arm_crop_size`.
+- **Guided arm check**: press `a` or say "check my arm". The agent asks the
+  person to hold a forearm up toward the camera, opens a ~12 s `arm_check`
+  elicitation window, and the `arm_skin` module samples densely and speaks
+  one consolidated non-diagnostic summary. With cloud consent, the sharpest
+  window frame is also analyzed as a close-up, feeding the same follow-up
+  question dialogue as a normal finding.
 
 ## Automated verification
 

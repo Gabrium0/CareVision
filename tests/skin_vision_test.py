@@ -145,6 +145,7 @@ def test_no_upload_without_explicit_consent(monkeypatch):
         assert module._pending is None
     finally:
         module.close()
+        module.close()
 
 
 def test_nvidia_request_uses_auth_and_in_memory_jpeg(monkeypatch):
@@ -239,7 +240,7 @@ def test_shared_nvidia_client_retains_only_bounded_remote_error_message(monkeypa
         raise AssertionError("HTTP errors must be raised")
 
 
-def test_diagnostics_retain_successful_negative_raw_response(monkeypatch):
+def test_diagnostics_do_not_retain_successful_raw_response(monkeypatch):
     monkeypatch.setattr("modules.skin_vision.nvidia_api_key", lambda: "secret")
     module = SkinVision(consent=True)
     raw_content = json.dumps(_raw_analysis())
@@ -257,7 +258,8 @@ def test_diagnostics_retain_successful_negative_raw_response(monkeypatch):
         assert diagnostic["success_count"] == 1
         assert diagnostic["failure_count"] == 0
         assert diagnostic["last_attempt"]["stage"] == "preliminary"
-        assert diagnostic["last_attempt"]["raw_model_content"] == raw_content
+        assert "raw_model_content" not in diagnostic["last_attempt"]
+        assert diagnostic["last_attempt"]["validation"] is None
         assert diagnostic["last_attempt"]["latency_ms"] >= 0
         encoded = json.dumps(diagnostic)
         assert "private-jpeg" not in encoded
@@ -266,7 +268,7 @@ def test_diagnostics_retain_successful_negative_raw_response(monkeypatch):
         module.close()
 
 
-def test_diagnostics_retain_invalid_raw_response_and_sanitize_api_error(monkeypatch):
+def test_diagnostics_describe_invalid_response_without_retaining_content(monkeypatch):
     monkeypatch.setattr("modules.skin_vision.nvidia_api_key", lambda: "secret")
     module = SkinVision(consent=True)
     try:
@@ -282,7 +284,9 @@ def test_diagnostics_retain_invalid_raw_response_and_sanitize_api_error(monkeypa
             raise AssertionError("malformed content must fail validation")
         invalid = module.diagnostics()
         assert invalid["status"] == "invalid_response"
-        assert invalid["last_attempt"]["raw_model_content"] == "not structured JSON"
+        assert "raw_model_content" not in invalid["last_attempt"]
+        assert invalid["last_attempt"]["repair_attempted"] is True
+        assert invalid["last_attempt"]["validation"]["reason"]
 
         module._pending = None
         module._pending_stage = None
@@ -306,7 +310,7 @@ def test_diagnostics_retain_invalid_raw_response_and_sanitize_api_error(monkeypa
         assert failed["last_attempt"]["stage"] == "closeup"
         assert failed["last_attempt"]["http_status"] == 503
         assert failed["last_attempt"]["error"] == "HTTP 503"
-        assert failed["last_attempt"]["raw_model_content"] is None
+        assert "raw_model_content" not in failed["last_attempt"]
     finally:
         module.close()
 
@@ -338,6 +342,78 @@ def test_diagnostics_are_safe_during_an_in_flight_request(monkeypatch):
         assert module.diagnostics()["status"] == "success"
     finally:
         release.set()
+        module.close()
+
+
+def test_manual_arm_timeout_retries_once_with_compact_payload(monkeypatch):
+    monkeypatch.setattr("modules.skin_vision.nvidia_api_key", lambda: "secret")
+    module = SkinVision(consent=True, manual_retry_deadline=2.0)
+    calls = []
+
+    def request(*_args, **kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            raise NvidiaVLMError("TimeoutError", retryable=True)
+        return json.dumps(_raw_analysis())
+
+    try:
+        monkeypatch.setattr(module, "_encode", lambda _frame: b"first-jpeg")
+        monkeypatch.setattr(module._client, "request", request)
+        module._submit(np.zeros((16, 16, 3), np.uint8), "closeup", 100.0,
+                       purpose="manual_arm_check")
+        assert module._pending.result(timeout=2).finding_present is False
+        diagnostic = module.diagnostics()
+        assert len(calls) == 2
+        assert calls[1]["max_tokens"] == 450
+        assert diagnostic["attempt"] == 2
+        assert diagnostic["payload_mode"] == "compact_retry"
+        assert diagnostic["last_attempt"]["purpose"] == "manual_arm_check"
+    finally:
+        module.close()
+
+
+def test_manual_arm_nonretryable_error_uses_one_attempt(monkeypatch):
+    monkeypatch.setattr("modules.skin_vision.nvidia_api_key", lambda: "secret")
+    module = SkinVision(consent=True)
+    calls = []
+
+    def request(*_args, **_kwargs):
+        calls.append(1)
+        raise NvidiaVLMError("HTTP 400", 400, retryable=False)
+
+    try:
+        monkeypatch.setattr(module, "_encode", lambda _frame: b"jpeg")
+        monkeypatch.setattr(module._client, "request", request)
+        module._submit(np.zeros((8, 8, 3), np.uint8), "closeup", 100.0,
+                       purpose="manual_arm_check")
+        try:
+            module._pending.result(timeout=2)
+        except SkinVisionAPIError:
+            pass
+        else:
+            raise AssertionError("nonretryable failure must propagate")
+        assert len(calls) == 1
+        assert module.diagnostics()["last_attempt"]["retryable"] is False
+    finally:
+        module.close()
+
+
+def test_manual_arm_failure_is_unavailable_and_never_clear(monkeypatch):
+    monkeypatch.setattr("modules.skin_vision.nvidia_api_key", lambda: "secret")
+    module = SkinVision(consent=True)
+    failed = Future()
+    failed.set_exception(SkinVisionAPIError("TimeoutError", retryable=True))
+    module._pending = failed
+    module._pending_stage = "closeup"
+    module._pending_purpose = "manual_arm_check"
+    module._pending_correlation_id = "arm-request"
+    try:
+        results = module._consume_pending(100.0)
+        assert len(results) == 1
+        assert results[0].value["status"] == "unavailable"
+        assert results[0].source == "nvidia_vlm"
+        assert "clear" not in results[0].message.lower()
+    finally:
         module.close()
 
 
@@ -418,7 +494,8 @@ def test_preliminary_process_submits_one_composite_for_usable_face_crop(monkeypa
     module = SkinVision(consent=True, scan_interval=0.0)
     captured = {}
 
-    def capture_submit(frame, stage, now, face_crop_available=False):
+    def capture_submit(frame, stage, now, face_crop_available=False,
+                       arm_crop_label=None):
         captured.update(frame=frame, stage=stage, now=now,
                         face_crop_available=face_crop_available)
 
@@ -442,7 +519,8 @@ def test_preliminary_process_uses_whole_frame_when_face_crop_is_too_small(monkey
     module = SkinVision(consent=True, scan_interval=0.0)
     captured = {}
 
-    def capture_submit(frame, stage, now, face_crop_available=False):
+    def capture_submit(frame, stage, now, face_crop_available=False,
+                       arm_crop_label=None):
         captured.update(frame=frame, stage=stage,
                         face_crop_available=face_crop_available)
 
@@ -507,3 +585,55 @@ def test_speech_guard_catches_aliases_and_diagnostic_phrasing():
     assert speech_mentions_hypothesis("You have eczema.", hypotheses)
     assert not speech_mentions_hypothesis(
         "Could you show that area closer to the camera?", hypotheses)
+
+
+def test_preliminary_composite_supports_arm_panel():
+    whole = np.full((576, 1024, 3), (10, 20, 30), np.uint8)
+    face = np.full((200, 200, 3), (90, 100, 110), np.uint8)
+    arm = np.full((100, 160, 3), (40, 150, 200), np.uint8)
+    both = _compose_preliminary_frame(whole, face, arm, arm_label="LEFT FOREARM")
+    assert both.shape == (1024, 1024, 3)
+    assert np.array_equal(both[800, 256], face[100, 100])   # bottom-left: face
+    assert np.array_equal(both[800, 768], arm[50, 80])      # bottom-right: arm
+    arm_only = _compose_preliminary_frame(whole, None, arm)
+    assert arm_only.shape == (1024, 1024, 3)
+    assert np.array_equal(arm_only[800, 512], arm[50, 80])
+
+
+def test_preliminary_prompt_names_arm_panel(monkeypatch):
+    monkeypatch.setattr("modules.skin_vision.nvidia_api_key", lambda: "key")
+    module = SkinVision(consent=True)
+    try:
+        both = module._prompt("preliminary", None, True, "left forearm")
+        assert "bottom-right panel" in both and "left forearm" in both
+        arm_only = module._prompt("preliminary", None, False, "left forearm")
+        assert "enlarged crop of the person's left forearm" in arm_only
+        assert "facial appearance field" in arm_only        # cues stay gated
+    finally:
+        module.close()
+
+
+def test_arm_check_window_submits_closeup(monkeypatch):
+    monkeypatch.setattr("modules.skin_vision.nvidia_api_key", lambda: "key")
+    module = SkinVision(consent=True)
+    submitted = {}
+    monkeypatch.setattr(
+        module, "_submit",
+        lambda frame, stage, now, face_crop_available=False,
+               arm_crop_label=None, purpose=None: submitted.update(
+                   {"stage": stage, "purpose": purpose}))
+    elicitation = ElicitationState.instance()
+    elicitation.clear()
+    try:
+        elicitation.begin("arm_check", 4.0, now=100.0)
+        sharp = np.random.default_rng(1).integers(
+            0, 255, (120, 160, 3)).astype(np.uint8)
+        assert module.process(FrameContext(sharp, 103.0, 0, 30.0)) is None
+        assert module._best_frame is not None
+        module.process(FrameContext(np.zeros((120, 160, 3), np.uint8),
+                                    105.0, 1, 30.0))
+        assert submitted.get("stage") == "closeup"
+        assert submitted.get("purpose") == "manual_arm_check"
+    finally:
+        elicitation.clear()
+        module.close()

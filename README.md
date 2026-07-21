@@ -18,6 +18,8 @@ webcam.
 ```bash
 pip install -r requirements.txt
 pip install -r requirements-openrppg.txt   # optional: neural rPPG backend
+pip install -r requirements-skin.txt       # local ViT skin classifier + ONNX export
+pip install -r requirements-realsense.txt # optional: Intel RealSense D435i source
 # NVIDIA CUDA 12.4 clothing backend (keep all PyTorch binaries matched):
 pip install torch==2.6.0 torchvision==0.21.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cu124
 pip install -r requirements-clothing.txt   # optional: FashionCLIP / OWL-ViT clothing detection
@@ -28,6 +30,7 @@ python main.py --combined            # old single-window overlay instead
 python main.py --headless --name Margaret   # no window; prints greetings/alerts
 python main.py --enable-cloud-skin    # opt in to NVIDIA skin screening
 python main.py --source realsense --webui --debug-endpoint --no-moondream  # private debug, no Moondream calls initially
+python main.py --source realsense --quality-profile maximum --webui --debug-endpoint  # native-detail quality profile
 ```
 Windowed controls: `q` quit · `g` force a greeting · `m` toggle Moondream API calls ·
 `t` start a tremor test · `c` switch camera (see below). Use `--no-moondream` to
@@ -35,6 +38,29 @@ guarantee that testing starts with Moondream disabled; templated speech remains 
 Set `X-Moondream-Auth` in `.env` to your Moondream Cloud API key (the conventional
 `MOONDREAM_API_KEY` name is also accepted). The credential is sent only to the
 Moondream API and is never included in logs or debug diagnostics.
+
+### Hot reload for autonomous development
+
+Run the dependency-free development supervisor to restart the application when
+Python, YAML, JSON, HTML, CSS, or JavaScript files change:
+
+```bash
+python dev.py
+```
+
+The default is hardware-free, headless, private, and safe for unattended testing.
+It exposes a readable dashboard at `http://127.0.0.1:8771/debug` and
+machine-readable health at `http://127.0.0.1:8771/debug/state`. See
+[AI development workflow](docs/AI_DEVELOPMENT.md) for the log markers, health
+acceptance gate, failure recipes, privacy rules, and real-camera/cloud opt-ins.
+
+Pass any command after `--` to reload a custom application or focused test command:
+
+```bash
+python dev.py -- python main.py --source 0 --headless --debug-endpoint --no-moondream
+python dev.py -- python -m pytest -q tests/runtime_performance_test.py
+python dev.py --watch core --watch tests -- python -m pytest -q tests/pipeline_staleness_test.py
+```
 
 By default two windows open: **Camera** (video + face/pose boxes only) and
 **Detections — Data**, a readable dashboard with all signals. The vitals
@@ -82,23 +108,78 @@ profile that sustains `max(--min-fps, 95% of --fps)`. Depth-capable profiles
 are preferred over a higher-resolution color-only profile. The local preview
 and full-rate rPPG sampler consume the capture stream independently from the
 heavier analysis loop; the overlay reports capture (`C`), preview (`P`), and
-analysis (`A`) FPS separately. `--analysis-width 960` controls only the
-MediaPipe input size—landmarks and rPPG crops still use capture coordinates and
-original pixels.
+analysis (`A`) FPS separately. `--face-analysis-width 640` caps authoritative
+face detection, while `--analysis-width 960` caps pose and passive analysis.
+Landmarks and rPPG crops still use capture coordinates and original pixels.
 
 ### Private debugging endpoint
 
 Pass `--debug-endpoint` for a readable, auto-refreshing private dashboard at
 `http://127.0.0.1:8771/debug`. Its programmatic JSON is available at
 `http://127.0.0.1:8771/debug/state`. Both include complete live result objects,
-including agent-only hypotheses and Moondream request counters. Use `--debug-port`
+including agent-only hypotheses and credential-free cloud request counters. Raw
+transcripts, credentials, and provider responses are omitted. Use `--debug-port`
 to change the port. This is a separate localhost-only server;
 the LAN-facing `/data` dashboard remains public-only. Raw image/audio arrays,
 binary values, and data URLs are always redacted. The payload also includes
-capture/preview/analysis rates, latency, skipped analysis frames, selected
-camera profile, and rPPG fast-path counters. Its always-visible Vitals panel
+capture/preview/analysis rates, rolling p50/p95/max latency, queue-drop rate,
+adaptive scheduler state, selected camera profile, physical capture FPS, bounded
+vitals-sampler FPS/latency/drops, rPPG fast-path acceptance, lifecycle-backed
+capabilities, and the Whisper worker PID/path-free native-runtime inventory.
+The top-level health object reports `healthy`, `degraded`, or `failed` with
+reason codes and actions. Its always-visible Vitals panel
 shows current BPM when valid, or explains whether positioning is blocked,
 samples are warming up, inference is running, or a backend is unavailable.
+
+### Skin screening flow and local-only operation
+
+Skin screening is a guided, close-up workflow rather than a continuous model
+call. With `--source realsense`, `core.realsense_camera.RealSenseCamera` yields
+color frames with depth aligned to color plus best-effort IMU motion. The normal
+pipeline keeps capture, safety modules, and the fast vitals sampler responsive.
+
+At startup, `skin_vision` asynchronously preloads the pinned
+`LaurianeMD/vit-skin-disease` model from `runtime-models/huggingface`. The
+configured `backend: auto` prefers a device-built TensorRT FP16 engine on an
+ARM64 Jetson and falls back to the PyTorch reference backend; on the A2000 it
+normally uses PyTorch. A missing cache or failed optional backend degrades skin
+screening without stopping the rest of CareVision.
+
+The local classifier does **not** run on passive camera frames. It runs once on
+the sharpest frame after either:
+
+- a normal NVIDIA close-up request created by an explicitly consented cloud
+  skin analysis, or
+- a user-requested arm check (`a` key or “check my arm”), which does not need
+  cloud consent.
+
+The close-up is always analyzed locally. When cloud consent is enabled, the
+same frame is independently sent to the NVIDIA VLM; a cloud failure does not
+discard the local result. The private local result contains the vitiligo target
+probability (calibrated only after a validated calibration file) plus all other
+Model 1 `label_scores`. Those non-vitiligo scores are raw experimental softmax
+values, explicitly uncalibrated, and never become diagnoses, alerts, speech,
+history, caregiver data, or public dashboard fields. In the current
+`mode: debug`, local results remain agent-only and an uncalibrated model
+abstains; `Unknown Normal` is never converted into “normal.”
+
+For an A2000 RealSense run with no paid cloud calls, use:
+
+```powershell
+python main.py --source realsense --quality-profile maximum --debug-endpoint --no-moondream --dev-mode
+```
+
+Open <http://127.0.0.1:8771/debug>, press `a`, and hold the forearm close and
+steady for about ten seconds. Inspect `results[].value.local_classifier` and
+its `label_scores` in the private dashboard or `/debug/state`. `--dev-mode`
+disables weather and clothing network/model extras; omitting
+`--enable-cloud-skin` and `--enable-cloud-scene` keeps both NVIDIA endpoints
+off. Do not press `m`, because that explicitly toggles Moondream back on.
+
+The one-time `python tools/cache_skin_model.py` setup command downloads the
+pinned weights from Hugging Face. Runtime inference is cache-only. To enable
+NVIDIA corroboration later, add `--enable-cloud-skin` only after placing the
+key in `.env`; sampled stills may then consume provider quota.
 
 ### Local caregiver review portal
 
@@ -141,9 +222,13 @@ against a watch during normal activity is not a reliable accuracy check; use
 `tests/benchmark_rppg_models.py` (below) against a recorded clip with a known
 reference bpm to actually measure MAE.
 
+See [bpmupdate.md](bpmupdate.md) for the live RealSense sampling fix, fast-path
+A/B modes, wearable calibration procedure, public-dataset adapters, and the
+current acceptance record.
+
 If readings still look wrong (jumping between backends, low confidence) on a
-live webcam specifically, the vitals "fast path" that feeds the buffers from
-the camera's reader thread can be starved if the heavy per-frame detection
+live webcam specifically, the bounded vitals sampler that feeds the buffers can
+be starved if the heavy per-frame detection
 loop falls behind — run with `--debug-modules pipeline` to see a periodic
 `[pipeline/debug]` summary of how often fresh face geometry is published vs.
 how many fast-path frames were fed/rejected as stale.
@@ -155,9 +240,13 @@ heart_rate:
   openrppg_model: null              # null = default; try physformer or efficientphys
 ```
 open-rppg loads its model once (~15–20s) at startup, then runs batched
-inference on a rolling buffer of face crops. Live inference runs in a background
-thread so CPU-only Open-RPPG does not freeze camera frames; by default it updates
-about every 5 seconds from the same 30-second signal window.
+inference on a rolling buffer of face crops. Live inference runs in a separate
+worker process so CPU-only Open-RPPG does not freeze camera frames. In automatic
+CPU mode the worker leaves half the logical cores for capture and MediaPipe,
+waits about five seconds after an inference completes before starting another,
+and stops publishing a neural result after it becomes stale. Confidence reflects
+the estimator; the separate `quality` field reflects lighting, effective sample
+rate, timing regularity, and accepted-frame coverage.
 The backend sets `KERAS_BACKEND=jax` before importing Open-RPPG to avoid
 TensorFlow/JAX tensor mismatches. On startup it logs the selected model,
 dependency versions, and JAX devices so you can confirm whether the A2000 GPU is
@@ -171,13 +260,18 @@ For focused diagnostics, use throttled module debug logs, e.g.
 `python main.py --debug-modules pipeline,openrppg,clothing,drowsiness,deepface,weather`.
 
 For accuracy testing, record the same clean clip while wearing a pulse oximeter,
-watch, or chest strap, then benchmark candidate models:
+watch, or chest strap. A wearable CSV can contain `seconds,bpm` (also accepted:
+`timestamp`/`time` and `heart_rate`/`hr`). The benchmark interpolates the wearable
+value at each estimate, runs Classical CHROM/POS and neural model variants
+sequentially, and reports MAE plus accepted-window coverage:
 ```bash
-python tests/benchmark_rppg_models.py --source clip.mp4 --reference-bpm 72 \
-  --models default physformer efficientphys --csv rppg_benchmark.csv
+python tests/benchmark_rppg_models.py --source clip.mp4 \
+  --reference-csv wearable.csv --models default physformer efficientphys \
+  --csv rppg_benchmark.csv
 ```
-Pick the model with the lowest MAE, acceptable confidence coverage, and usable
-latency. HRV and BVP-derived breathing are only emitted after a longer clean
+The default evaluation targets are at most 5 BPM MAE and at least 70% accepted
+coverage; treat those as measurement-session acceptance criteria, not a medical
+accuracy claim. HRV and BVP-derived breathing are only emitted after a longer clean
 window, and may show lower confidence, because they are less reliable than HR
 from webcam video.
 
@@ -237,7 +331,45 @@ internet connection and take longer. Cough detection does not require Whisper
 or `faster-whisper`. If `--listen` is also supplied (after installing
 `requirements-asr.txt`), speech recognition and the broader sound-event
 taxonomy share the same physical 16 kHz mono microphone stream; the device is
-not opened twice.
+not opened twice. Faster-Whisper runs in a spawned CPU worker so CTranslate2's
+native libraries stay isolated from CUDA-enabled PyTorch models such as
+FashionCLIP. The child installs a Torch import blocker before Faster-Whisper is
+loaded because CTranslate2 otherwise probes Torch for optional model-spec
+support; do not move that import or model construction back into the camera
+process on Windows.
+
+The live pipeline separates resolution by workload: capture and rPPG keep the
+original camera pixels, while passive background detectors receive a synchronized
+context capped by `--analysis-width` (960 px by default). If that lane falls
+behind, the scheduler slows passive skin/clothing/scene work with hysteresis;
+fall, unresponsive, vitals, and active assessments are never throttled.
+`--quality-profile maximum` is the default: it retains 640 px authoritative face
+inference and crops skin, eye, lip, arm, and clothing detail from the original
+capture. It reduces cadence and distributes expensive modules across frames
+before allowing the guarded 480 px geometry fallback. `balanced` and `realtime`
+select progressively smaller detail budgets for constrained machines.
+Authoritative face extraction owns a latest-frame worker (640 px normally,
+480 px under sustained load), classical rPPG calculations are one-flight, and
+busy background frames are reported as intentional coalescing rather than
+queue loss. Original capture pixels still feed rPPG.
+Moondream generation and advisor queries run off the camera thread, with bounded
+timeouts, local speech fallback, backoff, and credential-free circuit diagnostics.
+Moondream reports `configured` until its first successful authenticated request.
+HTTP 401/403 is latched as `authorization_failed` with no automatic retry; toggle
+Moondream off and on after replacing/authorizing the credential. Timeouts, 429,
+and server failures retain exponential retry/backoff.
+
+Native OpenCV, TensorFlow, Torch-CPU, BLAS, and tokenizer thread pools are bounded
+before model imports so their workers cannot collectively starve MediaPipe or the
+vitals sampler. Set `APP_RESPECT_NATIVE_THREAD_ENV=1` only when intentionally
+supplying your own thread limits. FashionCLIP explicitly selects `cuda:0` when
+CUDA is available; its actual device, load deadline, and first-inference state
+appear under `system.clothing` in the private debug payload.
+
+Longitudinal detectors never query SQLite from a detector callback. The history
+service bootstraps rolling windows on a separate read connection and exposes
+constant-time snapshots; writes remain batched. Aggregate freshness/failures are
+reported under `system.history_writer.aggregates`.
 
 Open `http://127.0.0.1:8771/debug` for the readable private dashboard or
 `http://127.0.0.1:8771/debug/state` for JSON. A healthy **Audio & cough
@@ -336,11 +468,14 @@ python tests/make_clip.py           # write a synthetic video
 python main.py --source tests/synthetic_clip.mp4 --headless --max-frames 80
 ```
 
-## Module catalogue (35)
+## Module catalogue (36)
 Vitals: `heart_rate` (+HRV), `respiration`.
 Clothing/weather: `weather`, `clothing`, `clothing_advice`.
 Skin/face: `skin_color` (pallor/flushing/cyanosis/jaundice; chroma samples are
-temporally pooled — see below), `rash`, `bruise`, `eye_redness`, `sweating`,
+temporally pooled — see below), `rash`, `bruise`, `arm_skin` (rash/bruise/
+dryness/dark-spot screening on bare arms via pose ROIs; depth adds mm sizing
+and an `arm_check` guided window — 'a' hotkey or "check my arm"),
+`eye_redness`, `sweating`,
 `dry_lips`, `skin_vision` (opt-in NVIDIA whole-body screen + guided close-up),
 `facial_asymmetry` (regional: mouth/eye/brow/cheek-edge, each with
 its own baseline — only mouth/eye can escalate to ALERT), `facial_swelling`
