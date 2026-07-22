@@ -94,7 +94,15 @@ with the D435i: SpO₂/cyanosis as a measurement, true fever (no thermal).
 
 ## Items intentionally deferred (need extra hardware / sensors)
 These appear in detectionList.md's notes but are out of scope for pure RGB:
-- **SpO₂, blood pressure** — RGB-only estimates are not trustworthy; would need
+- **SpO₂** — now implemented as a RealSense-only, trend-only module
+  (`modules/spo2.py`, `requires=("face","depth")`, so the scheduler skips it on the
+  OV2735 whose MJPEG 4:2:0 color can't support it). It reuses the classical rPPG
+  skin signal and reads the ratio-of-ratios `R=(AC_red/DC_red)/(AC_blue/DC_blue)`,
+  mapped `SpO₂=A−B·R`. Ships **uncalibrated** (`assets/spo2_calibration.json`,
+  `calibrated=false`) → near-zero confidence + a "(uncalibrated, trend only)" label,
+  and never escalates past WARNING. Real A/B must be fitted against a reference
+  oximeter (the `sensors.pulse_oximeter` BLE path is the intended ground truth).
+- **Blood pressure** — RGB-only estimates are not trustworthy; would need
   calibrated multi-wavelength or a contact sensor.
 - **Skin temperature / fever confirmation** — needs a thermal/IR camera.
 - **Cough, speech slurring, fall sound** — need the audio channel; the module

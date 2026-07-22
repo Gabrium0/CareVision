@@ -5,17 +5,33 @@ import json
 import math
 import threading
 import time
+from datetime import datetime, timezone
 from enum import Enum
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 
 import numpy as np
 
 from core.events import Result
+from storage.event_store import EventStore
 
 _DEBUG_PAGE = Path(__file__).resolve().parent / "debug.html"
+
+# Modules of interest for the export endpoint
+_EXPORT_MODULES = {
+    "heart_rate", "respiration", "clothing", "clothing_advice", "weather",
+    "skin_color", "rash", "skin_vision", "scene_vision", "arm_skin",
+    "facial_swelling", "facial_asymmetry", "bruise", "eye_redness",
+    "dry_lips", "sweating", "age_estimation", "body_estimate",
+    "emotion", "pain", "agitation", "drowsiness", "yawn", "head_nod",
+    "tremor", "gait", "balance", "bradykinesia", "masked_face", "expressivity",
+    "fall", "near_fall", "unresponsive", "wandering", "attention", "gesture",
+    "sneeze", "face_touch", "activity_level", "presence", "grooming",
+    "height_distance", "multi_person", "routine", "hazard_zones",
+    "guided_assessments", "replay_events",
+}
 
 
 def safe_json(value: Any) -> Any:
@@ -184,7 +200,8 @@ class DebugServer:
                 pass
 
             def do_GET(self):
-                path = urlparse(self.path).path
+                parsed = urlparse(self.path)
+                path = parsed.path
                 if path == "/debug":
                     try:
                         body = _DEBUG_PAGE.read_bytes()
@@ -197,6 +214,9 @@ class DebugServer:
                     self.send_header("Content-Length", str(len(body)))
                     self.end_headers()
                     self.wfile.write(body)
+                    return
+                if path == "/debug/export":
+                    self._handle_export(parsed.query)
                     return
                 if path != "/debug/state":
                     self.send_error(404)
@@ -213,6 +233,76 @@ class DebugServer:
                 self.end_headers()
                 self.wfile.write(body)
 
+            def _handle_export(self, query: str):
+                qs = parse_qs(query)
+                now = time.time()
+                # Default: last 60 seconds if no params given
+                since = float(qs.get("since", [60.0])[0])
+                # Optional comma-separated module filter
+                modules_filter = None
+                if "modules" in qs:
+                    modules_filter = set(qs["modules"][0].split(","))
+                # Optional include_events flag to include EventStore persisted events
+                include_events = qs.get("include_events", ["0"])[0] in ("1", "true", "yes")
+
+                # 1) Get live results from provider (Aggregator snapshot)
+                try:
+                    debug_payload = provider()
+                except Exception:
+                    debug_payload = {}
+                live_results_raw = debug_payload.get("results", [])
+
+                # 2) Optionally include EventStore persisted events
+                event_results = []
+                if include_events:
+                    start = now - since
+                    end = now
+                    events = EventStore.instance().query(start=start, end=end, limit=5000)
+                    event_results = [e for e in events if e.get("module") in _EXPORT_MODULES]
+
+                # 3) Build grouped module results
+                modules: dict[str, list[dict]] = {}
+                for r in live_results_raw:
+                    mod = r.get("module", "")
+                    if modules_filter and mod not in modules_filter:
+                        continue
+                    # Format timestamp as ISO
+                    ts = r.get("timestamp")
+                    if isinstance(ts, (int, float)):
+                        ts = datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+                    entry = {
+                        "key": r.get("key", ""),
+                        "value": r.get("value"),
+                        "confidence": r.get("confidence"),
+                        "severity": r.get("severity"),
+                        "message": r.get("message", ""),
+                        "timestamp": ts,
+                    }
+                    modules.setdefault(mod, []).append(entry)
+
+                # 4) Build summary counts per module
+                summary = {mod: len(entries) for mod, entries in modules.items()}
+
+                payload = {
+                    "query_time": datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S"),
+                    "session_lookback_seconds": since,
+                    "count_live": sum(len(v) for v in modules.values()),
+                    "count_events": len(event_results),
+                    "modules_seen": sorted(modules.keys()),
+                    "summary": summary,
+                    "modules": modules,
+                }
+                if include_events:
+                    payload["events"] = event_results
+
+                body = json.dumps(safe_json(payload), indent=2).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
         self._httpd = ThreadingHTTPServer(("127.0.0.1", self.port), Handler)
         self._httpd.daemon_threads = True
         self._thread = threading.Thread(target=self._httpd.serve_forever,
@@ -220,6 +310,8 @@ class DebugServer:
         self._thread.start()
         print(f"[debug] readable private dashboard: http://127.0.0.1:{self.port}/debug")
         print(f"[debug] private JSON state: http://127.0.0.1:{self.port}/debug/state")
+        print(f"[debug] session export (live results): http://127.0.0.1:{self.port}/debug/export?since=60")
+        print(f"[debug] session export (with events): http://127.0.0.1:{self.port}/debug/export?since=60&include_events=1")
 
     def stop(self) -> None:
         if self._httpd is not None:

@@ -1,0 +1,9 @@
+{
+  "calibrated": false,
+  "A": 100.0,
+  "B": 5.0,
+  "channels": ["red", "blue"],
+  "device": "uncalibrated-default",
+  "fitted_at": null,
+  "note": "Placeholder coefficients, NOT a fitted curve. While calibrated=false the spo2 module reports a trend only and forces confidence to near zero. Fit real A/B against a reference pulse oximeter with tools/spo2_calibrate.py, which rewrites this file with calibrated=true, the fitted A/B, the device id, and an ISO-8601 fitted_at."
+}

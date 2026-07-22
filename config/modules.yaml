@@ -48,6 +48,17 @@ modules:
   respiration:
     enabled: true
     window_seconds: 25
+  spo2:                        # contactless rPPG pulse oximetry (RealSense only)
+    enabled: true              # requires=("face","depth"); scheduler skips it on RGB-only sources
+    window_seconds: 20
+    ac_band: [0.7, 3.0]        # cardiac band for the pulsatile AC component
+    channels: [red, blue]      # ratio-of-ratios numerator/denominator (blue SNR is weak; green is the alt)
+    calibration_file: assets/spo2_calibration.json
+    min_pulse_prominence: 0.15 # require a clean concurrent pulse before reporting
+    display_min: 70
+    display_max: 100
+    warn_below: 92             # only fires when calibrated=true AND confidence high
+    debug_ratio: false         # true emits spo2_ratio for tuning / calibration capture
 
   # --- Clothing / weather recommendations ---
   weather:
