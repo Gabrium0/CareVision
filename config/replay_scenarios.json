@@ -16,5 +16,20 @@
   "meal_hydration": {"duration": 5, "events": [{"at": 0.1, "module": "scene_vision", "key": "activities", "value": ["drinking", "eating"], "message": "Meal and drink visible"}]},
   "kitchen_spill": {"duration": 5, "events": [{"at": 0.1, "module": "scene_vision", "key": "hazards", "value": ["possible floor spill"], "severity": "notice", "location": "kitchen", "message": "Possible floor spill"}]},
   "visitor": {"duration": 8, "pose_profile": "balance", "people": 2, "events": [{"at": 0.1, "module": "multi_person", "key": "scenario", "value": "visitor", "message": "Anonymous visitor enters beside the primary person", "subject_id": "track-2"}]},
-  "wearable_thermal": {"duration": 5, "events": [{"at": 0.1, "type": "sensor", "key": "heart_rate_bpm", "value": 72, "unit": "bpm"}, {"at": 0.2, "type": "sensor", "key": "skin_temperature_c", "value": 36.7, "unit": "C"}]}
+  "wearable_thermal": {"duration": 5, "events": [{"at": 0.1, "type": "sensor", "key": "heart_rate_bpm", "value": 72, "unit": "bpm"}, {"at": 0.2, "type": "sensor", "key": "skin_temperature_c", "value": 36.7, "unit": "C"}]},
+  "client_demo": {"duration": 50, "events": [
+    {"at": 0.1, "module": "presence", "key": "present", "value": true, "message": "Person present"},
+    {"at": 2, "module": "heart_rate", "key": "bpm", "value": 71, "confidence": 0.82, "message": "Heart rate steady around 71 bpm"},
+    {"at": 6, "module": "emotion", "key": "label", "value": "neutral", "confidence": 0.7, "message": "Neutral expression"},
+    {"at": 10, "module": "facial_asymmetry", "key": "regional", "value": 0.04, "confidence": 0.75, "message": "Facial symmetry within normal range"},
+    {"at": 15, "module": "activity_level", "key": "level", "value": "active", "message": "Activity level: active"},
+    {"at": 20, "type": "audio", "synthetic": "cough", "seed": 1},
+    {"at": 21.2, "type": "audio", "synthetic": "cough", "seed": 2},
+    {"at": 21.3, "module": "sound_event", "key": "cough_episode", "value": {"count": 2, "started_at": 20, "ended_at": 21.2}, "confidence": 0.88, "message": "Detected 2 cough-like bursts"},
+    {"at": 26, "module": "skin_color", "key": "flushing", "value": false, "confidence": 0.6, "message": "No flushing detected"},
+    {"at": 30, "module": "drowsiness", "key": "perclos", "value": 0.08, "confidence": 0.7, "message": "Alert; no drowsiness signs"},
+    {"at": 35, "module": "clothing_advice", "key": "recommendation", "value": "Dressed appropriately for the weather", "message": "Dressed appropriately for the weather"},
+    {"at": 40, "module": "grooming", "key": "trend", "value": "stable", "message": "Grooming steady vs. recent baseline"},
+    {"at": 45, "type": "answer", "text": "Feeling fine, thanks"}
+  ]}
 }

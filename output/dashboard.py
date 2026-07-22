@@ -320,7 +320,7 @@ def to_payload(snapshot, fps: float = 0.0, greeting: str | None = None,
                 "quality": (round(float(r.quality), 2) if r.quality is not None else None),
                 "message": r.message, "severity": r.severity.value,
                 "subject_id": r.subject_id, "source": r.source,
-                "location": r.location} for r in rows]
+                "location": r.location, "module": r.module, "key": r.key} for r in rows]
     tracks_result = next((r for r in snapshot
                           if r.module == "multi_person" and r.key == "tracks"), None)
 

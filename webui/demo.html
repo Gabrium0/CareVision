@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Care Monitor — Live Demo</title>
+<style>
+  :root { --bg:#0b0d10; --panel:#14171b; --fg:#f2f5f7; --dim:#8a929b; --line:#262b30;
+    --info:#c8ccd0; --notice:#39c6ff; --warning:#ff9e40; --alert:#ff5a5a; --accent:#7fd0ff; }
+  * { box-sizing:border-box; -webkit-text-size-adjust:100%; }
+  body { margin:0; background:var(--bg); color:var(--fg); font-size:18px;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif; }
+  .wrap { max-width:1400px; margin:0 auto; padding:24px 28px 60px; }
+  header { display:flex; align-items:baseline; justify-content:space-between; gap:12px;
+    border-bottom:1px solid var(--line); padding-bottom:14px; margin-bottom:18px; }
+  header h1 { font-size:30px; margin:0; font-weight:800; letter-spacing:.2px; }
+  header .meta { color:var(--dim); font-size:16px; }
+  .dot { width:11px; height:11px; border-radius:50%; background:var(--dim); display:inline-block; margin-right:8px; }
+  .live .dot { background:#57d977; box-shadow:0 0 10px #57d977; }
+  h2 { font-size:15px; letter-spacing:.6px; text-transform:uppercase; color:var(--accent);
+    margin:0 0 12px; }
+  .cols { display:grid; grid-template-columns:1.1fr 1fr; gap:28px; align-items:start; }
+  @media (max-width:900px){ .cols { grid-template-columns:1fr; } }
+  section { background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    padding:18px 20px; margin-bottom:22px; }
+  .modgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px; }
+  .mod { border:1px solid var(--line); border-radius:8px; padding:8px 10px; font-size:13px;
+    color:var(--dim); background:#191d21; transition:background .25s,color .25s,border-color .25s; }
+  .mod.hit { color:var(--fg); border-color:var(--accent); background:#1c2b33; }
+  .mod.s-notice.hit { border-color:var(--notice); background:#122a33; }
+  .mod.s-warning.hit { border-color:var(--warning); background:#332412; }
+  .mod.s-alert.hit { border-color:var(--alert); background:#331414; }
+  .feed .sig { display:flex; gap:12px; padding:8px 0; border-bottom:1px solid #1c2024; font-size:16px; }
+  .feed .conf { color:var(--dim); width:56px; flex:0 0 auto; font-variant-numeric:tabular-nums; font-size:13px; }
+  .s-info{color:var(--info)} .s-notice{color:var(--notice)} .s-warning{color:var(--warning)} .s-alert{color:var(--alert);font-weight:700}
+  .empty { color:var(--dim); font-style:italic; }
+  .assessment { display:flex; flex-direction:column; gap:8px; }
+  .assessment .bar { height:10px; border-radius:6px; background:#20262b; overflow:hidden; }
+  .assessment .bar > span { display:block; height:100%; background:var(--accent); }
+  .greeting { margin-top:4px; font-size:20px; color:#bfe3bf; }
+  .headline { font-size:22px; font-weight:600; min-height:1.4em; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Live Demo</h1>
+    <span class="meta"><span id="conn"><span class="dot"></span><span id="cl">connecting…</span></span>
+      · <span id="fps">– fps</span> · non-diagnostic</span>
+  </header>
+
+  <section>
+    <h2>Right now</h2>
+    <div id="headline" class="headline">waiting for a subject…</div>
+    <div id="greeting" class="greeting"></div>
+  </section>
+
+  <div class="cols">
+    <section>
+      <h2>Active modules this second</h2>
+      <div id="modgrid" class="modgrid"></div>
+    </section>
+    <section>
+      <h2>Live observations</h2>
+      <div id="feed"></div>
+    </section>
+  </div>
+
+  <section id="assessment-wrap" style="display:none">
+    <h2>Guided assessment</h2>
+    <div id="assessment" class="assessment"></div>
+  </section>
+</div>
+<script>
+(function(){
+  const connEl = document.getElementById('conn'), clEl = document.getElementById('cl');
+  const fpsEl = document.getElementById('fps');
+  const headlineEl = document.getElementById('headline');
+  const greetingEl = document.getElementById('greeting');
+  const modgridEl = document.getElementById('modgrid');
+  const feedEl = document.getElementById('feed');
+  const assessWrapEl = document.getElementById('assessment-wrap');
+  const assessEl = document.getElementById('assessment');
+
+  const seenModules = new Map();   // module -> {ts, severity}
+  const STALE_MS = 4000;
+
+  function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+  function conn(on){ connEl.classList.toggle('live', on); clEl.textContent = on?'connected':'connecting…'; }
+
+  function render(d){
+    if(!d) return;
+    const p = d.performance || {};
+    fpsEl.textContent = (p.capture_fps ?? d.fps ?? '–') + ' fps';
+
+    const signals = d.signals || [];
+    const now = Date.now();
+    for(const s of signals){
+      if(!s.module) continue;
+      seenModules.set(s.module, {ts: now, severity: s.severity});
+    }
+
+    const mods = [...seenModules.keys()].sort();
+    modgridEl.innerHTML = mods.length
+      ? mods.map(m => {
+          const info = seenModules.get(m);
+          const fresh = now - info.ts < STALE_MS;
+          return `<div class="mod${fresh?' hit s-'+info.severity:''}">${esc(m)}</div>`;
+        }).join('')
+      : '<p class="empty">warming up…</p>';
+
+    headlineEl.textContent = signals.length ? signals[0].message : 'watching…';
+    headlineEl.className = 'headline' + (signals.length ? ' s-'+signals[0].severity : '');
+
+    feedEl.innerHTML = signals.length
+      ? signals.slice(0, 12).map(s =>
+          `<div class="sig"><span class="conf">${s.conf.toFixed(2)}</span><span class="s-${s.severity}">${esc(s.message)}</span></div>`
+        ).join('')
+      : '<p class="empty">nothing notable yet</p>';
+
+    greetingEl.textContent = d.greeting ? ('🗣 ' + d.greeting) : '';
+
+    const workflows = (d.system && d.system.workflows) || [];
+    const active = workflows[0];
+    if(active){
+      assessWrapEl.style.display = '';
+      const pct = Math.round((active.progress||0)*100);
+      assessEl.innerHTML = `<div>${esc(active.protocol)} — ${esc(active.stage)}</div>
+        <div class="bar"><span style="width:${pct}%"></span></div>
+        <div class="empty">${esc(active.message||'')}</div>`;
+    } else {
+      assessWrapEl.style.display = 'none';
+    }
+  }
+
+  function startSSE(){
+    try{
+      const es = new EventSource('/data-events');
+      es.onopen = ()=>conn(true);
+      es.onmessage = e=>{ conn(true); try{ render(JSON.parse(e.data)); }catch(_){} };
+      es.onerror = ()=>conn(false);
+    }catch(_){ startPoll(); }
+  }
+  function startPoll(){
+    setInterval(async ()=>{
+      try{ const r = await fetch('/data-latest',{cache:'no-store'}); const d = await r.json();
+        conn(true); render(d.payload); }catch(_){ conn(false); }
+    }, 1000);
+  }
+  if(window.EventSource) startSSE(); else startPoll();
+})();
+</script>
+</body>
+</html>

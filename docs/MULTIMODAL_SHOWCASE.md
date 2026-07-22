@@ -50,6 +50,26 @@ python main.py --source replay:visitor --enable-multi-person
 python main.py --source replay:wearable_thermal --headless
 ```
 
+## Guest/client demo mode
+
+For showing the pipeline live to a guest or client, `--demo` (or the `'d'`
+hotkey any time during a run) queues a short guided circuit — facial
+movement, arm drift, then balance — narrated as each step starts, using the
+same `WorkflowEngine`/`request_test` machinery as the manual `'t'`/`'a'`
+hotkeys. It is ignored if that subject already has an assessment running.
+
+`--webui` now also serves `/demo`: a big-screen page (module-activity grid
+plus a live plain-English observation feed, polling the same `/data-events`
+stream as `/data`) meant for a TV or projector rather than a caregiver.
+
+When a live camera isn't available or lighting is poor, `replay:client_demo`
+is a ~50-second deterministic scenario spanning vitals, skin, motor, fatigue,
+and a cough episode — a reliable fallback demo reel:
+
+```powershell
+python main.py --source replay:client_demo --webui
+```
+
 The web dashboard exposes pause, resume, restart, and speed controls for replay.
 It also shows capabilities, consent, assessment progress, confidence versus
 quality, subject assignment, ambiguity, and a privacy-filtered causal timeline.

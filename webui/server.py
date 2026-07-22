@@ -17,6 +17,7 @@ from urllib.parse import urlparse, parse_qs
 
 _PAGE = Path(__file__).resolve().parent / "page.html"
 _DATA_PAGE = Path(__file__).resolve().parent / "data.html"
+_DEMO_PAGE = Path(__file__).resolve().parent / "demo.html"
 
 
 class DataBus:
@@ -124,6 +125,12 @@ def _make_handler(bus: UtteranceBus, data_bus: DataBus, control_handler=None,
                     html = _DATA_PAGE.read_bytes()
                 except OSError:
                     html = b"<h1>data.html missing</h1>"
+                self._send(body=html)
+            elif path == "/demo":
+                try:
+                    html = _DEMO_PAGE.read_bytes()
+                except OSError:
+                    html = b"<h1>demo.html missing</h1>"
                 self._send(body=html)
             elif path == "/data-latest":
                 seq, payload = data_bus.current()
@@ -264,6 +271,7 @@ class CompanionServer:
         for u in urls:
             print(f"[webui]   {u}         (agent text — for the iPad)")
             print(f"[webui]   {u}/data    (all detections — for a caregiver)")
+            print(f"[webui]   {u}/demo    (big-screen guest/client demo view)")
 
     def publish(self, text: str) -> None:
         """Publish a new item to connected subscribers."""

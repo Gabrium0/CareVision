@@ -41,6 +41,9 @@ _ASSESSMENT_QUESTIONS = {
     "progression": "Has this movement or task changed recently compared with what is normal for you?",
     "warning_signs": "Are you feeling suddenly unwell, faint, confused, or having trouble speaking right now?",
 }
+# Short, low-risk guided assessments chained back-to-back for a live guest/
+# client demo ('d' hotkey or --demo): each is brief and needs no equipment.
+_DEMO_CIRCUIT = ("facial_movement", "arm_drift", "balance")
 
 
 class VoiceAgent:
@@ -65,6 +68,8 @@ class VoiceAgent:
         self.last_utterance = ""
         self._test_requested = False
         self._arm_check_requested = False
+        self._demo_queue: list[str] = []
+        self._demo_subject: str = "primary"
         self._actions: dict = {}       # intent signature -> post-speech callback
         self._safety_results: list[Result] = []
         self._conversation_results: list[Result] = []
@@ -104,6 +109,32 @@ class VoiceAgent:
             self._arm_check_requested = True
         else:
             self._test_requested = True
+
+    def start_demo_circuit(self, subject_id: str = "primary") -> bool:
+        """Queue a short scripted tour of guided assessments (the 'd' hotkey /
+        --demo path). Ignored if that subject already has an assessment
+        running or a circuit already queued."""
+        if self._demo_queue or self.workflows.active(subject_id) is not None:
+            return False
+        self._demo_subject = subject_id
+        self._demo_queue = list(_DEMO_CIRCUIT)
+        self._advance_demo_circuit()
+        return True
+
+    def _advance_demo_circuit(self) -> None:
+        """Start the next queued demo step once the previous one has ended."""
+        if not self._demo_queue:
+            return
+        if self.workflows.active(self._demo_subject) is not None:
+            return
+        protocol = self._demo_queue.pop(0)
+        session = self.workflows.start(protocol, subject_id=self._demo_subject)
+        if session is None:
+            self._demo_queue.clear()
+            return
+        remaining = len(self._demo_queue)
+        tail = f" ({remaining} more to go)" if remaining else " (last one)"
+        self.speaker.say(f"Demo: {PROTOCOLS[protocol].instruction}{tail}")
 
     # ---------------------------------------------------------------- ears
 
@@ -398,6 +429,7 @@ class VoiceAgent:
                     and str(result.value) in PROTOCOLS:
                 self.workflows.start(str(result.value), subject_id=result.subject_id,
                                      correlation_id=result.correlation_id)
+        self._advance_demo_circuit()
         self.skin_dialogue.observe(snapshot, now)
         corroboration_snapshot = snapshot
         if self.skin_dialogue.suppresses_local_skin(now):

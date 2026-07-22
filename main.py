@@ -213,6 +213,11 @@ def main():
                     "arm_drift", "finger_tapping", "balance", "guided_gait",
                     "facial_movement", "read_aloud", "guided_breathing"],
                     help="start one guided assessment when the run begins")
+    ap.add_argument("--demo", action="store_true",
+                    help="start a short guided demo circuit (facial movement, "
+                         "arm drift, balance) shortly after launch — press 'd' "
+                         "to trigger it instead any time; good for a quick "
+                         "live tour with a guest or client")
     ap.add_argument("--enable-multi-person", action="store_true",
                     help="enable short-lived anonymous tracks with a stable primary subject")
     ap.add_argument("--webui", action="store_true",
@@ -351,6 +356,8 @@ def main():
         shared_signals.set("microphone_ready", False)
     if args.assessment:
         WorkflowEngine.instance().start(args.assessment)
+    elif args.demo:
+        voice_agent.start_demo_circuit()
 
     web = None
     web_publish_executor = None
@@ -570,6 +577,9 @@ def main():
             if key == ord("a"):
                 print("[main] arm skin check requested ('a')")
                 voice_agent.request_test("arm_check")
+            if key == ord("d"):
+                if voice_agent.start_demo_circuit():
+                    print("[main] guest/client demo circuit requested ('d')")
             if key == ord("c") and primary_source != alt_source:
                 nxt = alt_source if cam_state["current"] == primary_source else primary_source
                 print(f"[camera] switching -> {nxt}")
@@ -579,7 +589,8 @@ def main():
         return True
 
     print("[main] starting; press 'q' to quit, 'g' to greet, 'm' to toggle "
-          "Moondream, 't' for a tremor test, 'c' to switch camera "
+          "Moondream, 't' for a tremor test, 'a' for an arm skin check, "
+          "'d' for a guest/client demo circuit, 'c' to switch camera "
           "(Ctrl+C in headless).")
     worker = None
     interrupted = False
@@ -652,6 +663,9 @@ def main():
                 if key == ord("a"):
                     print("[main] arm skin check requested ('a')")
                     voice_agent.request_test("arm_check")
+                if key == ord("d"):
+                    if voice_agent.start_demo_circuit():
+                        print("[main] guest/client demo circuit requested ('d')")
                 if key == ord("c") and primary_source != alt_source:
                     nxt = alt_source if cam_state["current"] == primary_source else primary_source
                     print(f"[camera] switching -> {nxt}")
