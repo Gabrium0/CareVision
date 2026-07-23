@@ -11,9 +11,11 @@ import socket
 import threading
 import time
 from collections import deque
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
+
+from webui._http import QuietThreadingHTTPServer
 
 _PAGE = Path(__file__).resolve().parent / "page.html"
 _DATA_PAGE = Path(__file__).resolve().parent / "data.html"
@@ -185,7 +187,10 @@ def _make_handler(bus: UtteranceBus, data_bus: DataBus, control_handler=None,
                 for it in bus.since(0):
                     self._write_event(it)
                     last = it["seq"]
-                while True:
+            except (ConnectionAbortedError, BrokenPipeError, ConnectionResetError):
+                return   # client (iPad) disconnected before we could reply
+            while True:
+                try:
                     items = bus.wait(last, timeout=15.0)
                     if items:
                         for it in items:
@@ -194,8 +199,8 @@ def _make_handler(bus: UtteranceBus, data_bus: DataBus, control_handler=None,
                     else:
                         self.wfile.write(b": keep-alive\n\n")  # heartbeat
                     self.wfile.flush()
-            except (BrokenPipeError, ConnectionResetError, OSError):
-                return   # client (iPad) disconnected
+                except (ConnectionAbortedError, BrokenPipeError, ConnectionResetError):
+                    break   # client (iPad) disconnected
 
         def _write_event(self, item: dict):
             self.wfile.write(f"data: {json.dumps(item)}\n\n".encode())
@@ -207,8 +212,8 @@ def _make_handler(bus: UtteranceBus, data_bus: DataBus, control_handler=None,
             self.send_header("Connection", "keep-alive")
             self.end_headers()
             last = -1
-            try:
-                while True:
+            while True:
+                try:
                     seq, payload = data_bus.wait(last, timeout=15.0)
                     if seq != last and payload is not None:
                         last = seq
@@ -216,8 +221,8 @@ def _make_handler(bus: UtteranceBus, data_bus: DataBus, control_handler=None,
                     else:
                         self.wfile.write(b": keep-alive\n\n")
                     self.wfile.flush()
-            except (BrokenPipeError, ConnectionResetError, OSError):
-                return
+                except (ConnectionAbortedError, BrokenPipeError, ConnectionResetError):
+                    break   # client disconnected
 
     return Handler
 
@@ -250,17 +255,17 @@ class CompanionServer:
         self.data_bus = DataBus()
         self._data_min_gap = 1.0 / data_hz if data_hz > 0 else 0.0
         self._last_data_push = 0.0
-        self._httpd: ThreadingHTTPServer | None = None
+        self._httpd: QuietThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
         self.control_handler = control_handler
         self.primary_handler = primary_handler
 
     def start(self) -> None:
         """Start the HTTP server on a background daemon thread."""
-        self._httpd = ThreadingHTTPServer((self.host, self.port),
-                                          _make_handler(self.bus, self.data_bus,
-                                                        self.control_handler,
-                                                        self.primary_handler))
+        self._httpd = QuietThreadingHTTPServer((self.host, self.port),
+                                               _make_handler(self.bus, self.data_bus,
+                                                             self.control_handler,
+                                                             self.primary_handler))
         self._httpd.daemon_threads = True
         self._thread = threading.Thread(target=self._httpd.serve_forever,
                                         daemon=True)

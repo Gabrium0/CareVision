@@ -65,3 +65,82 @@ def test_start_demo_circuit_ignored_when_subject_has_a_workflow(tmp_path):
     agent.workflows.start("sit_to_stand")
     assert agent.start_demo_circuit() is False
     assert agent._demo_queue == []
+
+
+def _advance_to_arm_drift(agent):
+    """Run the circuit forward until arm_drift (the middle step) is active."""
+    agent.start_demo_circuit()
+    agent.workflows.conclude("primary")   # facial_movement scored -> success
+    agent._advance_demo_circuit()
+    assert agent.workflows.active("primary").protocol == "arm_drift"
+
+
+def test_failed_step_is_announced_and_retried_with_guidance(tmp_path):
+    agent = _fresh_agent(tmp_path)
+    _advance_to_arm_drift(agent)
+    pending = len(agent._demo_queue)       # balance still queued behind arm_drift
+
+    agent.workflows.cancel("primary")      # arm_drift never captured
+    agent._advance_demo_circuit()
+
+    active = agent.workflows.active("primary")
+    assert active is not None and active.protocol == "arm_drift"   # retried, not skipped
+    said = agent.last_utterance.lower()
+    assert "arm check" in said and "try again" in said            # honest + actionable
+    assert len(agent._demo_queue) == pending                      # balance still pending
+
+
+def test_failed_step_skipped_after_retry_budget_exhausted(tmp_path):
+    agent = _fresh_agent(tmp_path)
+    _advance_to_arm_drift(agent)
+
+    agent.workflows.cancel("primary")      # first miss -> retry
+    agent._advance_demo_circuit()
+    assert agent.workflows.active("primary").protocol == "arm_drift"
+
+    agent.workflows.cancel("primary")      # second miss -> honest skip (announced alone)
+    agent._advance_demo_circuit()
+    assert "skipping the arm check" in agent.last_utterance.lower()
+    assert agent.workflows.active("primary") is None
+
+    agent._advance_demo_circuit()          # next tick moves on to the final step
+    active = agent.workflows.active("primary")
+    assert active is not None and active.protocol == "balance"
+
+
+def test_concluded_step_produces_no_skip_line(tmp_path):
+    agent = _fresh_agent(tmp_path)
+    _advance_to_arm_drift(agent)
+    said = agent.last_utterance.lower()
+    assert "skip" not in said and "couldn't capture" not in said
+
+
+def test_timed_out_step_is_announced_and_retried(tmp_path):
+    agent = _fresh_agent(tmp_path)
+    _advance_to_arm_drift(agent)
+    session = agent.workflows.active("primary")
+
+    agent.workflows.tick(now=session.deadline + 1)     # deadline lapses -> TIMED_OUT
+    assert agent.workflows.active("primary") is None
+    agent._advance_demo_circuit()
+
+    assert "try again" in agent.last_utterance.lower()
+    assert agent.workflows.active("primary").protocol == "arm_drift"
+
+
+def test_failure_on_final_step_is_announced(tmp_path):
+    agent = _fresh_agent(tmp_path)
+    _advance_to_arm_drift(agent)
+    agent.workflows.conclude("primary")    # arm_drift scored -> balance (final step)
+    agent._advance_demo_circuit()
+    assert agent.workflows.active("primary").protocol == "balance"
+
+    agent.workflows.cancel("primary")      # final step miss -> retry
+    agent._advance_demo_circuit()
+    assert agent.workflows.active("primary").protocol == "balance"
+
+    agent.workflows.cancel("primary")      # miss again -> honest skip, nothing after
+    agent._advance_demo_circuit()
+    assert "skipping the balance check" in agent.last_utterance.lower()
+    assert agent.workflows.active("primary") is None
+    assert agent._demo_queue == []

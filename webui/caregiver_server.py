@@ -9,12 +9,13 @@ import secrets
 import threading
 import time
 from collections import defaultdict
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from storage.event_store import (CaseConflictError, CaseNotFoundError,
                                  CaseValidationError)
+from webui._http import QuietThreadingHTTPServer
 
 
 _ROOT = Path(__file__).resolve().parent
@@ -317,12 +318,12 @@ class CaregiverServer:
         self.port = int(port)
         self.service = CaregiverService(event_store, history_store)
         self.csrf_token = secrets.token_urlsafe(32)
-        self._httpd: ThreadingHTTPServer | None = None
+        self._httpd: QuietThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
 
     def start(self) -> None:
         """Bind the portal to loopback and start its daemon HTTP thread."""
-        self._httpd = ThreadingHTTPServer(
+        self._httpd = QuietThreadingHTTPServer(
             ("127.0.0.1", self.port), _make_handler(self.service, self.csrf_token))
         self._httpd.daemon_threads = True
         self._thread = threading.Thread(target=self._httpd.serve_forever,

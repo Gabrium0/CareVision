@@ -44,6 +44,24 @@ _ASSESSMENT_QUESTIONS = {
 # Short, low-risk guided assessments chained back-to-back for a live guest/
 # client demo ('d' hotkey or --demo): each is brief and needs no equipment.
 _DEMO_CIRCUIT = ("facial_movement", "arm_drift", "balance")
+# A demo step ending in one of these never captured a usable result; the
+# circuit must not narrate the next step as if it had succeeded.
+_DEMO_FAILED_STAGES = (WorkflowStage.CANCELLED, WorkflowStage.TIMED_OUT)
+_DEMO_MAX_RETRIES = 1          # circuit-level retries per step, beyond the
+                               # positioner's own one internal reposition retry
+# Guest-facing names and corrective framing for a step that failed to capture.
+# Framing only (where to stand / what to face) — never a clinical claim (§7).
+_DEMO_STEP_LABELS = {
+    "facial_movement": "face check",
+    "arm_drift": "arm check",
+    "balance": "balance check",
+}
+_DEMO_STEP_GUIDANCE = {
+    "facial_movement": "Please face the camera in even light, then we'll try again.",
+    "arm_drift": "Please step back so your whole upper body and both arms are in view, "
+                 "then we'll try again.",
+    "balance": "Please step back so your full body is in view, then we'll try again.",
+}
 
 
 class VoiceAgent:
@@ -70,6 +88,9 @@ class VoiceAgent:
         self._arm_check_requested = False
         self._demo_queue: list[str] = []
         self._demo_subject: str = "primary"
+        self._demo_active_cid: str | None = None    # correlation id of the running step
+        self._demo_active_protocol: str | None = None
+        self._demo_retries: dict[str, int] = {}     # per-protocol circuit-level retries used
         self._actions: dict = {}       # intent signature -> post-speech callback
         self._safety_results: list[Result] = []
         self._conversation_results: list[Result] = []
@@ -118,23 +139,70 @@ class VoiceAgent:
             return False
         self._demo_subject = subject_id
         self._demo_queue = list(_DEMO_CIRCUIT)
+        self._demo_active_cid = None
+        self._demo_active_protocol = None
+        self._demo_retries = {}
         self._advance_demo_circuit()
         return True
 
-    def _advance_demo_circuit(self) -> None:
-        """Start the next queued demo step once the previous one has ended."""
-        if not self._demo_queue:
-            return
-        if self.workflows.active(self._demo_subject) is not None:
-            return
-        protocol = self._demo_queue.pop(0)
+    def _say_demo(self, text: str) -> None:
+        """Speak a circuit line and expose it as the last utterance.
+
+        Mirrors the main speak path so the dashboard and tests can read the
+        latest circuit narration off `last_utterance`."""
+        self.last_utterance = text
+        self.speaker.say(text)
+
+    def _start_demo_step(self, protocol: str, prompt: str) -> None:
+        """Begin one demo protocol and speak the given prompt, or clear the
+        circuit if the workflow engine refuses to start it."""
         session = self.workflows.start(protocol, subject_id=self._demo_subject)
         if session is None:
             self._demo_queue.clear()
+            self._demo_active_cid = None
+            self._demo_active_protocol = None
             return
+        self._demo_active_cid = session.correlation_id
+        self._demo_active_protocol = protocol
+        self._say_demo(prompt)
+
+    def _advance_demo_circuit(self) -> None:
+        """Start the next queued demo step once the previous one has ended.
+
+        A step that ends without capturing (cancelled or timed out) is not
+        narrated as a success: the circuit announces the miss, tells the person
+        how to reposition, and retries that step once (in a single spoken line
+        that also restates the instruction). If it fails again the step is
+        honestly skipped rather than silently passed over."""
+        if self.workflows.active(self._demo_subject) is not None:
+            return
+        # Handle the outcome of the step that just ended before the empty-queue
+        # check, so even the final step's failure is announced.
+        if self._demo_active_cid is not None:
+            ended = self.workflows.get(self._demo_active_cid)
+            protocol = self._demo_active_protocol
+            self._demo_active_cid = None
+            self._demo_active_protocol = None
+            if ended is not None and protocol is not None and ended.stage in _DEMO_FAILED_STAGES:
+                label = _DEMO_STEP_LABELS.get(protocol, "that step")
+                if self._demo_retries.get(protocol, 0) < _DEMO_MAX_RETRIES:
+                    self._demo_retries[protocol] = self._demo_retries.get(protocol, 0) + 1
+                    guidance = _DEMO_STEP_GUIDANCE.get(
+                        protocol, "Please step fully into view, then we'll try again.")
+                    self._start_demo_step(protocol,
+                        f"I couldn't capture the {label}. {guidance} "
+                        f"{PROTOCOLS[protocol].instruction}")
+                    return
+                # Announce the skip on its own; the next tick starts the next
+                # step, keeping each spoken line distinct.
+                self._say_demo(f"Skipping the {label} — I couldn't capture it this time.")
+                return
+        if not self._demo_queue:
+            return
+        protocol = self._demo_queue.pop(0)
         remaining = len(self._demo_queue)
         tail = f" ({remaining} more to go)" if remaining else " (last one)"
-        self.speaker.say(f"Demo: {PROTOCOLS[protocol].instruction}{tail}")
+        self._start_demo_step(protocol, f"Demo: {PROTOCOLS[protocol].instruction}{tail}")
 
     # ---------------------------------------------------------------- ears
 

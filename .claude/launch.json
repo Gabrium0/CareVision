@@ -6,6 +6,12 @@
       "runtimeExecutable": "python",
       "runtimeArgs": ["-m", "webui._demo"],
       "port": 8770
+    },
+    {
+      "name": "client-demo",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["main.py", "--source", "replay:client_demo", "--webui", "--headless"],
+      "port": 8770
     }
   ]
 }

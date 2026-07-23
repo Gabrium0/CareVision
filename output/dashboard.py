@@ -48,6 +48,122 @@ _METRIC_NAMES = {
 _METRIC_ORDER = ["bpm", "hrv_rmssd_ms", "hrv_sdnn_ms", "breaths_per_min",
                  "status", "backend_status", "emotion", "valence", "fall", "pain", "age"]
 
+# Guest-facing (label, blurb) for the /demo webui page. Non-diagnostic by
+# design: observational phrasing only ("Watches for...", never "Detects
+# stroke" or "Diagnoses..."). Curated for the ~30 most demo-visible modules;
+# everything else falls back to the module's docstring, then the slug
+# itself — see module_label().
+_MODULE_LABELS = {
+    "presence": ("Presence check", "Notices when someone comes into view"),
+    "heart_rate": ("Heart rate", "Tracks pulse from subtle skin color shifts"),
+    "respiration": ("Breathing rate", "Tracks breaths from shoulder motion"),
+    "spo2": ("Oxygen trend", "Tracks a contactless blood-oxygen trend"),
+    "emotion": ("Mood cues", "Reads facial expression for mood cues"),
+    "facial_asymmetry": ("Facial symmetry", "Watches for one-sided droop"),
+    "activity_level": ("Activity level", "Tracks how much movement happens over time"),
+    "drowsiness": ("Drowsiness signs", "Watches for heavy eyelids and slow blinks"),
+    "skin_color": ("Skin tone", "Screens skin tone changes like paleness or flushing"),
+    "clothing_advice": ("Clothing tips", "Suggests weather-appropriate outfit changes"),
+    "grooming": ("Grooming trend", "Tracks grooming appearance drift over days"),
+    "tremor": ("Hand tremor", "Watches for rhythmic shaking in the hands"),
+    "balance": ("Standing balance", "Tracks postural sway while standing"),
+    "gait": ("Walking pattern", "Tracks stride rhythm and left-right symmetry"),
+    "fall": ("Fall alert", "Watches for a sudden fall to the ground"),
+    "near_fall": ("Stumble recovery", "Watches for a stumble followed by recovery"),
+    "pain": ("Discomfort cues", "Watches for grimacing and discomfort expressions"),
+    "attention": ("Eye contact", "Tracks attention toward the camera"),
+    "eye_movement": ("Eye movement", "Watches gaze direction and unusual eye motion"),
+    "eye_redness": ("Eye redness", "Screens for redness in the whites of the eyes"),
+    "bruise": ("Skin marks", "Screens for bruising or discoloration on the face"),
+    "rash": ("Skin rash", "Screens for a rash or eruption on facial skin"),
+    "sweating": ("Sweating signs", "Watches for sweating on the forehead"),
+    "yawn": ("Yawn frequency", "Tracks yawn frequency as a fatigue cue"),
+    "sneeze": ("Sneeze watch", "Watches for sneeze-like head jerks"),
+    "agitation": ("Restlessness signs", "Watches for restless or agitated movement"),
+    "multi_person": ("People nearby", "Tracks how many people are in view"),
+    "scene_vision": ("Room scene", "Describes the general scene and setting"),
+    "hazard_zones": ("Hazard zones", "Watches entries into marked hazard areas"),
+    "weather": ("Local weather", "Tracks current outdoor weather conditions"),
+    # The rest of the registered detectors. Curated rather than left to the
+    # docstring fallback because the docstrings are written for developers
+    # ("deprojected pose landmarks", "MediaPipe GestureRecognizer") and this
+    # roster is shown to guests on a TV.
+    "age_estimation": ("Age estimate", "Estimates an approximate age range"),
+    "arm_skin": ("Arm skin", "Screens arm skin when an arm is in view"),
+    "body_estimate": ("Body build", "Estimates rough build from shoulder and hip width"),
+    "bradykinesia": ("Movement speed", "Watches for unusually slow movement"),
+    "clothing": ("Clothing", "Recognizes what upper-body clothing is worn"),
+    "dry_lips": ("Lip dryness", "Watches for dry or cracked lips"),
+    "expressivity": ("Expressiveness", "Tracks how much the face moves while talking"),
+    "face_touch": ("Face touching", "Counts how often a hand touches the face"),
+    "facial_swelling": ("Facial puffiness", "Watches for gradual puffiness around the eyes"),
+    "gesture": ("Hand gestures", "Recognizes waves, thumbs-up, and similar gestures"),
+    "guided_assessments": ("Guided checks", "Runs short guided activities and scores them"),
+    "head_nod": ("Head nodding", "Watches for nodding and head drooping"),
+    "height_distance": ("Height and distance", "Estimates height and how far away someone is"),
+    "masked_face": ("Face movement", "Tracks reduced facial movement over time"),
+    "replay_events": ("Scripted reel", "Plays back a fixed scenario for demos"),
+    "routine": ("Daily routine", "Tracks the shape of the day without judging it"),
+    "skin_vision": ("Skin close-up", "Takes a closer look at skin when asked"),
+    "unresponsive": ("Stillness watch", "Watches for unusually long stillness"),
+    "wandering": ("Pacing", "Watches for repeated pacing or wandering"),
+}
+
+# Modules that exist for plumbing rather than observation. They still appear
+# in the roster, but must never win the guest-facing headline or moment card.
+INTERNAL_MODULES = frozenset({"showcase", "replay_events"})
+
+# Minimum confidence for a signal to be promoted to the guest-facing headline
+# or a moment card on /demo. Without this floor, a low-confidence "notice"
+# (e.g. masked_face at 0.28 confidence) can outrank a high-confidence "info"
+# purely on severity and become the largest text on a guest's screen, reading
+# a clinical-sounding guess about a real, identifiable person out loud. Safety
+# -critical severities (warning/alert) always bypass this floor.
+GUEST_CONFIDENCE_FLOOR = 0.45
+
+
+def _promotable(severity: Severity, confidence: float) -> bool:
+    """Whether a signal may become the guest headline / a moment card.
+
+    This is a promotion filter, not a suppression filter: everything still
+    appears in payload["signals"] / the timeline and the /demo scrolling
+    feed regardless of this result.
+    """
+    if _SEV_ORDER[severity] >= _SEV_ORDER[Severity.WARNING]:
+        return True
+    return confidence >= GUEST_CONFIDENCE_FLOOR
+
+
+def _humanize_slug(name: str) -> str:
+    words = name.replace("_", " ").strip()
+    if not words:
+        return name
+    return words[0].upper() + words[1:]
+
+
+def module_label(name: str) -> tuple[str, str]:
+    """Resolve a module slug to a guest-facing (label, blurb).
+
+    Falls through: curated _MODULE_LABELS -> first sentence of the
+    registered class's docstring (label derived from the slug) -> the
+    slug itself, humanized. Never raises; never hands back the bare
+    underscored slug as the label.
+    """
+    curated = _MODULE_LABELS.get(name)
+    if curated is not None:
+        return curated
+    try:
+        from core.registry import all_registered
+        cls = all_registered().get(name)
+        doc = (cls.__doc__ or "").strip() if cls is not None else ""
+    except Exception:
+        doc = ""
+    if doc:
+        blurb = doc.split(". ")[0].split("\n")[0].strip().rstrip(".")
+        if blurb:
+            return _humanize_slug(name), blurb
+    return _humanize_slug(name), ""
+
 _FATIGUE_STATS = [
     ("drowsiness", "ear", "EAR"),
     ("drowsiness", "ear_baseline", "EAR base"),
@@ -316,13 +432,34 @@ def to_payload(snapshot, fps: float = 0.0, greeting: str | None = None,
     rows = [r for r in snapshot
             if r.message and (r.module, r.key) not in compared_keys]
     rows.sort(key=lambda r: (_SEV_ORDER[r.severity], r.confidence), reverse=True)
-    signals = [{"conf": round(float(r.confidence), 2),
-                "quality": (round(float(r.quality), 2) if r.quality is not None else None),
-                "message": r.message, "severity": r.severity.value,
-                "subject_id": r.subject_id, "source": r.source,
-                "location": r.location, "module": r.module, "key": r.key} for r in rows]
+    signals = []
+    for r in rows:
+        label, blurb = module_label(r.module)
+        signals.append({"conf": round(float(r.confidence), 2),
+                        "quality": (round(float(r.quality), 2) if r.quality is not None else None),
+                        "message": r.message, "severity": r.severity.value,
+                        "subject_id": r.subject_id, "source": r.source,
+                        "location": r.location, "module": r.module, "key": r.key,
+                        "label": label, "blurb": blurb,
+                        "internal": r.module in INTERNAL_MODULES,
+                        "promote": _promotable(r.severity, r.confidence)})
     tracks_result = next((r for r in snapshot
                           if r.module == "multi_person" and r.key == "tracks"), None)
+
+    try:
+        from core.registry import all_registered
+        registered = all_registered()
+    except Exception:
+        registered = {}
+    enabled = set((system or {}).get("modules_enabled", []) if system else [])
+    modules_list = []
+    for slug in registered:
+        label, blurb = module_label(slug)
+        modules_list.append({"module": slug, "label": label, "blurb": blurb,
+                             "running": slug in enabled})
+    modules_list.sort(key=lambda m: m["label"])
+    module_counts = {"registered": len(registered),
+                     "running": sum(1 for m in modules_list if m["running"])}
 
     return {
         "fps": round(float(fps), 1),
@@ -337,4 +474,6 @@ def to_payload(snapshot, fps: float = 0.0, greeting: str | None = None,
         "tracks": tracks_result.value if tracks_result is not None else [],
         "reasoning": reasoning,
         "system": system or {},
+        "modules": modules_list,
+        "module_counts": module_counts,
     }

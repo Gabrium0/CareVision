@@ -52,23 +52,35 @@ python main.py --source replay:wearable_thermal --headless
 
 ## Guest/client demo mode
 
-For showing the pipeline live to a guest or client, `--demo` (or the `'d'`
-hotkey any time during a run) queues a short guided circuit — facial
-movement, arm drift, then balance — narrated as each step starts, using the
-same `WorkflowEngine`/`request_test` machinery as the manual `'t'`/`'a'`
-hotkeys. It is ignored if that subject already has an assessment running.
-
-`--webui` now also serves `/demo`: a big-screen page (module-activity grid
-plus a live plain-English observation feed, polling the same `/data-events`
-stream as `/data`) meant for a TV or projector rather than a caregiver.
-
-When a live camera isn't available or lighting is poor, `replay:client_demo`
-is a ~50-second deterministic scenario spanning vitals, skin, motor, fatigue,
-and a cough episode — a reliable fallback demo reel:
+The recommended way to show the pipeline to a guest or client:
 
 ```powershell
 python main.py --source replay:client_demo --webui
 ```
+
+That runs a ~50-second deterministic scenario spanning vitals, skin, motor,
+fatigue, and a cough episode, and serves the demo page — a reliable fallback
+when a live camera isn't available or lighting is poor. `--demo` (or the
+`'d'` hotkey at any point during a run) instead queues a live guided circuit
+— facial movement, arm drift, then balance — narrated as each step starts,
+using the same `WorkflowEngine`/`request_test` machinery as the manual
+`'t'`/`'a'` hotkeys; it is ignored if that subject already has an assessment
+running. The two compose: reach for `--demo` on a live camera, the replay
+reel above otherwise.
+
+`--webui` serves `/demo`: a big-screen page for a TV or projector rather
+than a caregiver. A header stat line reads `49 detectors · 46 running · one
+camera · 27 fps` — 49 is the registered-detector count; the running count is
+whatever `config/modules.yaml` enables (46 by default). Below it sits the
+full detector roster, always on
+screen: each entry shows a plain-English name and one-line description
+instead of a raw module slug, dim while it runs quietly and lit for a
+moment when it fires. A live event stream, driven by the same event
+timeline as `/data`, appends observations as they arrive and shows
+confidence as high, moderate, or tentative rather than a raw number. A
+progress bar tracks replay runs, a beat checklist marks off signal families
+as they're touched, and a moment card holds each notable event on screen
+for a few seconds so a viewer glancing over doesn't miss it.
 
 The web dashboard exposes pause, resume, restart, and speed controls for replay.
 It also shows capabilities, consent, assessment progress, confidence versus

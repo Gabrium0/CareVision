@@ -316,11 +316,18 @@ timeline. Raw frames, audio, embeddings, and private hypotheses are never stored
 See [docs/MULTIMODAL_SHOWCASE.md](docs/MULTIMODAL_SHOWCASE.md) for complete
 Phase 1–7 consent, replay, assessment, tracking, routine, and hardware setup.
 
-For showing the pipeline live to a guest or client, `--demo` (or the `'d'`
-hotkey at any point during a run) queues a short guided circuit — facial
-movement, arm drift, balance — and `--webui` serves a big-screen `/demo` page
-alongside the caregiver `/data` view. `replay:client_demo` is a ~50-second
-deterministic fallback reel for when a live camera isn't practical. See
+For showing the pipeline live to a guest or client:
+
+```bash
+python main.py --source replay:client_demo --webui
+```
+
+That runs a ~50-second scripted reel and serves the big-screen `/demo` page
+— the full detector roster, a `49 detectors · 46 running · ...` stat line,
+and a live event stream — alongside the caregiver `/data` view. `--demo`
+(or the `'d'` hotkey at any point during a run) instead drives a live
+guided circuit through facial movement, arm drift, and balance on a live
+camera; the two compose. See
 [Guest/client demo mode](docs/MULTIMODAL_SHOWCASE.md#guestclient-demo-mode)
 for details.
 

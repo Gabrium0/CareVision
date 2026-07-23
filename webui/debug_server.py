@@ -7,7 +7,7 @@ import threading
 import time
 from datetime import datetime, timezone
 from enum import Enum
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urlparse, parse_qs
@@ -16,6 +16,7 @@ import numpy as np
 
 from core.events import Result
 from storage.event_store import EventStore
+from webui._http import QuietThreadingHTTPServer
 
 _DEBUG_PAGE = Path(__file__).resolve().parent / "debug.html"
 
@@ -189,7 +190,7 @@ class DebugServer:
     def __init__(self, provider: Callable[[], dict], port: int = 8771):
         self.provider = provider
         self.port = int(port)
-        self._httpd: ThreadingHTTPServer | None = None
+        self._httpd: QuietThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
 
     def start(self) -> None:
@@ -303,7 +304,7 @@ class DebugServer:
                 self.end_headers()
                 self.wfile.write(body)
 
-        self._httpd = ThreadingHTTPServer(("127.0.0.1", self.port), Handler)
+        self._httpd = QuietThreadingHTTPServer(("127.0.0.1", self.port), Handler)
         self._httpd.daemon_threads = True
         self._thread = threading.Thread(target=self._httpd.serve_forever,
                                         daemon=True, name="debug-http")

@@ -405,6 +405,7 @@ def main():
                         "cloud_scene": args.enable_cloud_scene},
             "replay": pipeline.camera.replay_status(),
             "moondream": voice_agent.moondream_status(),
+            "modules_enabled": sorted(m.name for m in pipeline.scheduler.modules),
         }
         if private:
             audio_enabled = bool(args.listen or args.detect_cough or is_replay)

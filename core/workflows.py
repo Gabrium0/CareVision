@@ -98,6 +98,15 @@ class WorkflowEngine:
             cid = self._active_by_subject.get(subject_id)
             return self._sessions.get(cid) if cid else None
 
+    def get(self, correlation_id: str) -> WorkflowSession | None:
+        """Return any session by correlation id, active or terminal.
+
+        Sessions are retained after they leave `_active_by_subject`, so this
+        lets a caller inspect the final stage of a workflow that already ended
+        (concluded, cancelled, or timed out)."""
+        with self._lock:
+            return self._sessions.get(correlation_id)
+
     def transition(self, stage: WorkflowStage, *, subject_id: str = "primary",
                    message: str = "", quality: float | None = None,
                    progress: float | None = None) -> WorkflowSession | None:

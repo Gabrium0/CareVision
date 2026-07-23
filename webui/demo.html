@@ -13,33 +13,73 @@
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif; }
   .wrap { max-width:1400px; margin:0 auto; padding:24px 28px 60px; }
   header { display:flex; align-items:baseline; justify-content:space-between; gap:12px;
-    border-bottom:1px solid var(--line); padding-bottom:14px; margin-bottom:18px; }
+    border-bottom:1px solid var(--line); padding-bottom:14px; margin-bottom:10px; }
   header h1 { font-size:30px; margin:0; font-weight:800; letter-spacing:.2px; }
   header .meta { color:var(--dim); font-size:16px; }
   .dot { width:11px; height:11px; border-radius:50%; background:var(--dim); display:inline-block; margin-right:8px; }
   .live .dot { background:#57d977; box-shadow:0 0 10px #57d977; }
+  .statline { color:var(--dim); font-size:19px; margin:0 0 20px; letter-spacing:.2px; }
+  .statline b { color:var(--fg); font-weight:700; }
   h2 { font-size:15px; letter-spacing:.6px; text-transform:uppercase; color:var(--accent);
     margin:0 0 12px; }
   .cols { display:grid; grid-template-columns:1.1fr 1fr; gap:28px; align-items:start; }
   @media (max-width:900px){ .cols { grid-template-columns:1fr; } }
   section { background:var(--panel); border:1px solid var(--line); border-radius:12px;
     padding:18px 20px; margin-bottom:22px; }
-  .modgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px; }
-  .mod { border:1px solid var(--line); border-radius:8px; padding:8px 10px; font-size:13px;
-    color:var(--dim); background:#191d21; transition:background .25s,color .25s,border-color .25s; }
+
+  /* module roster */
+  .modgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:8px; }
+  .mod { border:1px solid var(--line); border-radius:8px; padding:8px 10px; font-size:14px;
+    color:var(--dim); background:#191d21; transition:background .4s,color .4s,border-color .4s;
+    min-height:52px; }
+  .mod .mlabel { display:block; font-weight:600; }
+  .mod .mblurb { display:block; font-size:12px; color:var(--dim); margin-top:2px; line-height:1.3; }
+  .mod.off { opacity:.4; }
   .mod.hit { color:var(--fg); border-color:var(--accent); background:#1c2b33; }
+  .mod.hit .mblurb { color:#9fd6ec; }
   .mod.s-notice.hit { border-color:var(--notice); background:#122a33; }
   .mod.s-warning.hit { border-color:var(--warning); background:#332412; }
   .mod.s-alert.hit { border-color:var(--alert); background:#331414; }
-  .feed .sig { display:flex; gap:12px; padding:8px 0; border-bottom:1px solid #1c2024; font-size:16px; }
-  .feed .conf { color:var(--dim); width:56px; flex:0 0 auto; font-variant-numeric:tabular-nums; font-size:13px; }
+
+  /* feed */
+  .feed .sig { display:flex; gap:12px; padding:9px 0; border-bottom:1px solid #1c2024; font-size:16px;
+    align-items:center; }
+  .feed .sig .txt { flex:1 1 auto; }
+  .confwrap { display:flex; align-items:center; gap:6px; flex:0 0 auto; width:118px; }
+  .confbar { width:44px; height:8px; border-radius:4px; background:#20262b; overflow:hidden; flex:0 0 auto; }
+  .confbar > span { display:block; height:100%; background:var(--accent); }
+  .confword { color:var(--dim); font-size:12px; white-space:nowrap; }
   .s-info{color:var(--info)} .s-notice{color:var(--notice)} .s-warning{color:var(--warning)} .s-alert{color:var(--alert);font-weight:700}
   .empty { color:var(--dim); font-style:italic; }
+  @keyframes feedIn { from { opacity:0; transform:translateY(-10px); background:#233542; }
+                      to   { opacity:1; transform:translateY(0); } }
+  .sig.new { animation:feedIn .6s ease-out; }
+
+  /* assessment / replay progress */
   .assessment { display:flex; flex-direction:column; gap:8px; }
   .assessment .bar { height:10px; border-radius:6px; background:#20262b; overflow:hidden; }
-  .assessment .bar > span { display:block; height:100%; background:var(--accent); }
+  .assessment .bar > span { display:block; height:100%; background:var(--accent); transition:width .4s; }
   .greeting { margin-top:4px; font-size:20px; color:#bfe3bf; }
-  .headline { font-size:22px; font-weight:600; min-height:1.4em; }
+  .headline { font-size:26px; font-weight:600; min-height:1.4em; }
+
+  /* beat checklist */
+  .beatrow { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:20px; }
+  .beat { padding:7px 14px; border-radius:20px; border:1px solid var(--line); color:var(--dim);
+    font-size:15px; background:#191d21; transition:background .4s,color .4s,border-color .4s; }
+  .beat .tick { display:inline-block; width:1.1em; }
+  .beat.done { color:var(--fg); border-color:#57d977; background:#12271a; }
+  .beat.done .tick { color:#57d977; }
+
+  /* moment card */
+  .moment { display:none; border-radius:14px; padding:22px 26px; margin-bottom:20px;
+    border:2px solid var(--accent); background:#152431; }
+  .moment.show { display:block; animation:momentIn .5s ease-out; }
+  .moment .mkicker { font-size:14px; letter-spacing:.6px; text-transform:uppercase; color:var(--accent); margin-bottom:8px; }
+  .moment .mtext { font-size:30px; font-weight:700; line-height:1.3; }
+  .moment.s-notice { border-color:var(--notice); background:#0f2530; }
+  .moment.s-warning { border-color:var(--warning); background:#332412; }
+  .moment.s-alert { border-color:var(--alert); background:#3a1414; }
+  @keyframes momentIn { from { opacity:0; transform:scale(.97); } to { opacity:1; transform:scale(1); } }
 </style>
 </head>
 <body>
@@ -47,8 +87,16 @@
   <header>
     <h1>Live Demo</h1>
     <span class="meta"><span id="conn"><span class="dot"></span><span id="cl">connecting…</span></span>
-      · <span id="fps">– fps</span> · non-diagnostic</span>
+      · non-diagnostic</span>
   </header>
+  <div id="statline" class="statline">warming up…</div>
+
+  <div id="moment" class="moment">
+    <div class="mkicker">Just now</div>
+    <div id="momentText" class="mtext"></div>
+  </div>
+
+  <div id="beatrow" class="beatrow"></div>
 
   <section>
     <h2>Right now</h2>
@@ -56,82 +104,342 @@
     <div id="greeting" class="greeting"></div>
   </section>
 
+  <section id="progress-wrap" style="display:none">
+    <h2 id="progress-title">Progress</h2>
+    <div id="progress" class="assessment"></div>
+  </section>
+
   <div class="cols">
     <section>
-      <h2>Active modules this second</h2>
-      <div id="modgrid" class="modgrid"></div>
+      <h2>What the system watches</h2>
+      <div id="modgrid" class="modgrid"><p class="empty">warming up…</p></div>
     </section>
     <section>
       <h2>Live observations</h2>
-      <div id="feed"></div>
+      <div id="feed"><p id="feedEmpty" class="empty">nothing notable yet</p></div>
     </section>
   </div>
-
-  <section id="assessment-wrap" style="display:none">
-    <h2>Guided assessment</h2>
-    <div id="assessment" class="assessment"></div>
-  </section>
 </div>
 <script>
 (function(){
   const connEl = document.getElementById('conn'), clEl = document.getElementById('cl');
-  const fpsEl = document.getElementById('fps');
+  const statlineEl = document.getElementById('statline');
   const headlineEl = document.getElementById('headline');
   const greetingEl = document.getElementById('greeting');
   const modgridEl = document.getElementById('modgrid');
   const feedEl = document.getElementById('feed');
-  const assessWrapEl = document.getElementById('assessment-wrap');
-  const assessEl = document.getElementById('assessment');
+  const feedEmptyEl = document.getElementById('feedEmpty');
+  const progressWrapEl = document.getElementById('progress-wrap');
+  const progressTitleEl = document.getElementById('progress-title');
+  const progressEl = document.getElementById('progress');
+  const beatrowEl = document.getElementById('beatrow');
+  const momentEl = document.getElementById('moment');
+  const momentTextEl = document.getElementById('momentText');
 
-  const seenModules = new Map();   // module -> {ts, severity}
   const STALE_MS = 4000;
+  const FEED_CAP = 15;
+  const MOMENT_HOLD_MS = 6000;
+
+  // module slug -> {label, blurb, running}, filled in as payload.modules arrives
+  const moduleMeta = new Map();
+  // module slug -> {ts, severity}, current-frame activity (for the "lit" state)
+  const moduleActivity = new Map();
+  // timeline entry ids already rendered into the feed
+  const seenTimelineIds = new Set();
+  // family names ("Vitals", "Motor", ...) that have fired at least once this run
+  const firedFamilies = new Set();
+  let momentTimer = null;
+  let feedEmptyRemoved = false;
+
+  const FAMILIES = [
+    { name: 'Vitals',    mods: ['heart_rate', 'respiration', 'spo2'] },
+    { name: 'Motor',     mods: ['tremor', 'balance', 'gait', 'bradykinesia'] },
+    { name: 'Skin',      mods: ['skin_color', 'bruise', 'rash', 'sweating'] },
+    { name: 'Alertness', mods: ['drowsiness', 'attention', 'yawn'] },
+    { name: 'Audio',     mods: ['sound_event', 'sneeze'] },
+    { name: 'Advice',    mods: ['clothing_advice', 'weather', 'grooming'] },
+  ];
+  const SEV_RANK = { info: 0, notice: 1, warning: 2, alert: 3 };
+  // Mirrors GUEST_CONFIDENCE_FLOOR in output/dashboard.py: a timeline entry
+  // (no "promote" flag of its own — it comes from the event store, not
+  // payload.signals) may become a moment card only if it's warning/alert
+  // severity, or at/above this confidence. Keep the two constants in sync.
+  const GUEST_CONFIDENCE_FLOOR = 0.45;
 
   function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
   function conn(on){ connEl.classList.toggle('live', on); clEl.textContent = on?'connected':'connecting…'; }
 
-  function render(d){
-    if(!d) return;
-    const p = d.performance || {};
-    fpsEl.textContent = (p.capture_fps ?? d.fps ?? '–') + ' fps';
+  // Mirrors output/dashboard.py's _humanize_slug: only the first letter is
+  // capitalized, underscores become spaces. Keeps the fallback consistent
+  // with the backend's own "never show the raw slug" guarantee.
+  function humanize(slug){
+    if(!slug) return 'Unknown';
+    const s = String(slug).replace(/_/g,' ').trim();
+    if(!s) return 'Unknown';
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+  function normKey(slug){ return String(slug||'').toLowerCase().replace(/[^a-z0-9]/g,''); }
 
-    const signals = d.signals || [];
-    const now = Date.now();
-    for(const s of signals){
-      if(!s.module) continue;
-      seenModules.set(s.module, {ts: now, severity: s.severity});
+  function moduleLabel(slug){
+    const meta = moduleMeta.get(slug);
+    if(meta && meta.label) return meta.label;
+    return humanize(slug);
+  }
+  function moduleBlurb(slug){
+    const meta = moduleMeta.get(slug);
+    return (meta && meta.blurb) ? meta.blurb : '';
+  }
+
+  function sevRank(sev){ return SEV_RANK.hasOwnProperty(sev) ? SEV_RANK[sev] : 0; }
+
+  // Never print a raw confidence float: a bar plus a plain-English word.
+  function confWord(c){
+    if(c==null || isNaN(c)) return null;
+    if(c>=0.75) return 'high confidence';
+    if(c>=0.45) return 'moderate';
+    return 'tentative';
+  }
+  function confHtml(c){
+    const word = confWord(c);
+    if(word==null) return '';
+    const pct = Math.max(0, Math.min(100, Math.round(c*100)));
+    return `<span class="confwrap"><span class="confbar"><span style="width:${pct}%"></span></span>` +
+           `<span class="confword">${esc(word)}</span></span>`;
+  }
+
+  function fmtClock(seconds){
+    if(seconds==null || isNaN(seconds)) return '--:--';
+    const s = Math.max(0, Math.round(seconds));
+    const m = Math.floor(s/60), r = s%60;
+    return m + ':' + String(r).padStart(2,'0');
+  }
+
+  function familyForModule(mod){
+    const n = normKey(mod);
+    if(!n) return null;
+    for(const fam of FAMILIES){
+      for(const m of fam.mods){
+        if(n.indexOf(normKey(m)) !== -1) return fam.name;
+      }
     }
+    return null;
+  }
 
-    const mods = [...seenModules.keys()].sort();
-    modgridEl.innerHTML = mods.length
-      ? mods.map(m => {
-          const info = seenModules.get(m);
-          const fresh = now - info.ts < STALE_MS;
-          return `<div class="mod${fresh?' hit s-'+info.severity:''}">${esc(m)}</div>`;
-        }).join('')
-      : '<p class="empty">warming up…</p>';
+  function formatEntryValue(entry){
+    if(entry && entry.payload && entry.key && entry.payload[entry.key] != null){
+      const v = entry.payload[entry.key];
+      if(typeof v === 'number') return Number.isInteger(v) ? String(v) : v.toFixed(1);
+      if(typeof v === 'string') return v;
+    }
+    if(entry && entry.confidence != null){
+      const w = confWord(entry.confidence);
+      if(w) return w;
+    }
+    return '';
+  }
 
-    headlineEl.textContent = signals.length ? signals[0].message : 'watching…';
-    headlineEl.className = 'headline' + (signals.length ? ' s-'+signals[0].severity : '');
+  function timelineText(entry){
+    const msg = entry && entry.payload && typeof entry.payload.message === 'string'
+      ? entry.payload.message.trim() : '';
+    if(msg) return msg;
+    const label = moduleLabel(entry && entry.module);
+    const keyPart = entry && entry.key ? humanize(entry.key) : '';
+    const valPart = formatEntryValue(entry);
+    return [label, keyPart, valPart].filter(Boolean).join(' — ') || 'Observation recorded';
+  }
 
-    feedEl.innerHTML = signals.length
-      ? signals.slice(0, 12).map(s =>
-          `<div class="sig"><span class="conf">${s.conf.toFixed(2)}</span><span class="s-${s.severity}">${esc(s.message)}</span></div>`
-        ).join('')
-      : '<p class="empty">nothing notable yet</p>';
+  function updateFpsAndStats(d){
+    const counts = d.module_counts || {};
+    const modules = d.modules || [];
+    const registered = (typeof counts.registered === 'number') ? counts.registered
+      : (modules.length ? modules.length : null);
+    const running = (typeof counts.running === 'number') ? counts.running
+      : (modules.length ? modules.filter(m=>m && m.running).length : null);
+    const p = d.performance || {};
+    const fpsVal = (p.capture_fps != null) ? p.capture_fps : d.fps;
+    const fpsTxt = (fpsVal != null && !isNaN(fpsVal)) ? (Math.round(fpsVal*10)/10) + ' fps' : '– fps';
 
+    const parts = [];
+    if(registered != null) parts.push(`<b>${esc(registered)}</b> detectors`);
+    if(running != null) parts.push(`<b>${esc(running)}</b> running`);
+    parts.push('one camera');
+    parts.push(esc(fpsTxt));
+    statlineEl.innerHTML = parts.join(' &middot; ');
+  }
+
+  function updateModuleMeta(d){
+    const modules = d.modules || [];
+    for(const m of modules){
+      if(!m || !m.module) continue;
+      moduleMeta.set(m.module, { label: m.label, blurb: m.blurb, running: !!m.running });
+    }
+  }
+
+  function updateModuleActivity(d){
+    const now = Date.now();
+    const signals = d.signals || [];
+    for(const s of signals){
+      if(!s || !s.module) continue;
+      moduleActivity.set(s.module, { ts: now, severity: s.severity });
+      // Tick beats from live signals too, not just the timeline: vitals, skin
+      // and motor results are not persisted to the event store, so a
+      // timeline-only checklist can never tick those families.
+      const fam = familyForModule(s.module);
+      if(fam) firedFamilies.add(fam);
+    }
+  }
+
+  function renderModGrid(){
+    const now = Date.now();
+    let roster = [];
+    if(moduleMeta.size){
+      roster = [...moduleMeta.keys()].map(slug => ({
+        module: slug, label: moduleLabel(slug), blurb: moduleBlurb(slug),
+        running: (moduleMeta.get(slug) || {}).running,
+      }));
+    } else if(moduleActivity.size){
+      // Backend hasn't sent the full roster yet: fall back to whatever has
+      // actually fired, same as the pre-Phase-3 behavior.
+      roster = [...moduleActivity.keys()].map(slug => ({
+        module: slug, label: moduleLabel(slug), blurb: '', running: true,
+      }));
+    }
+    if(!roster.length){
+      modgridEl.innerHTML = '<p class="empty">warming up…</p>';
+      return;
+    }
+    roster.sort((a,b) => a.label.localeCompare(b.label));
+    modgridEl.innerHTML = roster.map(m => {
+      const act = moduleActivity.get(m.module);
+      const fresh = act && (now - act.ts < STALE_MS);
+      const cls = ['mod'];
+      if(m.running === false) cls.push('off');
+      if(fresh) cls.push('hit', 's-' + act.severity);
+      const blurb = m.blurb ? `<span class="mblurb">${esc(m.blurb)}</span>` : '';
+      return `<div class="${cls.join(' ')}" title="${esc(m.blurb||'')}">` +
+             `<span class="mlabel">${esc(m.label)}</span>${blurb}</div>`;
+    }).join('');
+  }
+
+  function renderHeadlineAndGreeting(d){
+    const signals = d.signals || [];
+    // Skip plumbing modules (showcase, replay reel): they can carry confidence
+    // 1.0 and would otherwise win the biggest text on a guest's screen.
+    // Prefer a promotable, non-internal signal (see GUEST_CONFIDENCE_FLOOR in
+    // output/dashboard.py) so a low-confidence notice can't win the headline;
+    // fall back to any non-internal signal, then to whatever is first.
+    const top = signals.find(s => s && !s.internal && s.promote !== false) ||
+                signals.find(s => s && !s.internal) ||
+                signals[0];
+    headlineEl.textContent = top ? (top.message || 'watching…') : 'watching…';
+    headlineEl.className = 'headline' + (top ? ' s-'+top.severity : '');
     greetingEl.textContent = d.greeting ? ('🗣 ' + d.greeting) : '';
+  }
 
+  function renderProgress(d){
+    const replay = d.system && d.system.replay;
+    if(replay){
+      progressWrapEl.style.display = '';
+      progressTitleEl.textContent = 'Replay progress';
+      const dur = Number(replay.duration) || 0;
+      const pos = Number(replay.position) || 0;
+      const pct = dur > 0 ? Math.min(100, Math.max(0, (pos/dur)*100)) : 0;
+      const remaining = Math.max(0, dur - pos);
+      const scenario = replay.scenario ? esc(replay.scenario) : 'Replay';
+      const pausedTxt = replay.paused ? ' &middot; paused' : '';
+      progressEl.innerHTML =
+        `<div>${scenario}${pausedTxt} &middot; ${esc(fmtClock(remaining))} remaining</div>` +
+        `<div class="bar"><span style="width:${pct}%"></span></div>`;
+      return;
+    }
     const workflows = (d.system && d.system.workflows) || [];
     const active = workflows[0];
     if(active){
-      assessWrapEl.style.display = '';
-      const pct = Math.round((active.progress||0)*100);
-      assessEl.innerHTML = `<div>${esc(active.protocol)} — ${esc(active.stage)}</div>
-        <div class="bar"><span style="width:${pct}%"></span></div>
-        <div class="empty">${esc(active.message||'')}</div>`;
-    } else {
-      assessWrapEl.style.display = 'none';
+      progressWrapEl.style.display = '';
+      progressTitleEl.textContent = 'Guided assessment';
+      const pct = Math.round((Number(active.progress) || 0) * 100);
+      progressEl.innerHTML =
+        `<div>${esc(active.protocol||'Assessment')} — ${esc(active.stage||'')}</div>` +
+        `<div class="bar"><span style="width:${pct}%"></span></div>` +
+        `<div class="empty">${esc(active.message||'')}</div>`;
+      return;
     }
+    progressWrapEl.style.display = 'none';
+  }
+
+  function renderBeats(){
+    beatrowEl.innerHTML = FAMILIES.map(fam => {
+      const done = firedFamilies.has(fam.name);
+      return `<span class="beat${done?' done':''}"><span class="tick">${done?'✓':'○'}</span> ${esc(fam.name)}</span>`;
+    }).join('');
+  }
+
+  function showMoment(entry){
+    const sev = entry.severity || 'notice';
+    momentEl.className = 'moment show s-' + sev;
+    momentTextEl.textContent = timelineText(entry);
+    if(momentTimer) clearTimeout(momentTimer);
+    momentTimer = setTimeout(() => { momentEl.className = 'moment'; momentTimer = null; }, MOMENT_HOLD_MS);
+  }
+
+  function insertFeedRow(entry){
+    if(!feedEmptyRemoved){
+      if(feedEmptyEl && feedEmptyEl.parentNode) feedEmptyEl.parentNode.removeChild(feedEmptyEl);
+      feedEmptyRemoved = true;
+    }
+    const row = document.createElement('div');
+    const sev = entry.severity || 'info';
+    row.className = 'sig new';
+    row.innerHTML = `${confHtml(entry.confidence)}<span class="txt s-${esc(sev)}">${esc(timelineText(entry))}</span>`;
+    if(feedEl.firstChild) feedEl.insertBefore(row, feedEl.firstChild);
+    else feedEl.appendChild(row);
+    while(feedEl.children.length > FEED_CAP){
+      feedEl.removeChild(feedEl.lastChild);
+    }
+  }
+
+  function processTimeline(d){
+    const timeline = (d.system && d.system.timeline) || [];
+    if(!timeline.length) return;
+    const fresh = [];
+    for(const entry of timeline){
+      if(!entry || entry.id == null || seenTimelineIds.has(entry.id)) continue;
+      seenTimelineIds.add(entry.id);
+      fresh.push(entry);
+    }
+    if(!fresh.length) return;
+    // timeline is oldest-first; insert in that order so the true newest
+    // ends up on top after each prepend.
+    for(const entry of fresh){
+      insertFeedRow(entry);
+      const fam = familyForModule(entry.module);
+      if(fam) firedFamilies.add(fam);
+    }
+    let best = null;
+    for(const entry of fresh){
+      if(sevRank(entry.severity) < 1) continue; // notice or higher only
+      // Safety-critical (warning/alert) always promotable; otherwise require
+      // the same confidence floor as the guest headline.
+      const promotable = sevRank(entry.severity) >= sevRank('warning') ||
+                          Number(entry.confidence) >= GUEST_CONFIDENCE_FLOOR;
+      if(!promotable) continue;
+      if(!best || sevRank(entry.severity) > sevRank(best.severity)) best = entry;
+    }
+    if(best) showMoment(best);
+  }
+
+  function render(d){
+    if(!d) return;
+    try{
+      updateModuleMeta(d);
+      updateModuleActivity(d);
+      updateFpsAndStats(d);
+      renderModGrid();
+      renderHeadlineAndGreeting(d);
+      renderProgress(d);
+      processTimeline(d);
+      renderBeats();
+    }catch(_){ /* never let a malformed tick break the stream */ }
   }
 
   function startSSE(){
