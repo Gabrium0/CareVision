@@ -82,6 +82,19 @@ progress bar tracks replay runs, a beat checklist marks off signal families
 as they're touched, and a moment card holds each notable event on screen
 for a few seconds so a viewer glancing over doesn't miss it.
 
+For an interactive live-camera showcase, `/demo` also offers a **"Try a guided
+check" picker**: a touch-friendly button for each guided assessment (plus a
+full-circuit button) that starts it on the current subject via the same
+`request_test`/`start_demo_circuit` machinery as the `'t'`/`'a'`/`'d'` hotkeys.
+The buttons POST to a narrow local `/assessment-control` endpoint and are
+disabled while a check is already running. Drive them from a phone or tablet on
+the same network pointed at `/demo` while a projector mirrors the big view — the
+projector itself need not be a touchscreen. While a check runs, a large
+**coaching banner** shows the current framing/positioning guidance ("Line
+yourself up — please step back so both arms are fully in view") so a person can
+follow the circuit self-serve without a presenter reading JSON. Picker labels
+are observational activity names only, enforced by `tests/demo_labels_test.py`.
+
 The web dashboard exposes pause, resume, restart, and speed controls for replay.
 It also shows capabilities, consent, assessment progress, confidence versus
 quality, subject assignment, ambiguity, and a privacy-filtered causal timeline.

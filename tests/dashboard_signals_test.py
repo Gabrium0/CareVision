@@ -42,6 +42,20 @@ def test_signals_carry_guest_facing_label_and_blurb():
     assert by_module["facial_asymmetry"]["blurb"]
 
 
+def test_payload_exposes_launchable_assessment_roster():
+    from assessments import PROTOCOLS
+    payload = to_payload([], fps=30.0)
+    roster = payload["assessments"]
+    # Every runnable protocol is offered to the /demo picker, and only those.
+    assert {a["protocol"] for a in roster} == set(PROTOCOLS)
+    # Guest-safe: a human label, never the raw underscored slug.
+    for a in roster:
+        assert a["label"] and a["label"] != a["protocol"]
+        assert "_" not in a["label"]
+    # Sorted by label so the picker order is stable.
+    assert [a["label"] for a in roster] == sorted(a["label"] for a in roster)
+
+
 def test_payload_exposes_module_roster_with_running_flags():
     registry.discover()
     registered = registry.all_registered()

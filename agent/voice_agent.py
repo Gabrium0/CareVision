@@ -19,7 +19,7 @@ import time
 
 from agent.state import ObservationMemory
 from agent.policy import Intent, Policy
-from agent.corroboration import CorroborationEngine
+from agent.corroboration import CorroborationEngine, safe_check_in
 from agent.moondream_client import MoondreamClient
 from agent.skin_dialogue import SkinDialogue
 from audio.tts import Speaker
@@ -400,8 +400,14 @@ class VoiceAgent:
                 lambda p=skin_prompt: self.skin_dialogue.mark_spoken(p, now))
 
         # 4) Corroboration follow-up question for a flagged low-confidence cue.
+        # The LLM may steer *which* already-flagged topic to raise (offered only
+        # the vetted questions, choice membership-checked in the engine); it
+        # falls back to deterministic oldest-flagged when offline or unsure.
+        def _steer(cands):
+            items = [(topic, rule.question) for topic, rule in cands]
+            return self.moondream.select_topic(items, self.memory.context_text())
         nq = (None if self.skin_dialogue.suppresses_local_skin(now)
-              else self.corroboration.next_question(now))
+              else self.corroboration.next_question_steered(now, _steer))
         if nq is not None:
             topic, rule = nq
             asks = self.corroboration.topics[topic].asks
@@ -532,6 +538,11 @@ class VoiceAgent:
         generated = candidate
         if intent.signature.startswith("skin:"):
             text = self.skin_dialogue.safe_speech(generated, intent.fallback)
+        elif intent.signature.startswith(("ask:", "conclude:")):
+            # Health check-in lines are LLM-phrased from low-confidence visual
+            # priors; the airlock discards any generation that asserts a finding
+            # or accuses, falling back to the hand-authored rule text.
+            text = safe_check_in(generated, intent.fallback)
         else:
             text = generated or intent.fallback
         self.policy.mark_spoken(intent, now)

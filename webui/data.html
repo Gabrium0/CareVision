@@ -94,7 +94,7 @@
     H.push('<h2>Signals</h2>');
     if(!d.signals || !d.signals.length){ H.push('<p class="empty">none</p>'); }
     else for(const s of d.signals)
-      H.push(`<div class="sig"><span class="conf">c:${s.conf.toFixed(2)}${s.quality==null?'':' q:'+s.quality.toFixed(2)}</span><span class="s-${s.severity}">${esc(s.message)}${s.location?' Â· '+esc(s.location):''}${s.subject_id!=='primary'?' Â· '+esc(s.subject_id):''}</span></div>`);
+      H.push(`<div class="sig"><span class="conf">c:${s.conf.toFixed(2)}${s.quality==null?'':' q:'+s.quality.toFixed(2)}</span><span class="s-${s.severity}">${esc(s.message)}${(s.location&&s.location!=='unspecified')?' · '+esc(s.location):''}${s.subject_id!=='primary'?' · '+esc(s.subject_id):''}</span></div>`);
 
     const sys=d.system||{};
     H.push('<h2>Capabilities and consent</h2><div class="grid">');
@@ -108,11 +108,11 @@
     for(const e of (sys.timeline||[]).slice(-30)) H.push(`<div class="sig"><span class="conf">${esc(e.kind)}</span>${esc(e.module||e.source||'system')} ${esc(JSON.stringify(e.payload))}</div>`);
     if((d.tracks||[]).length){
       H.push('<h2>Anonymous track assignment</h2>');
-      for(const t of d.tracks) H.push(`<div class="sig"><span class="conf">${esc(t.track_id)}</span>${esc(t.subject_id)}${t.primary?' Â· primary':''}${t.ambiguous?' Â· ambiguous':''}${t.primary?'':` <button onclick="setPrimary('${esc(t.track_id)}')">Set primary</button>`}</div>`);
+      for(const t of d.tracks) H.push(`<div class="sig"><span class="conf">${esc(t.track_id)}</span>${esc(t.subject_id)}${t.primary?' · primary':''}${t.ambiguous?' · ambiguous':''}${t.primary?'':` <button onclick="setPrimary('${esc(t.track_id)}')">Set primary</button>`}</div>`);
     }
     if(sys.replay){
       const r=typeof sys.replay==='object'?sys.replay:{scenario:sys.replay};
-      H.push(`<div class="advice">Replay: ${esc(r.scenario)} Â· ${esc(r.position??0)}/${esc(r.duration??'?')}s Â· ${esc(r.speed??1)}x</div>`);
+      H.push(`<div class="advice">Replay: ${esc(r.scenario)} · ${esc(r.position??0)}/${esc(r.duration??'?')}s · ${esc(r.speed??1)}x</div>`);
       H.push('<div><button onclick="replay(\'pause\')">Pause</button><button onclick="replay(\'resume\')">Resume</button><button onclick="replay(\'restart\')">Restart</button><button onclick="replay(\'speed\',0.5)">0.5Ã—</button><button onclick="replay(\'speed\',1)">1Ã—</button><button onclick="replay(\'speed\',2)">2Ã—</button></div>');
     }
 

@@ -80,6 +80,30 @@
   .moment.s-warning { border-color:var(--warning); background:#332412; }
   .moment.s-alert { border-color:var(--alert); background:#3a1414; }
   @keyframes momentIn { from { opacity:0; transform:scale(.97); } to { opacity:1; transform:scale(1); } }
+
+  /* coaching banner (live guided assessment — big-screen framing guidance) */
+  .coach { display:none; border-radius:14px; padding:20px 26px; margin-bottom:20px;
+    border:2px solid var(--accent); background:#122430; }
+  .coach.show { display:block; animation:momentIn .4s ease-out; }
+  .coach .ckicker { font-size:15px; letter-spacing:.6px; text-transform:uppercase;
+    color:var(--accent); margin-bottom:8px; }
+  .coach .ctext { font-size:32px; font-weight:700; line-height:1.25; }
+  .coach.s-sampling { border-color:#57d977; background:#12271a; }
+  .coach.s-sampling .ckicker { color:#8ce6a3; }
+
+  /* "try this" picker */
+  .picker-head { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; }
+  .picker-hint { color:var(--dim); font-size:15px; }
+  .picker { display:grid; grid-template-columns:repeat(auto-fill,minmax(215px,1fr)); gap:12px; margin-top:14px; }
+  .picker.busy { opacity:.5; }
+  .pbtn { text-align:left; border:1px solid var(--line); border-radius:10px; padding:14px 16px;
+    background:#191d21; color:var(--fg); cursor:pointer; font:inherit; transition:background .15s,border-color .15s,transform .05s; }
+  .pbtn:hover:not(:disabled) { border-color:var(--accent); background:#1c2b33; }
+  .pbtn:active:not(:disabled) { transform:translateY(1px); }
+  .pbtn:disabled { cursor:default; }
+  .pbtn.circuit { border-color:var(--accent); background:#152431; }
+  .pbtn .pl { display:block; font-size:18px; font-weight:700; }
+  .pbtn .pb { display:block; font-size:13px; color:var(--dim); margin-top:3px; line-height:1.3; }
 </style>
 </head>
 <body>
@@ -96,6 +120,11 @@
     <div id="momentText" class="mtext"></div>
   </div>
 
+  <div id="coach" class="coach">
+    <div id="coachKicker" class="ckicker"></div>
+    <div id="coachText" class="ctext"></div>
+  </div>
+
   <div id="beatrow" class="beatrow"></div>
 
   <section>
@@ -107,6 +136,14 @@
   <section id="progress-wrap" style="display:none">
     <h2 id="progress-title">Progress</h2>
     <div id="progress" class="assessment"></div>
+  </section>
+
+  <section id="picker-wrap" style="display:none">
+    <div class="picker-head">
+      <h2>Try a guided check</h2>
+      <span class="picker-hint" id="pickerHint">Tap one to try it, or just step in front of the camera.</span>
+    </div>
+    <div id="picker" class="picker"></div>
   </section>
 
   <div class="cols">
@@ -135,6 +172,12 @@
   const beatrowEl = document.getElementById('beatrow');
   const momentEl = document.getElementById('moment');
   const momentTextEl = document.getElementById('momentText');
+  const coachEl = document.getElementById('coach');
+  const coachKickerEl = document.getElementById('coachKicker');
+  const coachTextEl = document.getElementById('coachText');
+  const pickerWrapEl = document.getElementById('picker-wrap');
+  const pickerEl = document.getElementById('picker');
+  const pickerHintEl = document.getElementById('pickerHint');
 
   const STALE_MS = 4000;
   const FEED_CAP = 15;
@@ -150,6 +193,36 @@
   const firedFamilies = new Set();
   let momentTimer = null;
   let feedEmptyRemoved = false;
+  // protocol slug -> guest label, filled from payload.assessments
+  const protocolLabels = new Map();
+  // signature of the last-rendered picker roster, so we only rebuild on change
+  let pickerSig = '';
+
+  // Guest-safe kicker per active workflow stage. Stages not listed here
+  // (conclusion / cancelled / timed_out) are transient and hide the banner.
+  const STAGE_KICKER = {
+    instruction: 'Get ready',
+    positioning: 'Line yourself up',
+    sampling: 'Hold still — capturing',
+    scoring: 'Reading that…',
+    questions: 'A quick question',
+  };
+
+  function postAssessment(action, protocol){
+    // Fire-and-forget: the workflow's effect comes back through the SSE
+    // payload, so we don't need the response body here.
+    try{
+      fetch('/assessment-control', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(protocol ? {action, protocol} : {action}),
+      }).catch(()=>{});
+    }catch(_){}
+  }
+  pickerEl.addEventListener('click', function(ev){
+    const btn = ev.target.closest('.pbtn');
+    if(!btn || btn.disabled) return;
+    postAssessment(btn.getAttribute('data-action'), btn.getAttribute('data-protocol'));
+  });
 
   const FAMILIES = [
     { name: 'Vitals',    mods: ['heart_rate', 'respiration', 'spo2'] },
@@ -367,6 +440,48 @@
     progressWrapEl.style.display = 'none';
   }
 
+  function renderPicker(d){
+    const roster = d.assessments || [];
+    for(const a of roster){ if(a && a.protocol) protocolLabels.set(a.protocol, a.label || a.protocol); }
+    if(!roster.length){ pickerWrapEl.style.display = 'none'; return; }
+    pickerWrapEl.style.display = '';
+    const sig = roster.map(a => a.protocol).join(',');
+    if(sig !== pickerSig){
+      pickerSig = sig;
+      const circuit = '<button class="pbtn circuit" data-action="circuit">' +
+        '<span class="pl">Full circuit</span>' +
+        '<span class="pb">Face, arms, then balance — back to back</span></button>';
+      const btns = roster.map(a =>
+        `<button class="pbtn" data-action="start" data-protocol="${esc(a.protocol)}">` +
+        `<span class="pl">${esc(a.label || a.protocol)}</span>` +
+        (a.blurb ? `<span class="pb">${esc(a.blurb)}</span>` : '') + '</button>').join('');
+      pickerEl.innerHTML = circuit + btns;
+    }
+    // Busy while a guided assessment is running: dim and disable so a client
+    // can't stack a second check on top of the one already in progress.
+    const wf = (d.system && d.system.workflows) || [];
+    const busy = wf.length > 0;
+    pickerEl.classList.toggle('busy', busy);
+    for(const b of pickerEl.querySelectorAll('.pbtn')) b.disabled = busy;
+    pickerHintEl.textContent = busy
+      ? 'A check is running — please follow the guidance above.'
+      : 'Tap one to try it, or just step in front of the camera.';
+  }
+
+  function renderCoach(d){
+    const wf = (d.system && d.system.workflows) || [];
+    const active = wf[0];
+    const stage = active && active.stage;
+    if(active && STAGE_KICKER.hasOwnProperty(stage)){
+      const label = protocolLabels.get(active.protocol) || humanize(active.protocol);
+      coachKickerEl.textContent = STAGE_KICKER[stage] + ' · ' + label;
+      coachTextEl.textContent = active.message || '';
+      coachEl.className = 'coach show s-' + stage;
+    } else {
+      coachEl.className = 'coach';
+    }
+  }
+
   function renderBeats(){
     beatrowEl.innerHTML = FAMILIES.map(fam => {
       const done = firedFamilies.has(fam.name);
@@ -437,6 +552,8 @@
       renderModGrid();
       renderHeadlineAndGreeting(d);
       renderProgress(d);
+      renderPicker(d);
+      renderCoach(d);
       processTimeline(d);
       renderBeats();
     }catch(_){ /* never let a malformed tick break the stream */ }

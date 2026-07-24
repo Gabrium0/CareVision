@@ -195,6 +195,10 @@ def main():
     ap.add_argument("--listen", action="store_true",
                     help="enable the microphone listener (speech-to-text via "
                          "faster-whisper; pip install -r requirements-asr.txt)")
+    ap.add_argument("--type-input", action="store_true",
+                    help="answer the agent by typing on the companion page "
+                         "instead of speaking; loads no microphone or whisper "
+                         "and takes precedence over --listen")
     ap.add_argument("--detect-cough", action="store_true",
                     help="enable local microphone cough-episode detection without "
                          "requiring speech recognition")
@@ -328,7 +332,7 @@ def main():
         if not is_replay:
             from audio.microphone import MicrophoneProducer
             microphone = MicrophoneProducer(audio_bus)
-        if args.listen and not is_replay:
+        if args.listen and not is_replay and not args.type_input:
             from audio.stt import Listener
             voice_agent.listener = Listener(model_size=args.whisper_model,
                                             speaker=voice_agent.speaker, audio_bus=audio_bus)
@@ -354,6 +358,16 @@ def main():
     else:
         capabilities.set("microphone", "hardware", CapabilityStatus.UNCONFIGURED, "disabled")
         shared_signals.set("microphone_ready", False)
+
+    # A typed listener replaces any audio one: in a noisy room whisper invents
+    # utterances, and a demo that answers phantom speech is worse than mute.
+    typed_listener = None
+    if args.type_input:
+        from audio.typed import TypedListener
+        typed_listener = TypedListener()
+        voice_agent.listener = typed_listener
+        print("[agent] typed input attached — answer from the companion page")
+
     if args.assessment:
         WorkflowEngine.instance().start(args.assessment)
     elif args.demo:
@@ -365,8 +379,34 @@ def main():
     if args.webui:
         control = pipeline.camera.replay_control if is_replay else None
         primary_handler = pipeline.tracker.set_primary if args.enable_multi_person else None
+
+        def assessment_handler(action, protocol=None):
+            """Web hook mirroring the 't'/'a'/'d' hotkeys so the big-screen
+            /demo picker can start a guided assessment or the full circuit.
+            Raises ValueError on an unknown protocol (rendered as HTTP 400)."""
+            if action == "circuit":
+                return {"action": "circuit",
+                        "started": bool(voice_agent.start_demo_circuit())}
+            from assessments import PROTOCOLS
+            if not protocol or protocol not in PROTOCOLS:
+                raise ValueError("unknown protocol")
+            voice_agent.request_test(protocol)
+            return {"action": "start", "protocol": protocol, "started": True}
+
+        def say_handler(text):
+            """Web hook feeding a typed reply into the same corroboration path
+            as heard speech. Raises RuntimeError when the run has no typed
+            listener, ValueError on empty text (both rendered as HTTP 400)."""
+            if typed_listener is None:
+                raise RuntimeError("typed input is not enabled (use --type-input)")
+            if not typed_listener.push(text):
+                raise ValueError("empty reply")
+            return {"text": " ".join(str(text).split())[:400]}
+
         web = CompanionServer(port=args.webui_port, control_handler=control,
-                              primary_handler=primary_handler)
+                              primary_handler=primary_handler,
+                              assessment_handler=assessment_handler,
+                              say_handler=say_handler)
         web.start()
         web_publish_executor = ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="web-publish")
@@ -427,6 +467,9 @@ def main():
             )
             system["history_writer"] = HistoryStore.instance().diagnostics()
             system["runtime_resources"] = runtime_resource_diagnostics()
+            # Research telemetry: the flagged->asked->confirmed/denied funnel for
+            # the visual-prior -> gentle-question corroboration loop.
+            system["corroboration"] = voice_agent.corroboration.funnel()
             system["model_workers"] = {
                 module.name: module.diagnostics()
                 for module in pipeline.scheduler.modules

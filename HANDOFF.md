@@ -230,7 +230,24 @@ way._
 
 </details>
 
-### 4.2 Vitals / Skin beats never tick on `client_demo`  ← START HERE
+### 4.2 Vitals / Skin beats never tick on `client_demo`  ⚠️ NOT REPRODUCED (2026-07-23)
+
+**Update (2026-07-23):** A deterministic offline harness that replays the exact
+`client_demo` events through the full enabled module set + aggregator + `to_payload()`
+shows the **opposite** of the symptom below: `heart_rate/bpm`, `facial_asymmetry/regional`
+and `skin_color/flushing` all reach `payload.signals` (with their messages) at t≈3/11/27
+and persist. So the Vitals and Skin families' modules DO appear in signals, and the
+`/demo` beat checklist (demo.html:288 adds a family when any signal's module matches)
+should tick them. The live vitals modules (`spo2`/`respiration`/`sweating`/`bruise`/
+`rash`) produce no raw results on synthetic frames, so they don't clobber the replay
+events. Likely the original observation was an older build or an SSE/timing artifact on
+`/demo`, not a backend defect — **do not implement a backend filter/emit fix without
+first reproducing the missing beats against a live `/demo` SSE stream.** Repro harness:
+`scratchpad/repro_b42.py` (session 8f9d0175). Next step if pursued: watch the live
+`/demo` page over a full `replay:client_demo` reel and confirm whether Vitals/Skin
+actually stay `○`; if they do, the bug is in the demo.html SSE/beat path, not the payload.
+
+Original report (unverified against current build):
 
 `config/replay_scenarios.json` defines `heart_rate` (t=2), `facial_asymmetry`
 (t=10) and `skin_color` (t=26) in the `client_demo` scenario, but across three

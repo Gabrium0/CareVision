@@ -8,7 +8,8 @@ screening system, not a medical device.
 from __future__ import annotations
 
 import core.registry as registry
-from output.dashboard import _MODULE_LABELS, module_label
+from output.dashboard import (_MODULE_LABELS, _launchable_assessments,
+                              module_label)
 
 _CLINICAL_WORDS = ("diagnos", "disease", "detects stroke")
 
@@ -46,3 +47,18 @@ def test_no_clinical_claim_words_in_labels_or_blurbs():
         text = f"{label} {blurb}".lower()
         for word in _CLINICAL_WORDS:
             assert word not in text, f"curated entry contains clinical claim {word!r}: {text!r}"
+
+
+def test_assessment_picker_labels_are_guest_safe_and_non_clinical():
+    """The /demo 'try this' picker shows these to a client on a TV: they must
+    name an activity, never a clinical test or its result, and never leak a
+    raw slug."""
+    roster = _launchable_assessments()
+    assert roster, "expected at least one launchable assessment"
+    for entry in roster:
+        label, blurb = entry["label"], entry["blurb"]
+        assert label and "_" not in label, f"bad picker label: {label!r}"
+        assert label != entry["protocol"], f"{entry['protocol']} shows its raw slug"
+        text = f"{label} {blurb}".lower()
+        for word in _CLINICAL_WORDS:
+            assert word not in text, f"picker entry has clinical claim {word!r}: {text!r}"

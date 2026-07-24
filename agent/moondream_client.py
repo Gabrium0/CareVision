@@ -248,6 +248,31 @@ class MoondreamClient:
         word = text.strip().lower().split(maxsplit=1)[0].strip(".,:;!?")
         return word if word in {"confirmed", "denied", "unclear"} else None
 
+    def select_topic(self, candidates: list[tuple[str, str]],
+                     context: str) -> str | None:
+        """Pick which flagged check-in topic feels most natural to raise now.
+
+        `candidates` is [(topic_id, gentle_question), ...] — all already
+        vetted, non-clinical questions. Returns exactly one offered topic id,
+        or None (the caller then falls back to deterministic ordering). The
+        model can only choose among the ids it is given; it cannot invent one.
+        """
+        if not candidates:
+            return None
+        ids = {tid for tid, _ in candidates}
+        listing = "\n".join(f"- {tid}: {question}" for tid, question in candidates)
+        prompt = (
+            f"{_PERSONA}\n\nYou may gently raise at most one check-in now. "
+            f"Recent context: {context}\n\nCandidate topics:\n{listing}\n\n"
+            "Reply with exactly one topic id from the list that fits the moment "
+            "most naturally, or the word none. Answer with only the id or none."
+        )
+        text = self._complete(prompt, "classification")
+        if text is None:
+            return None
+        word = text.strip().lower().split(maxsplit=1)[0].strip(".,:;!?")
+        return word if word in ids else None
+
     def generate(self, intent: str, context: str, detail: str = "") -> str | None:
         """Generate one short spoken line, or None for the local template path."""
         prompt = (f"{_PERSONA}\n\nWhat you know right now: {context}\n\n"

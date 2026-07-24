@@ -109,6 +109,40 @@ _MODULE_LABELS = {
     "wandering": ("Pacing", "Watches for repeated pacing or wandering"),
 }
 
+# Guest-facing (label, blurb) for the guided assessments offered in the /demo
+# "try this" picker. Observational framing only: each names an activity the
+# person performs, never a clinical test or its result (§7 of HANDOFF). The
+# blurb doubles as the on-screen "what you'll do" hint. Any protocol without a
+# curated entry falls back to its humanized slug via _launchable_assessments().
+_PROTOCOL_LABELS = {
+    "facial_movement":  ("Face check", "Smile, raise your eyebrows, then close both eyes"),
+    "arm_drift":        ("Arm hold", "Hold both arms out in front and keep them still"),
+    "balance":          ("Balance", "Stand still for a few seconds near safe support"),
+    "sit_to_stand":     ("Sit to stand", "Stand up and sit down a few times at your own pace"),
+    "timed_up_and_go":  ("Up and go", "Stand, walk to the marker, turn, and come back"),
+    "finger_tapping":   ("Finger taps", "Tap finger and thumb together as evenly as you can"),
+    "guided_gait":      ("Walk across", "Walk across the view, turn, and return"),
+    "read_aloud":       ("Read aloud", "Read a short sentence aloud at your normal pace"),
+    "guided_breathing": ("Breathing", "Breathe normally while the rhythm is observed"),
+}
+
+
+def _launchable_assessments() -> list[dict]:
+    """Guest-safe roster of protocols the /demo picker can start, sorted by
+    label. Mirrors assessments.PROTOCOLS so the picker never drifts out of
+    sync with what the WorkflowEngine can actually run."""
+    try:
+        from assessments import PROTOCOLS
+    except Exception:
+        return []
+    out = []
+    for name in PROTOCOLS:
+        label, blurb = _PROTOCOL_LABELS.get(name, (_humanize_slug(name), ""))
+        out.append({"protocol": name, "label": label, "blurb": blurb})
+    out.sort(key=lambda a: a["label"])
+    return out
+
+
 # Modules that exist for plumbing rather than observation. They still appear
 # in the roster, but must never win the guest-facing headline or moment card.
 INTERNAL_MODULES = frozenset({"showcase", "replay_events"})
@@ -476,4 +510,5 @@ def to_payload(snapshot, fps: float = 0.0, greeting: str | None = None,
         "system": system or {},
         "modules": modules_list,
         "module_counts": module_counts,
+        "assessments": _launchable_assessments(),
     }

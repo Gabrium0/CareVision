@@ -87,7 +87,8 @@ class UtteranceBus:
 
 
 def _make_handler(bus: UtteranceBus, data_bus: DataBus, control_handler=None,
-                  primary_handler=None):
+                  primary_handler=None, assessment_handler=None,
+                  say_handler=None):
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
 
@@ -147,12 +148,32 @@ def _make_handler(bus: UtteranceBus, data_bus: DataBus, control_handler=None,
         def do_POST(self):
             """Accept a narrow local replay-control API; no other mutation is exposed."""
             path = urlparse(self.path).path
-            if path not in ("/replay-control", "/primary-control"):
+            if path not in ("/replay-control", "/primary-control",
+                            "/assessment-control", "/say-control"):
                 self._send(code=404, body=b"not found")
                 return
             try:
                 length = min(2048, int(self.headers.get("Content-Length", "0")))
                 request = json.loads(self.rfile.read(length).decode("utf-8"))
+                if path == "/assessment-control":
+                    if assessment_handler is None:
+                        raise RuntimeError("guided assessments are not available")
+                    action = str(request.get("action", ""))
+                    if action not in ("start", "circuit"):
+                        raise ValueError("unsupported action")
+                    protocol = request.get("protocol")
+                    result = assessment_handler(
+                        action, str(protocol) if protocol is not None else None)
+                    self._send(ctype="application/json",
+                               body=json.dumps({"ok": True, "assessment": result}).encode())
+                    return
+                if path == "/say-control":
+                    if say_handler is None:
+                        raise RuntimeError("typed input is not enabled")
+                    result = say_handler(request.get("text", ""))
+                    self._send(ctype="application/json",
+                               body=json.dumps({"ok": True, "said": result}).encode())
+                    return
                 if path == "/primary-control":
                     if primary_handler is None:
                         raise RuntimeError("anonymous tracking is not enabled")
@@ -248,7 +269,8 @@ class CompanionServer:
     """Local web server: companion text at / and full telemetry at /data."""
     def __init__(self, port: int = 8770, host: str = "0.0.0.0",
                  data_hz: float = 2.0, control_handler=None,
-                 primary_handler=None):
+                 primary_handler=None, assessment_handler=None,
+                 say_handler=None):
         self.port = port
         self.host = host
         self.bus = UtteranceBus()
@@ -259,13 +281,17 @@ class CompanionServer:
         self._thread: threading.Thread | None = None
         self.control_handler = control_handler
         self.primary_handler = primary_handler
+        self.assessment_handler = assessment_handler
+        self.say_handler = say_handler
 
     def start(self) -> None:
         """Start the HTTP server on a background daemon thread."""
         self._httpd = QuietThreadingHTTPServer((self.host, self.port),
                                                _make_handler(self.bus, self.data_bus,
                                                              self.control_handler,
-                                                             self.primary_handler))
+                                                             self.primary_handler,
+                                                             self.assessment_handler,
+                                                             self.say_handler))
         self._httpd.daemon_threads = True
         self._thread = threading.Thread(target=self._httpd.serve_forever,
                                         daemon=True)
