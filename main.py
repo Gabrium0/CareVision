@@ -393,6 +393,22 @@ def main():
             voice_agent.request_test(protocol)
             return {"action": "start", "protocol": protocol, "started": True}
 
+        def module_handler(action, target=None):
+            """Web hook for the /modules console, mirroring the 't'/'a'/'d'
+            hotkeys so a detector's on-demand action can be started from a
+            phone. Raises ValueError on an unknown action or target (rendered
+            as HTTP 400); passive modules simply expose no trigger."""
+            if action == "circuit":
+                return {"action": "circuit",
+                        "started": bool(voice_agent.start_demo_circuit())}
+            if action != "test":
+                raise ValueError("unsupported action")
+            from assessments import PROTOCOLS
+            if target not in set(PROTOCOLS) | {"hold_still", "arm_check"}:
+                raise ValueError("unknown test")
+            voice_agent.request_test(target)
+            return {"action": "test", "target": target, "started": True}
+
         def say_handler(text):
             """Web hook feeding a typed reply into the same corroboration path
             as heard speech. Raises RuntimeError when the run has no typed
@@ -406,7 +422,8 @@ def main():
         web = CompanionServer(port=args.webui_port, control_handler=control,
                               primary_handler=primary_handler,
                               assessment_handler=assessment_handler,
-                              say_handler=say_handler)
+                              say_handler=say_handler,
+                              module_handler=module_handler)
         web.start()
         web_publish_executor = ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="web-publish")
@@ -436,8 +453,13 @@ def main():
     analysis_state_lock = threading.Lock()
     analysis_state = {"ctx": None, "snapshot": [], "reasoning": None}
 
-    def system_snapshot(private: bool = False, results=None, performance=None):
+    def system_snapshot(private: bool = False, results=None, performance=None,
+                        features=None):
         system = {
+            # Which frame features the scheduler could satisfy this frame, so
+            # /modules can say *why* a detector is idle rather than showing
+            # an empty panel. Mirrors Scheduler._requirements_met.
+            "features": features or {},
             "timeline": EventStore.instance().recent(60),
             "capabilities": capabilities.snapshot(),
             "workflows": WorkflowEngine.instance().snapshot(),
@@ -579,10 +601,17 @@ def main():
                 greeting = last_greeting["text"]
                 reasoning = voice_agent.reasoning_card()
                 performance = pipeline.runtime_metrics.snapshot()
+                # Read off the settled context here, not in the scheduler's
+                # hot loop; these are exactly the tokens `requires` gates on.
+                frame_features = {"face": ctx.face is not None,
+                                  "pose": ctx.pose is not None,
+                                  "person": bool(ctx.person_present),
+                                  "depth": ctx.depth is not None}
                 def publish_data_snapshot():
                     web.publish_data(
                         stable_snapshot, ctx.fps, greeting, reasoning=reasoning,
-                        system=system_snapshot(), performance=performance)
+                        system=system_snapshot(features=frame_features),
+                        performance=performance)
                 web_publish_state["future"] = web_publish_executor.submit(
                     publish_data_snapshot)
                 web_publish_state["last"] = ctx.timestamp

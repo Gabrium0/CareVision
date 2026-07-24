@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Care Monitor — Modules</title>
+<style>
+  :root { --bg:#0b0d10; --panel:#14171b; --fg:#f2f5f7; --dim:#8a929b; --line:#262b30;
+    --info:#c8ccd0; --notice:#39c6ff; --warning:#ff9e40; --alert:#ff5a5a; --accent:#7fd0ff;
+    --good:#57d977; --bad:#ff5a5a; --tier-high:#3fbf6a; --tier-med:#e0a030; --tier-low:#b06868;
+    --tier-na:#5b6169; }
+  * { box-sizing:border-box; -webkit-text-size-adjust:100%; }
+  body { margin:0; background:var(--bg); color:var(--fg); font-size:17px;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif; }
+  .wrap { max-width:1400px; margin:0 auto; padding:20px 18px 60px; }
+  header { display:flex; align-items:baseline; justify-content:space-between; gap:12px;
+    flex-wrap:wrap; border-bottom:1px solid var(--line); padding-bottom:14px; margin-bottom:16px; }
+  header h1 { font-size:26px; margin:0; font-weight:800; letter-spacing:.2px; }
+  header .meta { color:var(--dim); font-size:15px; }
+  .dot { width:11px; height:11px; border-radius:50%; background:var(--dim); display:inline-block; margin-right:8px; }
+  .live .dot { background:var(--good); box-shadow:0 0 10px var(--good); }
+  .statline { color:var(--dim); font-size:16px; margin:0 0 18px; }
+  .statline b { color:var(--fg); font-weight:700; }
+
+  /* module button grid */
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:10px; margin-bottom:20px; }
+  .mbtn { text-align:left; border:1px solid var(--line); border-radius:10px; padding:10px 12px;
+    background:var(--panel); color:var(--fg); cursor:pointer; font:inherit; min-height:64px;
+    display:flex; flex-direction:column; gap:6px; transition:border-color .15s,background .15s; }
+  .mbtn:hover { border-color:var(--accent); }
+  .mbtn.sel { border-color:var(--accent); background:#1c2b33; box-shadow:0 0 0 1px var(--accent) inset; }
+  .mbtn.dim { opacity:.45; }
+  .mrow1 { display:flex; align-items:center; justify-content:space-between; gap:6px; }
+  .mlabel { font-weight:700; font-size:15px; line-height:1.25; }
+  .mliverow { display:flex; align-items:center; gap:8px; }
+  .livedot { width:8px; height:8px; border-radius:50%; background:var(--line); flex:0 0 auto; }
+  .livedot.on { background:var(--good); box-shadow:0 0 6px var(--good); }
+  .tier { font-size:10px; font-weight:800; letter-spacing:.4px; text-transform:uppercase;
+    border-radius:5px; padding:2px 6px; flex:0 0 auto; color:#0b0d10; }
+  .tier.t-high { background:var(--tier-high); }
+  .tier.t-medium { background:var(--tier-med); }
+  .tier.t-low { background:var(--tier-low); color:#f2f5f7; }
+  .tier.t-na, .tier.t-unrated { background:var(--tier-na); color:#f2f5f7; }
+  .empty { color:var(--dim); font-style:italic; }
+
+  /* detail panel */
+  #detail { background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    padding:20px 22px; }
+  #detail.empty-panel { color:var(--dim); font-style:italic; }
+  .dhead { display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+  .dhead h2 { font-size:22px; margin:0; font-weight:800; }
+  .dblurb { color:var(--dim); font-size:15px; margin:6px 0 16px; }
+  .drow { margin-bottom:16px; }
+  .drow .dlabel { font-size:12px; letter-spacing:.5px; text-transform:uppercase; color:var(--accent);
+    margin-bottom:6px; }
+  .reliability-note { font-size:15px; line-height:1.4; }
+  .chips { display:flex; flex-wrap:wrap; gap:8px; }
+  .chip { border-radius:16px; padding:4px 12px; font-size:13px; border:1px solid var(--line);
+    background:#191d21; color:var(--dim); }
+  .chip.ok { border-color:var(--good); color:var(--good); background:#12271a; }
+  .chip.missing { border-color:var(--bad); color:#ff8a8a; background:#331414; }
+  .badge-consent { display:inline-block; border-radius:6px; padding:3px 10px; font-size:13px;
+    background:#332412; color:var(--warning); border:1px solid var(--warning); }
+  .trigbtn { background:#24313a; color:var(--fg); border:1px solid var(--accent);
+    border-radius:8px; padding:10px 18px; font-size:15px; cursor:pointer; font:inherit; }
+  .trigbtn:hover:not(:disabled) { background:#2a3a44; }
+  .trigbtn:disabled { opacity:.5; cursor:default; }
+  .trigresult { margin-top:8px; font-size:14px; }
+  .trigresult.ok { color:var(--good); }
+  .trigresult.err { color:var(--bad); }
+  .passive-note { color:var(--dim); font-size:14px; font-style:italic; }
+
+  /* live signal list */
+  .siglist .sig { display:flex; gap:10px; align-items:center; padding:8px 0;
+    border-bottom:1px solid #1c2024; font-size:15px; flex-wrap:wrap; }
+  .siglist .sig .txt { flex:1 1 220px; }
+  .siglist .sig .meta { color:var(--dim); font-size:13px; white-space:nowrap; }
+  .s-info{color:var(--info)} .s-notice{color:var(--notice)} .s-warning{color:var(--warning)} .s-alert{color:var(--alert);font-weight:700}
+  .state-msg { color:var(--dim); font-size:15px; line-height:1.4; }
+
+  @media (max-width:640px){
+    header h1 { font-size:22px; }
+    .grid { grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); }
+    #detail { padding:16px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Modules Console</h1>
+    <span class="meta"><span id="conn"><span class="dot"></span><span id="cl">connecting…</span></span>
+      &middot; non-diagnostic</span>
+  </header>
+  <div id="statline" class="statline">warming up&hellip;</div>
+
+  <div id="grid" class="grid"><p class="empty">warming up&hellip;</p></div>
+
+  <div id="detail" class="empty-panel">Pick a detector above to see what it needs and what it is seeing right now.</div>
+</div>
+<script>
+(function(){
+  const connEl = document.getElementById('conn'), clEl = document.getElementById('cl');
+  const statlineEl = document.getElementById('statline');
+  const gridEl = document.getElementById('grid');
+  const detailEl = document.getElementById('detail');
+
+  // Feature requirement names in display order.
+  const FEATURE_ORDER = ['face', 'pose', 'person', 'depth'];
+  const FEATURE_LABEL = { face: 'face', pose: 'pose', person: 'person', depth: 'depth' };
+
+  // Currently selected module slug. Kept stable across SSE frames per spec
+  // point 7 — selection only changes on a user click.
+  let selected = null;
+  // In-flight trigger POST guard, keyed by module slug, so a slow request
+  // can't be double-fired and so the button re-enables correctly.
+  let triggerBusy = null;
+  let lastTriggerResult = null; // {module, ok, text}
+
+  // Last-seen full payload, re-rendered whenever selection changes.
+  let lastPayload = null;
+
+  function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+  function conn(on){ connEl.classList.toggle('live', on); clEl.textContent = on?'connected':'connecting…'; }
+
+  function tierClass(tier){
+    const t = String(tier||'').toLowerCase();
+    if(t === 'high' || t === 'medium' || t === 'low') return 't-' + t;
+    if(t === 'n/a') return 't-na';
+    return 't-unrated';
+  }
+  function tierLabel(tier){
+    if(!tier) return 'Unrated';
+    if(tier === 'N/A') return 'N/A';
+    return String(tier);
+  }
+
+  function cadenceText(interval){
+    const n = Number(interval);
+    if(!n || n <= 0) return 'every frame';
+    // Trim trailing .0 for whole-second intervals, keep one decimal otherwise.
+    const s = Number.isInteger(n) ? String(n) : n.toFixed(1);
+    return `at most once every ${s}s`;
+  }
+
+  function confPct(c){
+    if(c==null || isNaN(c)) return null;
+    return Math.max(0, Math.min(100, Math.round(c*100)));
+  }
+
+  // Build a display-ready roster from payload.modules, defaulting anything
+  // absent so a partial backend response never throws.
+  function roster(d){
+    const modules = (d && Array.isArray(d.modules)) ? d.modules : [];
+    return modules.filter(m => m && m.module).map(m => ({
+      module: String(m.module),
+      label: m.label || m.module,
+      blurb: m.blurb || '',
+      running: m.running !== false,
+      requires: Array.isArray(m.requires) ? m.requires : [],
+      interval: (typeof m.interval === 'number') ? m.interval : 0,
+      consent: !!m.consent,
+      internal: !!m.internal,
+      reliability: (m.reliability && typeof m.reliability === 'object') ? m.reliability : null,
+      trigger: (m.trigger && typeof m.trigger === 'object') ? m.trigger : null,
+    }));
+  }
+
+  function signalsFor(d, moduleSlug){
+    const signals = (d && Array.isArray(d.signals)) ? d.signals : [];
+    return signals.filter(s => s && s.module === moduleSlug);
+  }
+
+  function featuresOf(d){
+    const f = (d && d.system && d.system.features && typeof d.system.features === 'object')
+      ? d.system.features : {};
+    return f;
+  }
+
+  function unmetRequires(mod, features){
+    return (mod.requires || []).filter(r => !features[r]);
+  }
+
+  function renderStatline(d){
+    const counts = (d && d.module_counts) || {};
+    const registered = (typeof counts.registered === 'number') ? counts.registered : null;
+    const running = (typeof counts.running === 'number') ? counts.running : null;
+    if(registered == null && running == null){
+      statlineEl.textContent = 'warming up…';
+      return;
+    }
+    statlineEl.innerHTML = `<b>${esc(running ?? '–')}</b> of <b>${esc(registered ?? '–')}</b> detectors running`;
+  }
+
+  function renderGrid(d){
+    const mods = roster(d);
+    if(!mods.length){
+      gridEl.innerHTML = '<p class="empty">warming up…</p>';
+      return;
+    }
+    // De-emphasised (internal or not running) modules sort after the rest;
+    // within each group, sort by label.
+    const list = mods.slice().sort((a, b) => {
+      const da = (a.internal || !a.running) ? 1 : 0;
+      const db = (b.internal || !b.running) ? 1 : 0;
+      if(da !== db) return da - db;
+      return a.label.localeCompare(b.label);
+    });
+    gridEl.innerHTML = list.map(m => {
+      const cls = ['mbtn'];
+      if(m.internal || !m.running) cls.push('dim');
+      if(m.module === selected) cls.push('sel');
+      const hasSignals = signalsFor(d, m.module).length > 0;
+      const tier = m.reliability ? m.reliability.tier : null;
+      return `<button type="button" class="${cls.join(' ')}" data-module="${esc(m.module)}">` +
+        `<div class="mrow1"><span class="mlabel">${esc(m.label)}</span>` +
+        `<span class="tier ${tierClass(tier)}">${esc(tierLabel(tier))}</span></div>` +
+        `<div class="mliverow"><span class="livedot${hasSignals?' on':''}"></span>` +
+        `<span style="color:var(--dim);font-size:12px;">${hasSignals?'live data':'quiet'}</span></div>` +
+        `</button>`;
+    }).join('');
+  }
+
+  function severityBar(sig){
+    const sev = sig.severity || 'info';
+    const cpct = confPct(sig.conf);
+    const parts = [];
+    if(cpct != null) parts.push(`conf ${cpct}%`);
+    if(sig.quality != null && !isNaN(sig.quality)) parts.push(`quality ${Math.round(sig.quality*100)}%`);
+    if(sig.key) parts.push(esc(sig.key));
+    return `<div class="sig"><span class="txt s-${esc(sev)}">${esc(sig.message||'(no message)')}</span>` +
+      `<span class="meta">${parts.join(' &middot; ')}</span></div>`;
+  }
+
+  function renderTriggerArea(mod){
+    if(!mod.trigger){
+      return '<div class="passive-note">Passive — fires on its own when the frame allows</div>';
+    }
+    const t = mod.trigger;
+    const busy = triggerBusy === mod.module;
+    const label = t.label || t.action || 'Run';
+    let resultHtml = '';
+    if(lastTriggerResult && lastTriggerResult.module === mod.module){
+      resultHtml = `<div class="trigresult ${lastTriggerResult.ok ? 'ok' : 'err'}">${esc(lastTriggerResult.text)}</div>`;
+    }
+    return `<button type="button" class="trigbtn" id="trigBtn" ${busy?'disabled':''}>` +
+      `${esc(busy ? 'Running…' : label)}</button>${resultHtml}`;
+  }
+
+  // The most important part per spec: never render a blank panel. Exactly
+  // one of these four states is shown, in priority order.
+  function stateMessage(mod, features, signals){
+    const missing = unmetRequires(mod, features);
+    if(missing.length){
+      const names = missing.map(m => FEATURE_LABEL[m] || m).join(', ');
+      return `Waiting on ${esc(names)} — step into view`;
+    }
+    if(!mod.running){
+      return 'Not enabled in config/modules.yaml';
+    }
+    if(!signals.length){
+      const n = Number(mod.interval);
+      const extra = (n && n > 0) ? ` It may take up to ${n}s to report given its cadence.` : '';
+      return `Running; nothing to report on this frame.${extra}`;
+    }
+    return null; // signals present — the signal list itself is the content
+  }
+
+  function renderDetail(d){
+    if(!selected){
+      detailEl.className = 'empty-panel';
+      detailEl.textContent = 'Pick a detector above to see what it needs and what it is seeing right now.';
+      return;
+    }
+    const mods = roster(d);
+    const mod = mods.find(m => m.module === selected);
+    if(!mod){
+      // Selected module vanished from the roster (e.g. stale slug) — explain
+      // rather than go blank.
+      detailEl.className = 'empty-panel';
+      detailEl.textContent = 'This detector is no longer reporting in the current roster.';
+      return;
+    }
+    detailEl.className = '';
+    const features = featuresOf(d);
+    const signals = signalsFor(d, mod.module);
+    const rel = mod.reliability;
+
+    const reqChips = mod.requires.length
+      ? mod.requires.map(r => {
+          const ok = !!features[r];
+          return `<span class="chip ${ok?'ok':'missing'}">${esc(FEATURE_LABEL[r] || r)}${ok?'':' — missing'}</span>`;
+        }).join('')
+      : '<span class="chip ok">Runs on every frame</span>';
+
+    const relHtml = rel
+      ? `<span class="tier ${tierClass(rel.tier)}" style="margin-right:8px;">${esc(tierLabel(rel.tier))}</span>` +
+        `<span class="reliability-note">${esc(rel.note || 'No further detail provided.')}</span>`
+      : `<span class="tier t-unrated">Unrated</span> <span class="reliability-note">No reliability rating recorded for this module.</span>`;
+
+    const consentHtml = mod.consent ? '<span class="badge-consent">Needs consent</span>' : '';
+
+    const stateMsg = stateMessage(mod, features, signals);
+    const siglistHtml = signals.length
+      ? `<div class="siglist">${signals.map(severityBar).join('')}</div>`
+      : `<div class="state-msg">${stateMsg}</div>`;
+    // If there ARE signals but a requirement is also unmet (stale data from a
+    // moment ago), still surface the requirement note above the list.
+    const topNote = (signals.length && stateMessage(mod, features, [])) // recompute treating as if empty, to catch requires/running gaps
+      ? `<div class="state-msg" style="margin-bottom:8px;">${stateMessage(mod, features, [])}</div>` : '';
+
+    detailEl.innerHTML =
+      `<div class="dhead"><h2>${esc(mod.label)}</h2>${mod.internal ? '<span class="chip">internal / plumbing</span>' : ''}</div>` +
+      `<div class="dblurb">${esc(mod.blurb || 'No description provided.')}</div>` +
+      `<div class="drow"><div class="dlabel">Reliability</div>${relHtml}</div>` +
+      `<div class="drow"><div class="dlabel">Requires</div><div class="chips">${reqChips}</div></div>` +
+      `<div class="drow"><div class="dlabel">Cadence</div><span class="reliability-note">${esc(cadenceText(mod.interval))}</span></div>` +
+      (consentHtml ? `<div class="drow">${consentHtml}</div>` : '') +
+      `<div class="drow"><div class="dlabel">Trigger</div>${renderTriggerArea(mod)}</div>` +
+      `<div class="drow"><div class="dlabel">Live data</div>${signals.length ? '' : topNote}${siglistHtml}</div>`;
+
+    if(mod.trigger){
+      const btn = document.getElementById('trigBtn');
+      if(btn) btn.addEventListener('click', () => fireTrigger(mod));
+    }
+  }
+
+  async function fireTrigger(mod){
+    if(triggerBusy) return;
+    triggerBusy = mod.module;
+    renderDetail(lastPayload);
+    try{
+      const resp = await fetch('/module-control', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({action: mod.trigger.action, target: mod.trigger.target}),
+      });
+      let body = null;
+      try{ body = await resp.json(); }catch(_){}
+      if(resp.ok && body && body.ok){
+        lastTriggerResult = { module: mod.module, ok: true, text: 'Triggered.' };
+      } else {
+        const errText = (body && body.error) ? body.error : ('HTTP ' + resp.status);
+        lastTriggerResult = { module: mod.module, ok: false, text: errText };
+      }
+    }catch(err){
+      lastTriggerResult = { module: mod.module, ok: false, text: 'Request failed — is the server running?' };
+    }
+    triggerBusy = null;
+    renderDetail(lastPayload);
+  }
+
+  gridEl.addEventListener('click', (ev) => {
+    const btn = ev.target.closest('.mbtn');
+    if(!btn) return;
+    const slug = btn.getAttribute('data-module');
+    selected = (selected === slug) ? selected : slug; // click selects; re-click keeps it selected
+    lastTriggerResult = null; // clear stale trigger feedback from a previous module
+    render(lastPayload);
+  });
+
+  function render(d){
+    if(!d) return;
+    lastPayload = d;
+    try{
+      renderStatline(d);
+      renderGrid(d);
+      renderDetail(d);
+    }catch(_){ /* never let a malformed frame break the stream */ }
+  }
+
+  function startSSE(){
+    try{
+      const es = new EventSource('/data-events');
+      es.onopen = ()=>conn(true);
+      es.onmessage = e=>{ conn(true); try{ render(JSON.parse(e.data)); }catch(_){} };
+      es.onerror = ()=>conn(false);
+    }catch(_){ startPoll(); }
+  }
+  function startPoll(){
+    setInterval(async ()=>{
+      try{ const r = await fetch('/data-latest',{cache:'no-store'}); const d = await r.json();
+        conn(true); render(d.payload); }catch(_){ conn(false); }
+    }, 1000);
+  }
+
+  // Initial paint from /data-latest so a freshly-opened page isn't blank
+  // while the first SSE frame is in flight.
+  (async function initial(){
+    try{
+      const r = await fetch('/data-latest', {cache:'no-store'});
+      const d = await r.json();
+      if(d && d.payload) render(d.payload);
+    }catch(_){}
+  })();
+
+  if(window.EventSource) startSSE(); else startPoll();
+})();
+</script>
+</body>
+</html>

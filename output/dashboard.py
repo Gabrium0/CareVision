@@ -127,6 +127,86 @@ _PROTOCOL_LABELS = {
 }
 
 
+# Detectors with a genuine on-demand action, mirroring the main.py hotkeys
+# ('t' -> request_test(), 'a' -> request_test("arm_check"), 'd' -> circuit).
+# Everything absent here is passive: it fires when the frame allows, and the
+# /modules console must not offer a button that would do nothing.
+_MODULE_TRIGGERS = {
+    "tremor":       {"action": "test", "target": "hold_still",
+                     "label": "Hold still"},
+    "arm_skin":     {"action": "test", "target": "arm_check",
+                     "label": "Arm skin check"},
+    "skin_vision":  {"action": "test", "target": "arm_check",
+                     "label": "Arm skin check"},
+    "guided_assessments": {"action": "circuit", "target": None,
+                           "label": "Run demo circuit"},
+}
+
+# Honest expectation-setting for a client audience: how far a given signal can
+# actually be trusted, and why. Sourced from each module's own documented
+# limits, not from wishful thinking. Absent means unrated, not good.
+_MODULE_RELIABILITY = {
+    "presence":         ("HIGH", "Straightforward person-in-view detection"),
+    "weather":          ("HIGH", "API passthrough, not a vision heuristic"),
+    "gesture":          ("HIGH", "Mature hand-landmark model for static labels"),
+    "drowsiness":       ("HIGH", "Eye closure and PERCLOS with a frontal face"),
+    "heart_rate":       ("MEDIUM", "Sensitive to lighting, motion and skin tone"),
+    "respiration":      ("MEDIUM", "Shoulder motion; stronger with depth"),
+    "clothing":         ("MEDIUM", "Angle and occlusion sensitive"),
+    "clothing_advice":  ("MEDIUM", "Only as good as the clothing and weather inputs"),
+    "facial_asymmetry": ("MEDIUM", "Landmark baselines; stronger with depth"),
+    "tremor":           ("MEDIUM", "Passive is fair; the hold-still test is far stronger"),
+    "gait":             ("MEDIUM", "Needs legs visible in a side or front view"),
+    "balance":          ("MEDIUM", "Sway from pose; needs a still stance"),
+    "eye_movement":     ("MEDIUM", "Gaze is solid; nystagmus is frame-rate limited"),
+    "yawn":             ("MEDIUM", "Dependable for the gesture itself"),
+    "head_nod":         ("MEDIUM", "Head pitch against a personal baseline"),
+    "fall":             ("MEDIUM", "Clear falls within view"),
+    "near_fall":        ("MEDIUM", "Stumble-and-recover cue; never alerts alone"),
+    "unresponsive":     ("MEDIUM", "A very still but well person can trigger it"),
+    "wandering":        ("MEDIUM", "Within a single camera view"),
+    "attention":        ("MEDIUM", "Eye contact and sustained engagement"),
+    "sneeze":           ("MEDIUM", "Misses sneezes turned away; counts are a lower bound"),
+    "face_touch":       ("MEDIUM", "Hand-to-face contact as a behavioural proxy"),
+    "activity_level":   ("MEDIUM", "A relative trend; needs history"),
+    "height_distance":  ("MEDIUM", "Distance is strong; height within a few cm"),
+    "age_estimation":   ("MEDIUM", "A coarse eight-bucket estimate at best"),
+    "emotion":          ("MEDIUM", "Backends vary; not validated for elder care"),
+    "scene_vision":     ("MEDIUM", "Opt-in cloud model; shape-validated only"),
+    "skin_color":       ("LOW", "Chroma heuristic; very lighting dependent"),
+    "rash":             ("LOW", "Colour and texture threshold heuristic"),
+    "arm_skin":         ("LOW", "Colour and texture heuristics on arm regions"),
+    "skin_vision":      ("LOW", "Off unless consent and an API key are given"),
+    "bruise":           ("LOW", "Colour patch heuristic"),
+    "eye_redness":      ("LOW", "Sclera colour heuristic"),
+    "sweating":         ("LOW", "Confounded by oily skin and lighting"),
+    "dry_lips":         ("LOW", "Lip texture heuristic"),
+    "facial_swelling":  ("LOW", "Weak on colour alone; stronger with depth"),
+    "bradykinesia":     ("LOW", "Arm speed during otherwise active periods"),
+    "masked_face":      ("LOW", "Longitudinal; needs minutes of history"),
+    "expressivity":     ("LOW", "The longitudinal comparison is the real signal"),
+    "pain":             ("LOW", "Grimace cues; a screening prompt only"),
+    "agitation":        ("LOW", "Erratic upper-body movement"),
+    "grooming":         ("LOW", "Needs weeks of history; a haircut also trips it"),
+    "body_estimate":    ("LOW", "Monocular and uncalibrated; explicitly not BMI"),
+    "spo2":             ("LOW", "Trend only, uncalibrated by default"),
+    "hazard_zones":     ("MEDIUM", "Only as good as the zones configured for the room"),
+    "multi_person":     ("MEDIUM", "Anonymous track assignment; carries no identity"),
+    "routine":          ("LOW", "An occupancy trend; makes no adherence claim"),
+    "guided_assessments": ("N/A", "Orchestrates guided protocols rather than observing"),
+    "replay_events":    ("N/A", "Replays scripted fixtures; not a live sensor"),
+}
+
+
+def _reliability(name: str) -> dict | None:
+    """Reliability tier and reason for one module, or None when unrated."""
+    entry = _MODULE_RELIABILITY.get(name)
+    if entry is None:
+        return None
+    tier, note = entry
+    return {"tier": tier, "note": note}
+
+
 def _launchable_assessments() -> list[dict]:
     """Guest-safe roster of protocols the /demo picker can start, sorted by
     label. Mirrors assessments.PROTOCOLS so the picker never drifts out of
@@ -487,10 +567,18 @@ def to_payload(snapshot, fps: float = 0.0, greeting: str | None = None,
         registered = {}
     enabled = set((system or {}).get("modules_enabled", []) if system else [])
     modules_list = []
-    for slug in registered:
+    for slug, cls in registered.items():
         label, blurb = module_label(slug)
+        # requires/interval/consent come straight off the registered class, so
+        # the /modules console can never drift from what the scheduler enforces.
         modules_list.append({"module": slug, "label": label, "blurb": blurb,
-                             "running": slug in enabled})
+                             "running": slug in enabled,
+                             "requires": list(getattr(cls, "requires", ()) or ()),
+                             "interval": round(float(getattr(cls, "interval", 0.0) or 0.0), 2),
+                             "consent": bool(getattr(cls, "consent", False)),
+                             "internal": slug in INTERNAL_MODULES,
+                             "reliability": _reliability(slug),
+                             "trigger": _MODULE_TRIGGERS.get(slug)})
     modules_list.sort(key=lambda m: m["label"])
     module_counts = {"registered": len(registered),
                      "running": sum(1 for m in modules_list if m["running"])}

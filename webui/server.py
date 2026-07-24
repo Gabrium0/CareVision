@@ -20,6 +20,7 @@ from webui._http import QuietThreadingHTTPServer
 _PAGE = Path(__file__).resolve().parent / "page.html"
 _DATA_PAGE = Path(__file__).resolve().parent / "data.html"
 _DEMO_PAGE = Path(__file__).resolve().parent / "demo.html"
+_MODULES_PAGE = Path(__file__).resolve().parent / "modules.html"
 
 
 class DataBus:
@@ -88,7 +89,7 @@ class UtteranceBus:
 
 def _make_handler(bus: UtteranceBus, data_bus: DataBus, control_handler=None,
                   primary_handler=None, assessment_handler=None,
-                  say_handler=None):
+                  say_handler=None, module_handler=None):
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
 
@@ -135,6 +136,12 @@ def _make_handler(bus: UtteranceBus, data_bus: DataBus, control_handler=None,
                 except OSError:
                     html = b"<h1>demo.html missing</h1>"
                 self._send(body=html)
+            elif path == "/modules":
+                try:
+                    html = _MODULES_PAGE.read_bytes()
+                except OSError:
+                    html = b"<h1>modules.html missing</h1>"
+                self._send(body=html)
             elif path == "/data-latest":
                 seq, payload = data_bus.current()
                 self._send(ctype="application/json",
@@ -149,7 +156,8 @@ def _make_handler(bus: UtteranceBus, data_bus: DataBus, control_handler=None,
             """Accept a narrow local replay-control API; no other mutation is exposed."""
             path = urlparse(self.path).path
             if path not in ("/replay-control", "/primary-control",
-                            "/assessment-control", "/say-control"):
+                            "/assessment-control", "/say-control",
+                            "/module-control"):
                 self._send(code=404, body=b"not found")
                 return
             try:
@@ -166,6 +174,16 @@ def _make_handler(bus: UtteranceBus, data_bus: DataBus, control_handler=None,
                         action, str(protocol) if protocol is not None else None)
                     self._send(ctype="application/json",
                                body=json.dumps({"ok": True, "assessment": result}).encode())
+                    return
+                if path == "/module-control":
+                    if module_handler is None:
+                        raise RuntimeError("module triggers are not available")
+                    target = request.get("target")
+                    result = module_handler(
+                        str(request.get("action", "")),
+                        str(target) if target is not None else None)
+                    self._send(ctype="application/json",
+                               body=json.dumps({"ok": True, "module": result}).encode())
                     return
                 if path == "/say-control":
                     if say_handler is None:
@@ -270,7 +288,7 @@ class CompanionServer:
     def __init__(self, port: int = 8770, host: str = "0.0.0.0",
                  data_hz: float = 2.0, control_handler=None,
                  primary_handler=None, assessment_handler=None,
-                 say_handler=None):
+                 say_handler=None, module_handler=None):
         self.port = port
         self.host = host
         self.bus = UtteranceBus()
@@ -283,6 +301,7 @@ class CompanionServer:
         self.primary_handler = primary_handler
         self.assessment_handler = assessment_handler
         self.say_handler = say_handler
+        self.module_handler = module_handler
 
     def start(self) -> None:
         """Start the HTTP server on a background daemon thread."""
@@ -291,7 +310,8 @@ class CompanionServer:
                                                              self.control_handler,
                                                              self.primary_handler,
                                                              self.assessment_handler,
-                                                             self.say_handler))
+                                                             self.say_handler,
+                                                             self.module_handler))
         self._httpd.daemon_threads = True
         self._thread = threading.Thread(target=self._httpd.serve_forever,
                                         daemon=True)
