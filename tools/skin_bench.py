@@ -10,7 +10,15 @@ Refusals are results, not failures: the schema validator rejects low-confidence
 or malformed responses on purpose, and an image the model declines to call is
 exactly the kind of limit worth showing alongside the successes.
 
+Two stages are available. `closeup` (default) screens for visible skin findings.
+`preliminary` additionally asks for the facial appearance cues -- lip dryness,
+forehead shine, eye redness and the rest -- that the live system routes onto
+individual detector cards; it is the only way to exercise those off-camera, and
+the only way to find out whether the model reliably answers every required cue
+field before a demo depends on it.
+
     python tools/skin_bench.py demo-images/ --out bench.html --embed-images
+    python tools/skin_bench.py faces/ --stage preliminary --out cues.html
 """
 from __future__ import annotations
 
@@ -32,8 +40,8 @@ if str(ROOT) not in sys.path:
 from agent.env import nvidia_api_key  # noqa: E402
 from integrations.nvidia_vlm import NvidiaVLMClient, NvidiaVLMError  # noqa: E402
 from modules.skin_vision import (  # noqa: E402
-    _SCHEMA_TEXT, _extract_json, _response_format, _schema_contract,
-    validate_analysis,
+    _FACIAL_LABELS, _SCHEMA_TEXT, _extract_json, _response_format,
+    _schema_contract, validate_analysis,
 )
 
 SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
@@ -42,35 +50,63 @@ MODEL = "meta/llama-3.2-11b-vision-instruct"
 
 # Mirrors SkinVision._prompt(stage="closeup"): a supplied condition photo is
 # precisely the "user-provided close-up" case.
-TASK = ("Inspect this user-provided close-up for visible skin changes. "
-        "Be conservative and non-diagnostic.")
-PROMPT = TASK + "\n\n" + _SCHEMA_TEXT + "\nJSON contract:\n" + _schema_contract("closeup")
+_CLOSEUP_TASK = ("Inspect this user-provided close-up for visible skin changes. "
+                 "Be conservative and non-diagnostic.")
+
+# The preliminary stage is the only one that asks for facial appearance cues
+# (SkinVision passes allow_facial_cues=stage=="preliminary"), so it is the only
+# way to exercise them off-camera. The module's own preliminary prompt describes
+# a multi-panel composite built from a live frame; a supplied portrait is a
+# single image, so the framing differs while the non-diagnostic constraints and
+# the schema stay identical to production.
+_PRELIMINARY_TASK = (
+    "Screen the person in this photograph for an obvious possible skin change. "
+    "This is a low-confidence screening step, not a diagnosis. "
+    "Name the body region precisely enough to request a close-up. "
+    "The single image is a photograph of a person. Use it for skin context and "
+    "report only directly visible facial appearance cues. Do not infer "
+    "tiredness, illness, allergies, dehydration, or any diagnosis.")
+
+_TASKS = {"closeup": _CLOSEUP_TASK, "preliminary": _PRELIMINARY_TASK}
 
 
-def screen(client: NvidiaVLMClient, path: Path, min_confidence: float) -> dict:
+def prompt_for(stage: str) -> str:
+    """Task text plus the provider-enforced contract, as the module does."""
+    return (_TASKS[stage] + "\n\n" + _SCHEMA_TEXT
+            + "\nJSON contract:\n" + _schema_contract(stage))
+
+
+def screen(client: NvidiaVLMClient, path: Path, min_confidence: float,
+           stage: str = "closeup", min_facial_confidence: float = 0.45) -> dict:
     """Return one row describing what the model made of a single image."""
     row = {"image": path.name, "status": "error", "error": None,
            "finding_present": None, "visible_features": [], "body_region": None,
            "possible_conditions": [], "image_quality": None, "confidence": None,
-           "latency_ms": None}
+           "cues": {}, "facial_confidence": None, "latency_ms": None}
     frame = cv2.imread(str(path))
     if frame is None:
         row["error"] = "unreadable image"
         return row
     started = time.monotonic()
     try:
-        content = client.request(PROMPT, [client.encode(frame)], max_tokens=700,
-                                 response_format=_response_format("closeup"))
+        content = client.request(prompt_for(stage), [client.encode(frame)],
+                                 max_tokens=700,
+                                 response_format=_response_format(stage))
     except NvidiaVLMError as exc:
         row["error"] = str(exc)
         return row
     finally:
         row["latency_ms"] = round((time.monotonic() - started) * 1000)
     try:
-        analysis = validate_analysis(_extract_json(content), min_confidence,
-                                     allow_facial_cues=False)
+        analysis = validate_analysis(
+            _extract_json(content), min_confidence,
+            allow_facial_cues=stage == "preliminary",
+            min_facial_confidence=min_facial_confidence,
+            face_crop_available=True)
     except (KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as exc:
         # The guardrail rejected it — a limit worth showing, not a crash.
+        # In preliminary mode this is also how a model that omits one of the
+        # required cue fields shows up, which is the point of running it.
         row["status"] = "rejected"
         row["error"] = f"{type(exc).__name__}: {exc}"
         return row
@@ -80,7 +116,18 @@ def screen(client: NvidiaVLMClient, path: Path, min_confidence: float) -> dict:
                possible_conditions=list(analysis.possible_conditions),
                image_quality=analysis.image_quality,
                confidence=round(float(analysis.confidence), 3))
+    if analysis.facial_cues is not None:
+        # observed() keeps negatives: "no dryness seen" is a real answer and
+        # the whole reason these cues reach the detector cards.
+        row["cues"] = analysis.facial_cues.observed()
+        row["facial_confidence"] = round(float(analysis.facial_cues.confidence), 3)
     return row
+
+
+def _cue_text(row: dict) -> str:
+    """Human-readable cue summary, e.g. 'lip dryness: mild'."""
+    return ", ".join(f"{_FACIAL_LABELS.get(cue, cue)}: {value}"
+                     for cue, value in row.get("cues", {}).items())
 
 
 def _verdict(row: dict) -> str:
@@ -92,6 +139,7 @@ def _verdict(row: dict) -> str:
 def render_html(rows: list[dict], embedded: dict[str, str]) -> str:
     """Build a self-contained report; readable across a room."""
     generated = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    cues_shown = any(row.get("cues") for row in rows)
     cells = []
     for row in rows:
         thumb = (f'<img src="{embedded[row["image"]]}" alt="">'
@@ -99,12 +147,14 @@ def render_html(rows: list[dict], embedded: dict[str, str]) -> str:
         detail = (", ".join(row["visible_features"]) or "—") if row["status"] == "ok" \
             else html.escape(str(row["error"] or ""))
         conditions = ", ".join(row["possible_conditions"]) or "—"
+        cue_cell = (f"<td>{html.escape(_cue_text(row) or '—')}</td>"
+                    if cues_shown else "")
         cells.append(f"""
       <tr class="{row['status']}">
         <td class="thumb">{thumb}</td>
         <td>{html.escape(row['image'])}</td>
         <td class="verdict">{html.escape(_verdict(row))}</td>
-        <td>{html.escape(detail)}</td>
+        <td>{html.escape(detail)}</td>{cue_cell}
         <td>{html.escape(conditions)}</td>
         <td>{'' if row['confidence'] is None else row['confidence']}</td>
       </tr>""")
@@ -128,7 +178,8 @@ def render_html(rows: list[dict], embedded: dict[str, str]) -> str:
 <p class="meta">{len(rows)} images &middot; generated {generated} &middot;
  non-diagnostic screening output; refusals and rejections are expected results.</p>
 <table><thead><tr><th></th><th>Image</th><th>Verdict</th>
- <th>Visible features / reason</th><th>Possible conditions</th><th>Conf.</th>
+ <th>Visible features / reason</th>{'<th>Facial cues</th>' if cues_shown else ''}
+ <th>Possible conditions</th><th>Conf.</th>
 </tr></thead><tbody>{''.join(cells)}
 </tbody></table></body></html>"""
 
@@ -141,8 +192,17 @@ def main() -> int:
     parser.add_argument("--out", type=Path, help="write an HTML report here")
     parser.add_argument("--json", type=Path, dest="json_out",
                         help="write raw rows here")
+    parser.add_argument("--stage", choices=("closeup", "preliminary"),
+                        default="closeup",
+                        help="closeup screens for skin findings; preliminary "
+                             "also asks for facial appearance cues (lip "
+                             "dryness, forehead shine, ...) and is the only "
+                             "way to exercise them without a camera")
     parser.add_argument("--min-confidence", type=float, default=0.35,
                         help="validator threshold, matching SkinVision (default 0.35)")
+    parser.add_argument("--min-facial-confidence", type=float, default=0.45,
+                        help="cue gate, matching SkinVision (default 0.45); "
+                             "below it every cue collapses to unclear")
     parser.add_argument("--embed-images", action="store_true",
                         help="inline the images in the HTML report; off by "
                              "default so no media is written into an artifact")
@@ -162,10 +222,12 @@ def main() -> int:
     client = NvidiaVLMClient(key, ENDPOINT, MODEL)
     rows, embedded = [], {}
     for path in paths:
-        row = screen(client, path, args.min_confidence)
+        row = screen(client, path, args.min_confidence, args.stage,
+                     args.min_facial_confidence)
         rows.append(row)
-        print(f"{row['image'][:38]:<40} {_verdict(row):<12}"
-              f" {(', '.join(row['visible_features']) or row['error'] or '')[:60]}")
+        detail = (_cue_text(row) if args.stage == "preliminary" and row["cues"]
+                  else ", ".join(row["visible_features"]) or row["error"] or "")
+        print(f"{row['image'][:38]:<40} {_verdict(row):<12} {detail[:60]}")
         if args.embed_images and args.out:
             thumb = cv2.imread(str(path))
             if thumb is not None:

@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import copy
 import json
+import math
 import queue
 import re
 import threading
@@ -27,7 +28,7 @@ import numpy as np
 from agent.env import nvidia_api_key
 from core.context import FrameContext
 from core.elicitation import ElicitationState
-from core.events import PersistencePolicy, Severity, Visibility
+from core.events import PersistencePolicy, Result, Severity, Visibility
 from core.registry import register
 from modules.base import DetectionModule
 from core.one_flight import DaemonOneFlight
@@ -50,9 +51,14 @@ _TOPICS = {
 _QUALITY = {"poor", "fair", "good"}
 _APPEARANCE_LEVELS = {"none", "mild", "marked", "unclear"}
 _NASAL_LEVELS = {"no", "yes", "unclear"}
+# ORDER MATTERS: everything downstream slices `_FACIAL_KEYS[:-1]` to mean "the
+# none/mild/marked cues", so `nasal_discharge_visible` (yes/no) must stay last
+# and new appearance cues must be inserted before it. Adding a key here also
+# extends the provider-enforced JSON schema and the validator loop for free.
 _FACIAL_KEYS = (
     "under_eye_darkness", "under_eye_puffiness", "nose_redness",
-    "cheek_redness", "lip_dryness", "nasal_discharge_visible",
+    "cheek_redness", "lip_dryness", "forehead_shine", "eye_redness",
+    "visible_skin_marking", "nasal_discharge_visible",
 )
 _FACIAL_LABELS = {
     "under_eye_darkness": "under-eye darkness",
@@ -60,8 +66,32 @@ _FACIAL_LABELS = {
     "nose_redness": "nose redness",
     "cheek_redness": "cheek redness",
     "lip_dryness": "lip dryness",
+    "forehead_shine": "forehead shine",
+    "eye_redness": "eye redness",
+    "visible_skin_marking": "visible skin marking",
     "nasal_discharge_visible": "visible nasal discharge",
 }
+
+# Where each cue is published so it lands on the detector card a presenter
+# would actually look at, beside that detector's own heuristic reading.
+#
+# The `vlm_` key prefix is load-bearing, not cosmetic: agent/corroboration.py
+# matches its follow-up rules with `key.startswith(rule.key)`, so a key named
+# `lip_dryness_vlm` would satisfy the ("dry_lips", "lip_dryness") rule and let
+# a model's guess trigger a *spoken* check-in that is meant to be driven only
+# by the heuristic. Prefixing keeps model opinion out of that path entirely.
+# `nasal_discharge_visible` is intentionally unrouted -- no detector owns it.
+_CUE_ROUTES = {
+    "lip_dryness":          ("dry_lips", "vlm_lip_dryness"),
+    "under_eye_puffiness":  ("facial_swelling", "vlm_swelling"),
+    "cheek_redness":        ("skin_color", "vlm_flushing"),
+    "nose_redness":         ("skin_color", "vlm_nose_redness"),
+    "under_eye_darkness":   ("drowsiness", "vlm_under_eye_darkness"),
+    "forehead_shine":       ("sweating", "vlm_forehead_shine"),
+    "eye_redness":          ("eye_redness", "vlm_eye_redness"),
+    "visible_skin_marking": ("rash", "vlm_skin_marking"),
+}
+_QUALITY_SCORE = {"poor": .2, "fair": .6, "good": .9}
 _SCHEMA_TEXT = """Return exactly one JSON object matching the contract printed
 below. Include every required field, use enum values exactly, and emit no prose
 or markdown. Use possible_conditions only for uncertain internal hypotheses.
@@ -198,6 +228,9 @@ class FacialCues:
     nose_redness: str = "unclear"
     cheek_redness: str = "unclear"
     lip_dryness: str = "unclear"
+    forehead_shine: str = "unclear"
+    eye_redness: str = "unclear"
+    visible_skin_marking: str = "unclear"
     nasal_discharge_visible: str = "unclear"
     confidence: float = 0.0
 
@@ -211,6 +244,18 @@ class FacialCues:
         if self.nasal_discharge_visible == "yes":
             out["nasal_discharge_visible"] = "yes"
         return out
+
+    def observed(self) -> dict[str, str]:
+        """Every cue the model committed to, negatives included.
+
+        `positive()` keeps only affirmatives because the agent must never
+        open a conversation about something it did not see. A console has the
+        opposite need: a confident "no dryness" is a real answer, and showing
+        it beside the heuristic's own reading is the whole point. Only
+        "unclear" — the model declining to answer — is withheld.
+        """
+        return {key: getattr(self, key) for key in _FACIAL_KEYS
+                if getattr(self, key) != "unclear"}
 
 
 @dataclass(frozen=True)
@@ -509,6 +554,47 @@ class SkinVision(DetectionModule):
             CapabilityRegistry.instance().set(
                 "local_skin_classifier", "model", CapabilityStatus.UNCONFIGURED,
                 "local close-up classifier disabled")
+
+    def _routed_cue_results(self, cues: FacialCues, quality: str) -> list[Result]:
+        """Publish each observed cue under the detector that owns its subject.
+
+        Deliberately bypasses self.result(), which hardcodes module=self.name;
+        modules/replay_events.py overrides `module` the same way. That also
+        means re-doing the confidence sanitising self.result() would have
+        given us. `source="nvidia_vlm"` keeps provenance unambiguous so the
+        console can never present this as the heuristic having fired.
+        """
+        confidence = float(cues.confidence)
+        if not math.isfinite(confidence):
+            confidence = 0.0
+        confidence = max(0.0, min(1.0, confidence))
+        out = []
+        for cue, value in cues.observed().items():
+            route = _CUE_ROUTES.get(cue)
+            if route is None:
+                continue
+            module, key = route
+            out.append(Result(
+                module=module, key=key,
+                value={"cue": cue, "value": value, "image_quality": quality},
+                confidence=confidence, severity=Severity.INFO,
+                message=f"{_FACIAL_LABELS[cue].capitalize()}: {value} (VLM)",
+                ttl=120.0, source="nvidia_vlm",
+                quality=_QUALITY_SCORE.get(quality)))
+        return out
+
+    def request_scan(self) -> bool:
+        """Clear the passive cadence so the next eligible frame may scan.
+
+        A 60s wait is unremarkable in a home and reads as the system doing
+        nothing in front of an audience. Every other gate (consent, a person
+        present, no request already in flight, image quality) still applies,
+        so this asks for a scan rather than forcing one.
+        """
+        if not self.available:
+            return False
+        self._last_scan = -1e9
+        return True
 
     def start(self) -> None:
         """Begin idempotent asynchronous local-model preload."""
@@ -1026,7 +1112,13 @@ class SkinVision(DetectionModule):
                     confidence=cues.confidence, severity=Severity.INFO,
                     message="Visible facial appearance cues: " + ", ".join(labels),
                     ttl=120.0, source="nvidia_vlm",
-                    quality={"poor": .2, "fair": .6, "good": .9}[analysis.image_quality]))
+                    quality=_QUALITY_SCORE[analysis.image_quality]))
+            if cues is not None:
+                # Same readings again, routed to the detector cards that own
+                # each subject so a "no dryness seen" is visible next to the
+                # lip heuristic rather than buried under skin_vision.
+                results.extend(
+                    self._routed_cue_results(cues, analysis.image_quality))
             if not analysis.finding_present:
                 return results
             self._preliminary = analysis

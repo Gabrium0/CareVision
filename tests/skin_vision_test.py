@@ -44,7 +44,9 @@ def _raw_analysis(*, finding: bool = False, facial_confidence: float = 0.0,
         "follow_up_topics": ["itching"] if finding else [],
         "under_eye_darkness": "none", "under_eye_puffiness": "none",
         "nose_redness": "none", "cheek_redness": "none",
-        "lip_dryness": "none", "nasal_discharge_visible": "no",
+        "lip_dryness": "none", "forehead_shine": "none",
+        "eye_redness": "none", "visible_skin_marking": "none",
+        "nasal_discharge_visible": "no",
         "facial_cue_confidence": facial_confidence,
     }
     raw.update(cues)
@@ -453,7 +455,12 @@ def test_preliminary_facial_cues_emit_without_skin_finding_or_persistence(monkey
         module._pending = _done(analysis)
         module._pending_stage = "preliminary"
         results = module._consume_pending(100.0)
-        assert [result.key for result in results] == ["facial_appearance"]
+        # The same readings are also routed to the detector cards that own
+        # each subject, in _FACIAL_KEYS order, alongside the summary result.
+        assert [result.key for result in results] == [
+            "facial_appearance", "vlm_under_eye_darkness", "vlm_nose_redness"]
+        assert [r.module for r in results[1:]] == ["drowsiness", "skin_color"]
+        assert all(r.source == "nvidia_vlm" for r in results[1:])
         appearance = results[0]
         assert appearance.severity == Severity.INFO
         assert appearance.persistence == PersistencePolicy.NONE
@@ -464,8 +471,8 @@ def test_preliminary_facial_cues_emit_without_skin_finding_or_persistence(monkey
 
         aggregator = Aggregator()
         aggregator.ingest(results)
-        assert to_payload(aggregator.snapshot())["signals"][0]["message"].startswith(
-            "Visible facial appearance cues")
+        messages = [s["message"] for s in to_payload(aggregator.snapshot())["signals"]]
+        assert any(m.startswith("Visible facial appearance cues") for m in messages)
         memory = ObservationMemory()
         memory.ingest(aggregator.snapshot(), now=100.0)
         assert memory.facial_cues() == appearance.value["cues"]

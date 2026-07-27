@@ -140,6 +140,14 @@ _MODULE_TRIGGERS = {
                      "label": "Arm skin check"},
     "guided_assessments": {"action": "circuit", "target": None,
                            "label": "Run demo circuit"},
+    # Detectors the vision model also comments on. Its passive cadence is 60s,
+    # which reads as the system doing nothing in front of an audience, so each
+    # card can ask for a reading now. Kept in step with skin_vision._CUE_ROUTES
+    # by tests/vlm_cues_test.py.
+    **{module: {"action": "vlm_scan", "target": None,
+                "label": "Ask the vision model now"}
+       for module in ("dry_lips", "facial_swelling", "skin_color",
+                      "drowsiness", "sweating", "eye_redness", "rash")},
 }
 
 # Honest expectation-setting for a client audience: how far a given signal can

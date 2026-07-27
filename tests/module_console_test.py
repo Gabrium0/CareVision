@@ -93,7 +93,7 @@ def test_triggers_reference_real_modules_and_valid_actions():
     unknown = set(_MODULE_TRIGGERS) - set(registry.all_registered())
     assert not unknown, f"triggers on modules that do not exist: {unknown}"
     for slug, trigger in _MODULE_TRIGGERS.items():
-        assert trigger["action"] in ("test", "circuit")
+        assert trigger["action"] in ("test", "circuit", "vlm_scan")
         assert trigger["label"]
         if trigger["action"] == "test":
             # Must match main.py's module_handler allowlist or the button 400s.

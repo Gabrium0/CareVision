@@ -401,6 +401,12 @@ def main():
             if action == "circuit":
                 return {"action": "circuit",
                         "started": bool(voice_agent.start_demo_circuit())}
+            if action == "vlm_scan":
+                screening = next((m for m in pipeline.scheduler.modules
+                                  if m.name == "skin_vision"), None)
+                if screening is None or not screening.request_scan():
+                    raise ValueError("cloud skin screening is not enabled")
+                return {"action": "vlm_scan", "requested": True}
             if action != "test":
                 raise ValueError("unsupported action")
             from assessments import PROTOCOLS

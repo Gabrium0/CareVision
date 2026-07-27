@@ -78,6 +78,13 @@
   .siglist .sig .meta { color:var(--dim); font-size:13px; white-space:nowrap; }
   .s-info{color:var(--info)} .s-notice{color:var(--notice)} .s-warning{color:var(--warning)} .s-alert{color:var(--alert);font-weight:700}
   .state-msg { color:var(--dim); font-size:15px; line-height:1.4; }
+  .sig-subhead { font-size:11px; letter-spacing:.5px; text-transform:uppercase; color:var(--dim);
+    margin:14px 0 4px; }
+  .sig-subhead:first-child { margin-top:0; }
+  .siglist .sig.vlm-sig { border-left:2px solid var(--notice); padding-left:8px; }
+  .vlm-chip { display:inline-block; border-radius:5px; padding:1px 6px; font-size:10px;
+    font-weight:800; letter-spacing:.4px; text-transform:uppercase; color:#0b0d10;
+    background:var(--notice); flex:0 0 auto; }
 
   @media (max-width:640px){
     header h1 { font-size:22px; }
@@ -172,6 +179,28 @@
     return signals.filter(s => s && s.module === moduleSlug);
   }
 
+  // A signal is a VLM second opinion (as opposed to the module's own
+  // heuristic) when it carries the nvidia_vlm source or a vlm_-prefixed key.
+  // source/key may be null/undefined on any signal — both checks fail
+  // safely to "detector" in that case, never throw.
+  function isVlmSignal(sig){
+    const src = sig && sig.source;
+    const key = sig && sig.key;
+    return src === 'nvidia_vlm' || (typeof key === 'string' && key.indexOf('vlm_') === 0);
+  }
+
+  // Split a module's signals into its own detector readings and any VLM
+  // second-opinion readings, so the two can never render as one unlabelled
+  // mixed list (safety-critical: a VLM reading must never look like the
+  // detector's own heuristic having fired).
+  function splitSignals(signals){
+    const detector = [], vlm = [];
+    for(const s of signals){
+      (isVlmSignal(s) ? vlm : detector).push(s);
+    }
+    return { detector, vlm };
+  }
+
   function featuresOf(d){
     const f = (d && d.system && d.system.features && typeof d.system.features === 'object')
       ? d.system.features : {};
@@ -229,7 +258,10 @@
     if(cpct != null) parts.push(`conf ${cpct}%`);
     if(sig.quality != null && !isNaN(sig.quality)) parts.push(`quality ${Math.round(sig.quality*100)}%`);
     if(sig.key) parts.push(esc(sig.key));
-    return `<div class="sig"><span class="txt s-${esc(sev)}">${esc(sig.message||'(no message)')}</span>` +
+    const vlm = isVlmSignal(sig);
+    const cls = vlm ? 'sig vlm-sig' : 'sig';
+    const chip = vlm ? '<span class="vlm-chip">VLM</span>' : '';
+    return `<div class="${cls}">${chip}<span class="txt s-${esc(sev)}">${esc(sig.message||'(no message)')}</span>` +
       `<span class="meta">${parts.join(' &middot; ')}</span></div>`;
   }
 
@@ -302,9 +334,24 @@
     const consentHtml = mod.consent ? '<span class="badge-consent">Needs consent</span>' : '';
 
     const stateMsg = stateMessage(mod, features, signals);
-    const siglistHtml = signals.length
-      ? `<div class="siglist">${signals.map(severityBar).join('')}</div>`
-      : `<div class="state-msg">${stateMsg}</div>`;
+    let siglistHtml;
+    if(signals.length){
+      // Detector readings and VLM second-opinion readings are always shown
+      // as separate, explicitly labelled groups (detector first) — never as
+      // one unlabelled mixed list. A module with only one group shows only
+      // that group, still with its heading, so provenance stays explicit.
+      const { detector, vlm } = splitSignals(signals);
+      const sections = [];
+      if(detector.length){
+        sections.push(`<div class="sig-subhead">Detector</div><div class="siglist">${detector.map(severityBar).join('')}</div>`);
+      }
+      if(vlm.length){
+        sections.push(`<div class="sig-subhead">VLM second opinion</div><div class="siglist">${vlm.map(severityBar).join('')}</div>`);
+      }
+      siglistHtml = sections.join('');
+    } else {
+      siglistHtml = `<div class="state-msg">${stateMsg}</div>`;
+    }
     // If there ARE signals but a requirement is also unmet (stale data from a
     // moment ago), still surface the requirement note above the list.
     const topNote = (signals.length && stateMessage(mod, features, [])) // recompute treating as if empty, to catch requires/running gaps
