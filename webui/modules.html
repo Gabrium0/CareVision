@@ -85,6 +85,22 @@
   .vlm-chip { display:inline-block; border-radius:5px; padding:1px 6px; font-size:10px;
     font-weight:800; letter-spacing:.4px; text-transform:uppercase; color:#0b0d10;
     background:var(--notice); flex:0 0 auto; }
+  .readings { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:10px; }
+  .reading { border:1px solid var(--line); border-radius:10px; padding:11px 12px;
+    background:#191d21; min-width:0; }
+  .reading.stale { border-style:dashed; opacity:.68; }
+  .reading.vlm-reading { border-left:2px solid var(--notice); }
+  .reading-head { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; }
+  .reading-name { color:var(--accent); font-size:12px; font-weight:700; line-height:1.3; }
+  .reading-backend { color:var(--dim); font-weight:500; }
+  .reading-value { font-size:22px; line-height:1.2; margin:5px 0 6px; overflow-wrap:anywhere; }
+  .reading-meta { color:var(--dim); font-size:12px; line-height:1.4; }
+  .reading-message { font-size:13px; line-height:1.35; margin-top:7px; }
+  .reading-state { border-radius:5px; padding:2px 6px; font-size:10px; font-weight:800;
+    letter-spacing:.3px; text-transform:uppercase; white-space:nowrap; }
+  .reading-state.live { color:var(--good); border:1px solid var(--good); background:#12271a; }
+  .reading-state.stale { color:var(--warning); border:1px solid var(--warning); background:#332412; }
+  .reading-state.warming { color:var(--notice); border:1px solid var(--notice); background:#102732; }
 
   @media (max-width:640px){
     header h1 { font-size:22px; }
@@ -127,9 +143,27 @@
 
   // Last-seen full payload, re-rendered whenever selection changes.
   let lastPayload = null;
+  let connected = false;
+  // Result TTLs belong to the live aggregator, but the console deliberately
+  // keeps a browser-session cache so an expired value can remain visible as
+  // clearly labelled "last known" data.
+  const readingCache = new Map();
+  const MAX_CACHED_READINGS = 512;
+  let receivedStreamFrame = false;
 
   function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
-  function conn(on){ connEl.classList.toggle('live', on); clEl.textContent = on?'connected':'connecting…'; }
+  function conn(on){
+    const changed = connected !== on;
+    connected = on;
+    connEl.classList.toggle('live', on);
+    clEl.textContent = on ? 'connected' : 'connecting…';
+    // A dropped stream instantly turns cached readings into last-known values
+    // instead of leaving old numbers styled as live until another frame lands.
+    if(changed && lastPayload){
+      renderGrid(lastPayload);
+      renderDetail(lastPayload);
+    }
+  }
 
   function tierClass(tier){
     const t = String(tier||'').toLowerCase();
@@ -156,6 +190,24 @@
     return Math.max(0, Math.min(100, Math.round(c*100)));
   }
 
+  function humanize(s){
+    return String(s || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  }
+
+  function backendLabel(name){
+    const known = {
+      classical: 'Classical',
+      open_rppg: 'Open-RPPG',
+      heuristic: 'Heuristic',
+      hsemotion: 'HSEmotion',
+      deepface: 'DeepFace',
+      ferplus: 'FER+',
+      pyfeat: 'Py-Feat',
+      yolo: 'YOLO',
+    };
+    return known[name] || humanize(name);
+  }
+
   // Build a display-ready roster from payload.modules, defaulting anything
   // absent so a partial backend response never throws.
   function roster(d){
@@ -174,9 +226,82 @@
     }));
   }
 
-  function signalsFor(d, moduleSlug){
+  let activeReadingIds = new Set();
+
+  function payloadReadings(d){
+    if(d && Array.isArray(d.module_readings)){
+      return d.module_readings.filter(r => r && r.module && r.key);
+    }
+    // Compatibility with an older server during a rolling restart. Those
+    // payloads have messages but no dedicated display value.
     const signals = (d && Array.isArray(d.signals)) ? d.signals : [];
-    return signals.filter(s => s && s.module === moduleSlug);
+    return signals.filter(s => s && s.module && s.key).map(s => ({
+      ...s,
+      metric: s.key,
+      name: humanize(s.key),
+      backend: null,
+      value: s.value == null ? (s.message || '—') : s.value,
+      timestamp: null,
+      expires_at: null,
+      fresh_for: null,
+    }));
+  }
+
+  function readingId(reading){
+    return `${reading.subject_id || 'primary'}\u0000${reading.module}\u0000${reading.key}`;
+  }
+
+  function rememberReadings(d){
+    const rows = payloadReadings(d);
+    activeReadingIds = new Set();
+    const localNow = Date.now()/1000;
+    for(const reading of rows){
+      const id = readingId(reading);
+      const rawFreshFor = reading.fresh_for;
+      const freshFor = (rawFreshFor == null || rawFreshFor === '')
+        ? null : Number(rawFreshFor);
+      activeReadingIds.add(id);
+      readingCache.set(id, {
+        ...reading,
+        _last_seen_local: localNow,
+        _deadline_local: Number.isFinite(freshFor)
+          ? localNow + Math.max(0, freshFor) : null,
+      });
+    }
+    if(readingCache.size > MAX_CACHED_READINGS){
+      const oldest = Array.from(readingCache.entries())
+        .sort((a, b) => (a[1]._last_seen_local || 0) - (b[1]._last_seen_local || 0));
+      for(const [id] of oldest.slice(0, readingCache.size - MAX_CACHED_READINGS)){
+        readingCache.delete(id);
+      }
+    }
+  }
+
+  function isReadingCurrent(reading){
+    if(!connected || !activeReadingIds.has(readingId(reading))) return false;
+    return reading._deadline_local == null || Date.now()/1000 <= reading._deadline_local;
+  }
+
+  function isPlaceholderReading(reading){
+    const value = String(reading.value == null ? '' : reading.value).trim();
+    return value === '...' || value === '…';
+  }
+
+  function currentReadingsFor(moduleSlug){
+    return Array.from(readingCache.values())
+      .filter(r => r.module === moduleSlug && isReadingCurrent(r));
+  }
+
+  function knownReadingsFor(moduleSlug){
+    return Array.from(readingCache.values())
+      .filter(r => r.module === moduleSlug)
+      .sort((a, b) => {
+        const metric = String(a.metric || a.key).localeCompare(String(b.metric || b.key));
+        if(metric) return metric;
+        const backend = String(a.backend || '').localeCompare(String(b.backend || ''));
+        if(backend) return backend;
+        return String(a.subject_id || '').localeCompare(String(b.subject_id || ''));
+      });
   }
 
   // A signal is a VLM second opinion (as opposed to the module's own
@@ -240,29 +365,60 @@
       const cls = ['mbtn'];
       if(m.internal || !m.running) cls.push('dim');
       if(m.module === selected) cls.push('sel');
-      const hasSignals = signalsFor(d, m.module).length > 0;
+      const current = currentReadingsFor(m.module);
+      const hasCurrent = current.some(r => !isPlaceholderReading(r));
+      const isWarming = current.length > 0 && !hasCurrent;
+      const hasKnown = knownReadingsFor(m.module).length > 0;
+      const readingState = hasCurrent ? 'live data'
+        : (isWarming ? 'warming up' : (hasKnown ? 'last known' : 'quiet'));
       const tier = m.reliability ? m.reliability.tier : null;
       return `<button type="button" class="${cls.join(' ')}" data-module="${esc(m.module)}">` +
         `<div class="mrow1"><span class="mlabel">${esc(m.label)}</span>` +
         `<span class="tier ${tierClass(tier)}">${esc(tierLabel(tier))}</span></div>` +
-        `<div class="mliverow"><span class="livedot${hasSignals?' on':''}"></span>` +
-        `<span style="color:var(--dim);font-size:12px;">${hasSignals?'live data':'quiet'}</span></div>` +
+        `<div class="mliverow"><span class="livedot${hasCurrent?' on':''}"></span>` +
+        `<span style="color:var(--dim);font-size:12px;">${readingState}</span></div>` +
         `</button>`;
     }).join('');
   }
 
-  function severityBar(sig){
-    const sev = sig.severity || 'info';
-    const cpct = confPct(sig.conf);
+  function ageText(reading){
+    const lastSeen = Number(reading._last_seen_local);
+    if(!Number.isFinite(lastSeen) || lastSeen <= 0) return '';
+    const seconds = Math.max(0, Math.floor(Date.now()/1000 - lastSeen));
+    if(seconds < 2) return 'just now';
+    if(seconds < 60) return `${seconds}s ago`;
+    if(seconds < 3600) return `${Math.floor(seconds/60)}m ago`;
+    return `${Math.floor(seconds/3600)}h ago`;
+  }
+
+  function readingCard(reading){
+    const sev = reading.severity || 'info';
+    const cpct = confPct(reading.conf);
     const parts = [];
     if(cpct != null) parts.push(`conf ${cpct}%`);
-    if(sig.quality != null && !isNaN(sig.quality)) parts.push(`quality ${Math.round(sig.quality*100)}%`);
-    if(sig.key) parts.push(esc(sig.key));
-    const vlm = isVlmSignal(sig);
-    const cls = vlm ? 'sig vlm-sig' : 'sig';
+    if(reading.quality != null && !isNaN(reading.quality)){
+      parts.push(`quality ${Math.round(reading.quality*100)}%`);
+    }
+    if(reading.key) parts.push(esc(reading.key));
+    if(reading.subject_id && reading.subject_id !== 'primary') parts.push(esc(reading.subject_id));
+    const vlm = isVlmSignal(reading);
+    const stale = !isReadingCurrent(reading);
+    const warming = !stale && isPlaceholderReading(reading);
+    const age = ageText(reading);
+    const stateText = stale ? `Last known${age ? ' · ' + age : ''}`
+      : (warming ? 'Warming up' : 'Live');
+    const stateClass = stale ? 'stale' : (warming ? 'warming' : 'live');
+    const backend = reading.backend
+      ? `<span class="reading-backend"> · ${esc(backendLabel(reading.backend))}</span>` : '';
     const chip = vlm ? '<span class="vlm-chip">VLM</span>' : '';
-    return `<div class="${cls}">${chip}<span class="txt s-${esc(sev)}">${esc(sig.message||'(no message)')}</span>` +
-      `<span class="meta">${parts.join(' &middot; ')}</span></div>`;
+    const value = (reading.value == null || reading.value === '') ? '—' : reading.value;
+    const message = reading.message
+      ? `<div class="reading-message s-${esc(sev)}">${esc(reading.message)}</div>` : '';
+    return `<div class="reading${stale?' stale':''}${vlm?' vlm-reading':''}">` +
+      `<div class="reading-head"><div class="reading-name">${chip}${esc(reading.name || humanize(reading.metric || reading.key))}${backend}</div>` +
+      `<span class="reading-state ${stateClass}">${esc(stateText)}</span></div>` +
+      `<div class="reading-value s-${esc(sev)}">${esc(value)}</div>` +
+      `<div class="reading-meta">${parts.join(' &middot; ')}</div>${message}</div>`;
   }
 
   function renderTriggerArea(mod){
@@ -280,9 +436,13 @@
       `${esc(busy ? 'Running…' : label)}</button>${resultHtml}`;
   }
 
-  // The most important part per spec: never render a blank panel. Exactly
-  // one of these four states is shown, in priority order.
-  function stateMessage(mod, features, signals){
+  // The most important part per spec: never render a blank panel.
+  function stateMessage(mod, features, currentCount, knownCount){
+    if(!connected){
+      return knownCount
+        ? 'Live connection lost — showing the last known values below.'
+        : 'Live connection lost — waiting to reconnect.';
+    }
     const missing = unmetRequires(mod, features);
     if(missing.length){
       const names = missing.map(m => FEATURE_LABEL[m] || m).join(', ');
@@ -291,12 +451,17 @@
     if(!mod.running){
       return 'Not enabled in config/modules.yaml';
     }
-    if(!signals.length){
+    if(!currentCount && knownCount){
+      return connected
+        ? 'No current reading — showing the last known values below.'
+        : 'Live connection lost — showing the last known values below.';
+    }
+    if(!knownCount){
       const n = Number(mod.interval);
       const extra = (n && n > 0) ? ` It may take up to ${n}s to report given its cadence.` : '';
       return `Running; nothing to report on this frame.${extra}`;
     }
-    return null; // signals present — the signal list itself is the content
+    return null;
   }
 
   function renderDetail(d){
@@ -316,7 +481,8 @@
     }
     detailEl.className = '';
     const features = featuresOf(d);
-    const signals = signalsFor(d, mod.module);
+    const readings = knownReadingsFor(mod.module);
+    const currentReadings = currentReadingsFor(mod.module);
     const rel = mod.reliability;
 
     const reqChips = mod.requires.length
@@ -333,29 +499,29 @@
 
     const consentHtml = mod.consent ? '<span class="badge-consent">Needs consent</span>' : '';
 
-    const stateMsg = stateMessage(mod, features, signals);
-    let siglistHtml;
-    if(signals.length){
+    const stateMsg = stateMessage(mod, features, currentReadings.length, readings.length);
+    let readingsHtml;
+    if(readings.length){
       // Detector readings and VLM second-opinion readings are always shown
       // as separate, explicitly labelled groups (detector first) — never as
       // one unlabelled mixed list. A module with only one group shows only
       // that group, still with its heading, so provenance stays explicit.
-      const { detector, vlm } = splitSignals(signals);
+      const { detector, vlm } = splitSignals(readings);
       const sections = [];
       if(detector.length){
-        sections.push(`<div class="sig-subhead">Detector</div><div class="siglist">${detector.map(severityBar).join('')}</div>`);
+        sections.push(`<div class="sig-subhead">Detector readings</div><div class="readings">${detector.map(readingCard).join('')}</div>`);
       }
       if(vlm.length){
-        sections.push(`<div class="sig-subhead">VLM second opinion</div><div class="siglist">${vlm.map(severityBar).join('')}</div>`);
+        sections.push(`<div class="sig-subhead">VLM second opinion</div><div class="readings">${vlm.map(readingCard).join('')}</div>`);
       }
-      siglistHtml = sections.join('');
+      readingsHtml = sections.join('');
     } else {
-      siglistHtml = `<div class="state-msg">${stateMsg}</div>`;
+      readingsHtml = `<div class="state-msg">${stateMsg}</div>`;
     }
-    // If there ARE signals but a requirement is also unmet (stale data from a
-    // moment ago), still surface the requirement note above the list.
-    const topNote = (signals.length && stateMessage(mod, features, [])) // recompute treating as if empty, to catch requires/running gaps
-      ? `<div class="state-msg" style="margin-bottom:8px;">${stateMessage(mod, features, [])}</div>` : '';
+    // Requirements, disabled state, expiry, and disconnects stay visible above
+    // retained readings so "last known" can never be mistaken for live data.
+    const topNote = (readings.length && stateMsg)
+      ? `<div class="state-msg" style="margin-bottom:8px;">${stateMsg}</div>` : '';
 
     detailEl.innerHTML =
       `<div class="dhead"><h2>${esc(mod.label)}</h2>${mod.internal ? '<span class="chip">internal / plumbing</span>' : ''}</div>` +
@@ -365,7 +531,7 @@
       `<div class="drow"><div class="dlabel">Cadence</div><span class="reliability-note">${esc(cadenceText(mod.interval))}</span></div>` +
       (consentHtml ? `<div class="drow">${consentHtml}</div>` : '') +
       `<div class="drow"><div class="dlabel">Trigger</div>${renderTriggerArea(mod)}</div>` +
-      `<div class="drow"><div class="dlabel">Live data</div>${signals.length ? '' : topNote}${siglistHtml}</div>`;
+      `<div class="drow"><div class="dlabel">Readings</div>${topNote}${readingsHtml}</div>`;
 
     if(mod.trigger){
       const btn = document.getElementById('trigBtn');
@@ -410,6 +576,7 @@
     if(!d) return;
     lastPayload = d;
     try{
+      rememberReadings(d);
       renderStatline(d);
       renderGrid(d);
       renderDetail(d);
@@ -420,7 +587,11 @@
     try{
       const es = new EventSource('/data-events');
       es.onopen = ()=>conn(true);
-      es.onmessage = e=>{ conn(true); try{ render(JSON.parse(e.data)); }catch(_){} };
+      es.onmessage = e=>{
+        receivedStreamFrame = true;
+        conn(true);
+        try{ render(JSON.parse(e.data)); }catch(_){}
+      };
       es.onerror = ()=>conn(false);
     }catch(_){ startPoll(); }
   }
@@ -437,9 +608,15 @@
     try{
       const r = await fetch('/data-latest', {cache:'no-store'});
       const d = await r.json();
-      if(d && d.payload) render(d.payload);
+      if(!receivedStreamFrame && d && d.payload){ conn(true); render(d.payload); }
     }catch(_){}
   })();
+
+  // Keep expiry labels and "last known" ages accurate even between SSE frames.
+  setInterval(()=>{
+    if(!lastPayload) return;
+    try{ renderGrid(lastPayload); renderDetail(lastPayload); }catch(_){}
+  }, 1000);
 
   if(window.EventSource) startSSE(); else startPoll();
 })();

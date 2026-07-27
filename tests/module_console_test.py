@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 import pytest
 
@@ -121,6 +122,15 @@ def test_frame_features_reach_the_payload():
 
 def test_missing_features_block_does_not_break_the_roster():
     assert _modules(system={})  # console must still render
+
+
+def test_console_renders_complete_values_and_retains_last_known_readings():
+    html = (Path(__file__).resolve().parents[1] / "webui" / "modules.html").read_text(
+        encoding="utf-8")
+    assert "module_readings" in html
+    assert "reading.value" in html
+    assert "readingCache" in html
+    assert "Last known" in html
 
 
 # -------------------------------------------------------- /module-control

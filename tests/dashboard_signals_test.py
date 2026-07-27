@@ -9,8 +9,12 @@ system watches for even when a given module hasn't fired a signal yet.
 """
 from __future__ import annotations
 
+import json
+
+import numpy as np
+
 import core.registry as registry
-from core.events import Result, Severity
+from core.events import Result, Severity, Visibility
 from output.dashboard import to_payload
 
 
@@ -25,6 +29,83 @@ def test_signals_expose_module_and_key():
     by_module = {s["module"]: s for s in payload["signals"]}
     assert by_module["heart_rate"]["key"] == "bpm"
     assert by_module["facial_asymmetry"]["key"] == "mouth"
+
+
+def test_module_readings_include_backend_emotion_and_message_less_values():
+    snapshot = [
+        Result(module="heart_rate", key="bpm_classical", value=72,
+               confidence=0.8, message="HR classical"),
+        Result(module="heart_rate", key="bpm_open_rppg", value=75,
+               confidence=0.7, message="HR Open-RPPG"),
+        Result(module="emotion", key="emotion_heuristic", value="happy",
+               confidence=0.6, message="Emotion heuristic"),
+        Result(module="emotion", key="emotion_hsemotion", value="happiness",
+               confidence=0.9, message="Emotion HSEmotion"),
+        Result(module="drowsiness", key="ear", value=0.30,
+               confidence=0.85, quality=0.9, message="", timestamp=100.0, ttl=8.0),
+        Result(module="heart_rate", key="private_debug", value=999,
+               visibility=Visibility.AGENT_ONLY),
+    ]
+
+    payload = to_payload(snapshot, fps=30.0)
+    readings = {(r["module"], r["key"]): r for r in payload["module_readings"]}
+
+    assert set(readings) == {
+        ("heart_rate", "bpm_classical"),
+        ("heart_rate", "bpm_open_rppg"),
+        ("emotion", "emotion_heuristic"),
+        ("emotion", "emotion_hsemotion"),
+        ("drowsiness", "ear"),
+    }
+    assert readings[("heart_rate", "bpm_classical")]["backend"] == "classical"
+    assert readings[("heart_rate", "bpm_classical")]["value"] == "72"
+    assert readings[("heart_rate", "bpm_open_rppg")]["backend"] == "open_rppg"
+    assert readings[("emotion", "emotion_heuristic")]["value"] == "happy"
+    assert readings[("emotion", "emotion_hsemotion")]["value"] == "happiness"
+    assert readings[("drowsiness", "ear")]["value"] == "0.30"
+    assert readings[("drowsiness", "ear")]["quality"] == 0.9
+    assert readings[("drowsiness", "ear")]["expires_at"] == 108.0
+    assert readings[("drowsiness", "ear")]["fresh_for"] == 0.0
+
+    # Comparison/headline semantics stay unchanged; the complete readings feed
+    # is additive and does not promote debug backend values as normal signals.
+    assert payload["signals"] == []
+    comparison = {(row["module"], row["metric"]): row
+                  for row in payload["comparison"]}
+    assert {cell["backend"]
+            for cell in comparison[("heart_rate", "bpm")]["backends"]} == {
+                "classical", "open_rppg"}
+    assert {cell["backend"]
+            for cell in comparison[("emotion", "emotion")]["backends"]} == {
+                "heuristic", "hsemotion"}
+
+
+def test_module_readings_redact_raw_media_and_bound_complex_values():
+    snapshot = [
+        Result(module="camera", key="frame", value=np.arange(64).reshape(8, 8)),
+        Result(module="sound_event", key="clip", value=b"raw-audio-bytes"),
+        Result(module="scene_vision", key="preview",
+               value="data:image/png;base64,private"),
+        Result(module="scene_vision", key="analysis", value={
+            "label": "kitchen",
+            "thumbnail": "private-pixels",
+            "provider_blob": "x" * 600,
+        }),
+    ]
+
+    payload = to_payload(snapshot)
+    readings = {(r["module"], r["key"]): r["value"]
+                for r in payload["module_readings"]}
+
+    assert readings[("camera", "frame")] == "<redacted-media>"
+    assert readings[("sound_event", "clip")] == "<redacted-media>"
+    assert readings[("scene_vision", "preview")] == "<redacted-media>"
+    analysis = json.loads(readings[("scene_vision", "analysis")])
+    assert analysis == {
+        "label": "kitchen",
+        "thumbnail": "<redacted-media>",
+        "provider_blob": "<oversized-value>",
+    }
 
 
 def test_signals_carry_guest_facing_label_and_blurb():

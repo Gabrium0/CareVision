@@ -15,6 +15,11 @@ known-label set rather than on the last underscore.
 """
 from __future__ import annotations
 
+import json
+import math
+import time
+from enum import Enum
+
 import cv2
 import numpy as np
 
@@ -355,6 +360,100 @@ def _fmt(v):
     return str(v)
 
 
+_DISPLAY_MAX_CHARS = 500
+_DISPLAY_MAX_ITEMS = 32
+_MEDIA_KEY_PARTS = (
+    "audio", "base64", "bytes", "crop", "embedding", "frame", "image",
+    "media", "pixels", "samples", "thumbnail", "video",
+)
+
+
+def _safe_display_data(value, *, key_hint: str = "", depth: int = 0):
+    """Return bounded JSON-like data while redacting raw media."""
+    if key_hint and any(part in key_hint.lower() for part in _MEDIA_KEY_PARTS):
+        return "<redacted-media>"
+    if depth > 4:
+        return "<truncated>"
+    if value is None or isinstance(value, (bool, int)):
+        return value
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, Enum):
+        return _safe_display_data(value.value, depth=depth + 1)
+    if isinstance(value, np.generic):
+        return _safe_display_data(value.item(), depth=depth + 1)
+    if isinstance(value, (bytes, bytearray, memoryview, np.ndarray)):
+        return "<redacted-media>"
+    if isinstance(value, str):
+        if value.lstrip().lower().startswith("data:"):
+            return "<redacted-media>"
+        return value if len(value) <= _DISPLAY_MAX_CHARS else "<oversized-value>"
+    if isinstance(value, dict):
+        items = list(value.items())
+        out = {
+            str(key): _safe_display_data(item, key_hint=str(key), depth=depth + 1)
+            for key, item in items[:_DISPLAY_MAX_ITEMS]
+        }
+        if len(items) > _DISPLAY_MAX_ITEMS:
+            out["..."] = f"{len(items) - _DISPLAY_MAX_ITEMS} more fields"
+        return out
+    if isinstance(value, (tuple, list, set)):
+        items = list(value)
+        out = [_safe_display_data(item, depth=depth + 1)
+               for item in items[:_DISPLAY_MAX_ITEMS]]
+        if len(items) > _DISPLAY_MAX_ITEMS:
+            out.append(f"<{len(items) - _DISPLAY_MAX_ITEMS} more items>")
+        return out
+    return f"<unsupported:{type(value).__name__}>"
+
+
+def _display_value(value) -> str:
+    """Format one Result value for a compact, privacy-safe browser card."""
+    safe = _safe_display_data(value)
+    if isinstance(safe, (dict, list)):
+        rendered = json.dumps(safe, ensure_ascii=False, separators=(",", ":"))
+    elif safe is None:
+        rendered = "—"
+    else:
+        rendered = _fmt(safe)
+    if len(rendered) > _DISPLAY_MAX_CHARS:
+        return "<oversized-value>"
+    return rendered
+
+
+def _module_reading(r, *, now: float | None = None) -> dict:
+    """Serialize one public Result for the module console.
+
+    Unlike ``signals``, this feed includes message-less measurements and
+    backend-comparison rows.  Values are display-formatted strings so complex
+    module payloads remain JSON-safe and the browser never has to guess how to
+    format a detector-specific type.
+    """
+    metric, backend = _split_backend(r.key)
+    display_metric = metric or r.key
+    now = time.time() if now is None else now
+    expires_at = float(r.timestamp + r.ttl)
+    return {
+        "module": r.module,
+        "key": r.key,
+        "metric": display_metric,
+        "name": _METRIC_NAMES.get(display_metric, _humanize_slug(display_metric)),
+        "backend": backend,
+        "value": _display_value(r.value),
+        "conf": round(float(r.confidence), 2),
+        "quality": (round(float(r.quality), 2) if r.quality is not None else None),
+        "severity": r.severity.value,
+        "message": r.message,
+        "subject_id": r.subject_id,
+        "source": r.source,
+        "timestamp": round(float(r.timestamp), 3),
+        "expires_at": round(expires_at, 3),
+        # Browsers establish a local deadline from this duration, avoiding
+        # incorrect freshness when a LAN client's wall clock is skewed.
+        "fresh_for": round(max(0.0, expires_at - now), 3),
+    }
+
+
 def _render_fatigue_stats(img, snapshot, y: int) -> int:
     by_key = {(r.module, r.key): r for r in snapshot}
     _text(img, "DROWSINESS / FATIGUE STATS", 16, y, 0.52, (120, 220, 255))
@@ -528,14 +627,18 @@ def to_payload(snapshot, fps: float = 0.0, greeting: str | None = None,
         cells = []
         for b in sorted(bes, key=lambda k: _BACKENDS.index(k) if k in _BACKENDS else 99):
             r = bes[b]
-            cells.append({"backend": b, "value": _fmt(r.value),
+            cells.append({"backend": b, "value": _display_value(r.value),
                           "conf": round(float(r.confidence), 2),
                           "severity": r.severity.value})
-        comparison.append({"metric": metric,
+        comparison.append({"module": module,
+                           "metric": metric,
                            "name": _METRIC_NAMES.get(metric, metric),
                            "backends": cells})
 
     by_key = {(r.module, r.key): r for r in snapshot}
+    readings_now = time.time()
+    module_readings = [_module_reading(r, now=readings_now) for r in sorted(
+        snapshot, key=lambda r: (r.module, r.subject_id, r.key))]
 
     def stat_rows(defs):
         out = []
@@ -605,6 +708,7 @@ def to_payload(snapshot, fps: float = 0.0, greeting: str | None = None,
         "reasoning": reasoning,
         "system": system or {},
         "modules": modules_list,
+        "module_readings": module_readings,
         "module_counts": module_counts,
         "assessments": _launchable_assessments(),
     }
