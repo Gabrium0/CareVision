@@ -103,6 +103,7 @@ modules:
     rash_notice: 0.02
     rash_warning: 0.06
     dryness_notice: 0.04
+    min_window_samples: 3     # never report clear from an unseen/jittering arm
   skin_vision:
     enabled: true
     consent: false                 # runtime --enable-cloud-skin is required
@@ -112,7 +113,10 @@ modules:
     request_timeout: 25.0
     max_image_dim: 1024
     jpeg_quality: 85
-    manual_retry_deadline: 45.0
+    max_inline_image_bytes: 174080
+    manual_max_attempts: 3
+    manual_attempt_timeout: 20.0
+    manual_retry_deadline: 60.0
     manual_retry_max_image_dim: 768
     manual_retry_jpeg_quality: 80
     manual_retry_max_tokens: 450

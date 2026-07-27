@@ -89,9 +89,12 @@ def screen(client: NvidiaVLMClient, path: Path, min_confidence: float,
         return row
     started = time.monotonic()
     try:
-        content = client.request(prompt_for(stage), [client.encode(frame)],
-                                 max_tokens=700,
-                                 response_format=_response_format(stage))
+        response = client.request(
+            prompt_for(stage), [client.encode(frame)],
+            max_tokens=700, response_format=_response_format(stage),
+            purpose=("manual_arm_check" if stage == "closeup"
+                     else "passive_scan"))
+        content = getattr(response, "content", response)
     except NvidiaVLMError as exc:
         row["error"] = str(exc)
         return row

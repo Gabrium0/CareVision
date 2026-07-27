@@ -12,13 +12,15 @@ import copy
 import json
 import math
 import queue
+import random
 import re
 import threading
 import time
 import uuid
 import urllib.error
 import urllib.request
-from concurrent.futures import Future
+from collections import Counter, deque
+from concurrent.futures import Future, TimeoutError as FutureTimeoutError
 from dataclasses import dataclass
 from typing import Any
 
@@ -31,7 +33,7 @@ from core.elicitation import ElicitationState
 from core.events import PersistencePolicy, Result, Severity, Visibility
 from core.registry import register
 from modules.base import DetectionModule
-from core.one_flight import DaemonOneFlight
+from core.one_flight import DaemonOneFlight, detach_exception_context
 from modules.local_skin_classifier import (
     LocalSkinPrediction,
     build_local_skin_classifier,
@@ -49,6 +51,7 @@ _TOPICS = {
     "new_medication", "new_product_exposure", "blisters",
 }
 _QUALITY = {"poor", "fair", "good"}
+_VISUAL_SOURCES = {"live_skin", "displayed_photo", "unclear"}
 _APPEARANCE_LEVELS = {"none", "mild", "marked", "unclear"}
 _NASAL_LEVELS = {"no", "yes", "unclear"}
 # ORDER MATTERS: everything downstream slices `_FACIAL_KEYS[:-1]` to mean "the
@@ -105,6 +108,7 @@ _PANEL_BACKGROUND = 32
 def _skin_properties() -> dict[str, Any]:
     return {
         "image_quality": {"type": "string", "enum": sorted(_QUALITY)},
+        "visual_source": {"type": "string", "enum": sorted(_VISUAL_SOURCES)},
         "sufficient_skin_visible": {"type": "boolean"},
         "finding_present": {"type": "boolean"},
         "visible_features": {
@@ -151,16 +155,38 @@ def _response_format(stage: str) -> dict[str, Any]:
         "type": "json_schema",
         "json_schema": {
             "name": f"skin_{stage}_analysis",
-            "strict": True,
             "schema": schema,
         },
     }
 
 
 def _schema_contract(stage: str) -> str:
-    """Put the provider-enforced contract in the prompt as a safe fallback."""
-    schema = _PRELIMINARY_SCHEMA if stage == "preliminary" else _CLOSEUP_SCHEMA
-    return json.dumps(schema, separators=(",", ":"), sort_keys=True)
+    """Return a compact prompt contract; strict validation remains local."""
+    fields = [
+        "image_quality: string, one of poor|fair|good",
+        "visual_source: string, one of displayed_photo|live_skin|unclear",
+        "sufficient_skin_visible: boolean",
+        "finding_present: boolean",
+        "visible_features: array of up to 5 from "
+        + "|".join(sorted(_FEATURES)),
+        "body_region: string",
+        "confidence: number from 0 to 1",
+        "possible_conditions: array of up to 3 short strings",
+        "follow_up_topics: array of up to 5 from "
+        + "|".join(sorted(_TOPICS)),
+    ]
+    if stage == "preliminary":
+        fields.extend(
+            f"{key}: string, one of none|mild|marked|unclear"
+            for key in _FACIAL_KEYS[:-1])
+        fields.extend((
+            "nasal_discharge_visible: string, one of no|yes|unclear",
+            "facial_cue_confidence: number from 0 to 1",
+        ))
+    return (
+        "All keys below are required exactly once; use JSON booleans and "
+        "numbers, and add no other keys.\n- " + "\n- ".join(fields)
+    )
 
 
 def _fit_panel(image: np.ndarray, width: int, height: int) -> np.ndarray:
@@ -271,11 +297,13 @@ class SkinAnalysis:
     possible_conditions: tuple[str, ...]
     follow_up_topics: tuple[str, ...]
     facial_cues: FacialCues | None = None
+    visual_source: str = "live_skin"
 
     def private_value(self, local: LocalSkinPrediction | None = None) -> dict[str, Any]:
         """Return JSON-safe private context for the agent."""
         value = {
             "image_quality": self.image_quality,
+            "visual_source": self.visual_source,
             "visible_features": list(self.visible_features),
             "body_region": self.body_region,
             "confidence": self.confidence,
@@ -294,10 +322,13 @@ class SkinVisionAPIError(RuntimeError):
     """Remote inference failed without retaining response or image data."""
 
     def __init__(self, message: str, status: int | None = None,
-                 retryable: bool = False):
+                 retryable: bool = False, *, kind: str = "provider",
+                 retry_after: float | None = None):
         super().__init__(message)
         self.status = status
         self.retryable = bool(retryable)
+        self.kind = _bounded_text(kind, 40) or "provider"
+        self.retry_after = retry_after
 
 
 @dataclass(frozen=True)
@@ -307,6 +338,23 @@ class _CloseupOutcome:
     analysis: SkinAnalysis | None
     local: LocalSkinPrediction | None
     cloud_error: BaseException | None = None
+
+
+@dataclass
+class _QueuedManual:
+    """Captured manual request waiting for the single NVIDIA lane."""
+
+    frame: np.ndarray
+    local_frame: np.ndarray | None
+    arm_crop_label: str | None
+    paired_context: bool
+    capture_mode: str
+    correlation_id: str
+    arm_attempt: int
+    queued_at: float
+    deadline_monotonic: float
+    view_labels: tuple[str, ...]
+    reservation_token: int | None
 
 
 class _DaemonOneFlight:
@@ -335,16 +383,22 @@ class _DaemonOneFlight:
             future, fn, args = item
             if not future.set_running_or_notify_cancel():
                 with self._lock:
-                    if self._closed:
-                        return
+                    closed = self._closed
+                del item, future, fn, args
+                if closed:
+                    return
                 continue
             try:
                 future.set_result(fn(*args))
             except BaseException as exc:  # noqa: BLE001
-                future.set_exception(exc)
+                future.set_exception(detach_exception_context(exc))
             with self._lock:
-                if self._closed:
-                    return
+                closed = self._closed
+            # A daemon blocked in queue.get() otherwise retains the last
+            # task's frame arrays through these loop locals indefinitely.
+            del item, future, fn, args
+            if closed:
+                return
 
     def shutdown(self, timeout: float = 0.5) -> bool:
         with self._lock:
@@ -378,16 +432,76 @@ def _string_list(value: Any, allowed: set[str] | None = None,
     return tuple(out)
 
 
+def _validate_schema_shape(raw: dict[str, Any], *,
+                           allow_facial_cues: bool) -> None:
+    """Enforce the provider contract before safety-sensitive normalization."""
+    schema = _PRELIMINARY_SCHEMA if allow_facial_cues else _CLOSEUP_SCHEMA
+    properties = schema["properties"]
+    required = set(schema["required"])
+    missing = sorted(required - set(raw))
+    if missing:
+        raise ValueError("missing required fields: " + ", ".join(missing[:5]))
+    extras = sorted(set(raw) - set(properties))
+    if extras:
+        raise ValueError("unexpected fields: " + ", ".join(extras[:5]))
+    for name, spec in properties.items():
+        value = raw[name]
+        value_type = spec.get("type")
+        if value_type == "boolean":
+            valid_type = type(value) is bool
+        elif value_type == "number":
+            valid_type = (isinstance(value, (int, float))
+                          and not isinstance(value, bool)
+                          and math.isfinite(float(value)))
+        elif value_type == "string":
+            valid_type = isinstance(value, str)
+        elif value_type == "array":
+            valid_type = isinstance(value, list)
+        else:
+            valid_type = False
+        if not valid_type:
+            raise ValueError(f"invalid type for {name}")
+        if "enum" in spec and value not in spec["enum"]:
+            raise ValueError(f"invalid enum for {name}")
+        if value_type == "number":
+            if value < spec.get("minimum", value) \
+                    or value > spec.get("maximum", value):
+                raise ValueError(f"out-of-range value for {name}")
+        elif value_type == "string" and len(value) > spec.get(
+                "maxLength", len(value)):
+            raise ValueError(f"value too long for {name}")
+        elif value_type == "array":
+            if len(value) > spec.get("maxItems", len(value)):
+                raise ValueError(f"too many items for {name}")
+            item_spec = spec.get("items", {})
+            for item in value:
+                if item_spec.get("type") == "string" \
+                        and not isinstance(item, str):
+                    raise ValueError(f"invalid item type for {name}")
+                if "enum" in item_spec and item not in item_spec["enum"]:
+                    raise ValueError(f"invalid item enum for {name}")
+                if isinstance(item, str) and len(item) > item_spec.get(
+                        "maxLength", len(item)):
+                    raise ValueError(f"item too long for {name}")
+
+
 def validate_analysis(raw: Any, min_confidence: float = 0.35, *,
                       allow_facial_cues: bool = False,
                       min_facial_confidence: float = 0.45,
-                      face_crop_available: bool = True) -> SkinAnalysis:
+                      face_crop_available: bool = True,
+                      strict_schema: bool = False) -> SkinAnalysis:
     """Validate and normalize the model JSON; reject unsafe loose structures."""
     if not isinstance(raw, dict):
         raise ValueError("skin response must be a JSON object")
+    if strict_schema:
+        _validate_schema_shape(
+            raw, allow_facial_cues=allow_facial_cues)
     quality = _bounded_text(raw.get("image_quality"), 10).lower()
     if quality not in _QUALITY:
         raise ValueError("invalid image_quality")
+    visual_source = _bounded_text(raw.get("visual_source"), 20).lower()
+    if visual_source not in _VISUAL_SOURCES:
+        raise ValueError("invalid visual_source")
     sufficient = raw.get("sufficient_skin_visible") is True
     finding = raw.get("finding_present") is True
     try:
@@ -398,7 +512,19 @@ def validate_analysis(raw: Any, min_confidence: float = 0.35, *,
     topics = _string_list(raw.get("follow_up_topics"), _TOPICS, limit=5)
     conditions = _string_list(raw.get("possible_conditions"), limit=3)
     region = _bounded_text(raw.get("body_region") or "visible skin", 60)
-    finding = bool(finding and sufficient and quality != "poor"
+    if strict_schema and finding and (
+            confidence < min_confidence or not features):
+        # Never normalize a provider-asserted positive into a reassuring
+        # negative solely because its asserted evidence is unsupported.
+        # Poor/insufficient imagery is handled as explicitly inconclusive by
+        # the manual quality gates before any clear result can be emitted.
+        raise ValueError("positive finding lacks usable supporting evidence")
+    # A deliberately displayed full photo (the user holding a phone to the
+    # camera) is often rated "poor" for screen glare/reflections even when the
+    # change is plainly visible; trust a confident, evidenced finding there
+    # rather than discarding it. Live skin stays conservative on poor quality.
+    quality_blocks = quality == "poor" and visual_source != "displayed_photo"
+    finding = bool(finding and sufficient and not quality_blocks
                    and confidence >= min_confidence and features)
     if not finding:
         conditions = ()
@@ -426,22 +552,34 @@ def validate_analysis(raw: Any, min_confidence: float = 0.35, *,
             facial_confidence = 0.0
         facial_cues = FacialCues(**values, nasal_discharge_visible=nasal,
                                   confidence=round(facial_confidence, 3))
-    return SkinAnalysis(quality, sufficient, finding, features, region,
-                        round(confidence, 3), conditions, topics, facial_cues)
+    return SkinAnalysis(
+        quality, sufficient, finding, features, region,
+        round(confidence, 3), conditions, topics, facial_cues,
+        visual_source=visual_source)
 
 
 def _extract_json(content: Any) -> dict:
+    """Salvage the JSON object from the model reply.
+
+    The model reliably returns the schema object but sometimes wraps it in a
+    markdown fence, a leading disclaimer, or appends a stray trailing character
+    (e.g. ``{...}.``). Extract the first ``{`` through the last ``}`` — matching
+    the tolerant approach in ``modules/scene_vision.py`` — instead of requiring
+    the whole reply to be bare JSON. A reply with no object at all still raises
+    ``ValueError`` so it is classified as ``json_parse`` upstream.
+    """
     if isinstance(content, list):
         content = "".join(str(p.get("text", "")) for p in content
                           if isinstance(p, dict))
     text = str(content or "").strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.I)
-        text = re.sub(r"\s*```$", "", text)
-    start, end = text.find("{"), text.rfind("}")
-    if start < 0 or end <= start:
-        raise ValueError("response did not contain JSON")
-    return json.loads(text[start:end + 1])
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end == -1 or end < start:
+        raise ValueError("response was not a JSON object")
+    parsed = json.loads(text[start:end + 1])
+    if not isinstance(parsed, dict):
+        raise ValueError("skin response must be a JSON object")
+    return parsed
 
 
 def _sharpness(frame: np.ndarray) -> float:
@@ -470,7 +608,10 @@ class SkinVision(DetectionModule):
     min_arm_crop_size = 64
     backoff_base = 15.0
     backoff_max = 900.0
-    manual_retry_deadline = 45.0
+    manual_retry_deadline = 60.0
+    manual_max_attempts = 3
+    manual_attempt_timeout = 20.0
+    max_inline_image_bytes = 174080
     manual_retry_max_image_dim = 768
     manual_retry_jpeg_quality = 80
     manual_retry_max_tokens = 450
@@ -498,13 +639,21 @@ class SkinVision(DetectionModule):
         self._key = nvidia_api_key()
         self._client = NvidiaVLMClient(self._key or "", self.endpoint, self.model,
                                        float(self.request_timeout), int(self.max_image_dim),
-                                       int(self.jpeg_quality))
+                                       int(self.jpeg_quality),
+                                       int(self.max_inline_image_bytes))
         self._executor = _DaemonOneFlight("skin-vision")
         self._closed = False
         self._pending: Future | None = None
         self._pending_stage: str | None = None
         self._pending_purpose: str | None = None
         self._pending_correlation_id: str | None = None
+        self._pending_capture_mode: str | None = None
+        self._pending_view_labels: tuple[str, ...] = ()
+        self._pending_image_count = 0
+        self._pending_arm_attempt = 0
+        self._pending_deadline_monotonic: float | None = None
+        self._pending_reservation_token: int | None = None
+        self._pending_cancel_event: threading.Event | None = None
         self._diagnostic_lock = threading.Lock()
         self._diagnostic_status = "idle"
         self._diagnostic_current_stage: str | None = None
@@ -519,16 +668,41 @@ class SkinVision(DetectionModule):
         self._diagnostic_attempt = 0
         self._diagnostic_payload_mode = "normal"
         self._diagnostic_deadline_at: float | None = None
+        self._diagnostic_capture_mode: str | None = None
+        self._diagnostic_view_labels: tuple[str, ...] = ()
+        self._diagnostic_image_count = 0
+        self._diagnostic_encoded_bytes = 0
+        self._diagnostic_attempts: list[dict[str, Any]] = []
+        self._diagnostic_history: deque[dict[str, Any]] = deque(maxlen=20)
+        self._diagnostic_last_manual_failure: dict[str, Any] | None = None
+        self._diagnostic_by_purpose: dict[str, dict[str, Any]] = {}
         self._last_scan = -1e9
         self._next_allowed = -1e9
+        self._next_allowed_monotonic = -1e9
+        self._manual_next_allowed = -1e9
+        self._manual_authorization_blocked = False
         self._failures = 0
         self._preliminary: SkinAnalysis | None = None
         self._preliminary_at = 0.0
         self._awaiting_closeup = False
         self._sampling_closeup = False
         self._arm_check_sampling = False
+        self._arm_check_window_id: float | None = None
         self._arm_check_state = "idle"
         self._arm_check_last_error: str | None = None
+        self._arm_check_correlation_id: str | None = None
+        self._arm_check_attempt = 0
+        self._arm_check_capture_mode: str | None = None
+        self._arm_check_view_labels: tuple[str, ...] = ()
+        self._arm_check_image_count = 0
+        self._manual_queue: deque[_QueuedManual] = deque()
+        self._queued_manual: _QueuedManual | None = None
+        self._best_arm_frame: np.ndarray | None = None
+        self._best_arm_context: np.ndarray | None = None
+        self._best_arm_label: str | None = None
+        self._best_arm_sharpness = -1.0
+        self._best_arm_fallback: np.ndarray | None = None
+        self._best_arm_fallback_sharpness = -1.0
         self._best_frame: np.ndarray | None = None
         self._best_sharpness = -1.0
         self._correlation_id: str | None = None
@@ -576,7 +750,7 @@ class SkinVision(DetectionModule):
             module, key = route
             out.append(Result(
                 module=module, key=key,
-                value={"cue": cue, "value": value, "image_quality": quality},
+                value={"cue": cue, "value": value},
                 confidence=confidence, severity=Severity.INFO,
                 message=f"{_FACIAL_LABELS[cue].capitalize()}: {value} (VLM)",
                 ttl=120.0, source="nvidia_vlm",
@@ -651,7 +825,52 @@ class SkinVision(DetectionModule):
         return bool(self.consent and self._key and self.endpoint and self.model)
 
     def _encode(self, frame: np.ndarray) -> bytes:
-        return self._client.encode(frame)
+        return self._client.encode(
+            frame, max_inline_image_bytes=int(self.max_inline_image_bytes))
+
+    @staticmethod
+    def _percentile(values: list[float], percentile: float) -> float | None:
+        """Return a deterministic nearest-rank percentile for a small sample."""
+        if not values:
+            return None
+        ordered = sorted(float(value) for value in values)
+        index = max(0, min(len(ordered) - 1,
+                           int(math.ceil(percentile * len(ordered))) - 1))
+        return round(ordered[index], 1)
+
+    def _safe_diagnostic_text(self, value: Any, limit: int = 160) -> str | None:
+        """Bound diagnostic text and remove the configured credential."""
+        text = _bounded_text(value, limit)
+        if self._key:
+            text = text.replace(self._key, "[redacted]")
+        return text or None
+
+    def _metrics_snapshot_locked(self, purpose: str) -> dict[str, Any]:
+        stats = self._diagnostic_by_purpose.get(purpose, {})
+        completed = int(stats.get("completed", 0))
+        successes = int(stats.get("successes", 0))
+        retried = int(stats.get("retried", 0))
+        latencies = list(stats.get("latencies_ms", ()))
+        return {
+            "completed": completed,
+            "successes": successes,
+            "failures": int(stats.get("failures", 0)),
+            "completion_rate": round(successes / max(1, completed), 3),
+            "first_attempt_success": int(
+                stats.get("first_attempt_successes", 0)),
+            "first_attempt_success_rate": round(
+                int(stats.get("first_attempt_successes", 0))
+                / max(1, completed), 3),
+            "retried": retried,
+            "retry_recovery": int(stats.get("retry_recoveries", 0)),
+            "retry_recovery_rate": round(
+                int(stats.get("retry_recoveries", 0)) / max(1, retried), 3),
+            "p50_latency_ms": self._percentile(latencies, 0.50),
+            "p95_latency_ms": self._percentile(latencies, 0.95),
+            "encoded_bytes": int(stats.get("last_encoded_bytes", 0)),
+            "failure_categories": dict(
+                sorted(stats.get("failure_categories", {}).items())),
+        }
 
     def diagnostics(self) -> dict[str, Any]:
         """Return the latest private, in-memory NVIDIA request diagnostics."""
@@ -664,6 +883,25 @@ class SkinVision(DetectionModule):
         local["mode"] = self._local_mode
         local["worker"] = self._local_worker.diagnostics()
         with self._diagnostic_lock:
+            completed = (self._diagnostic_success_count
+                         + self._diagnostic_failure_count)
+            now_monotonic = time.monotonic()
+            queued = self._queued_manual
+            purposes = sorted(set(self._diagnostic_by_purpose) | {
+                str(record.get("purpose", "unknown"))
+                for record in self._diagnostic_history})
+            by_purpose = {
+                purpose: [
+                    copy.deepcopy(record)
+                    for record in self._diagnostic_history
+                    if record.get("purpose") == purpose
+                ]
+                for purpose in purposes
+            }
+            metrics = {
+                purpose: self._metrics_snapshot_locked(purpose)
+                for purpose in purposes
+            }
             return {
                 "available": self.available,
                 "consent": bool(self.consent),
@@ -677,10 +915,14 @@ class SkinVision(DetectionModule):
                 "success_count": self._diagnostic_success_count,
                 "failure_count": self._diagnostic_failure_count,
                 "success_rate": round(self._diagnostic_success_count /
-                                      max(1, self._diagnostic_request_count), 3),
+                                      max(1, completed), 3),
                 "consecutive_failures": self._failures,
-                "circuit_state": ("open" if time.time() < self._next_allowed else "closed"),
-                "retry_after_seconds": round(max(0.0, self._next_allowed - time.time()), 1),
+                "circuit_state": (
+                    "open"
+                    if now_monotonic < self._next_allowed_monotonic
+                    else "closed"),
+                "retry_after_seconds": round(max(
+                    0.0, self._next_allowed_monotonic - now_monotonic), 1),
                 "attempt": self._diagnostic_attempt,
                 "payload_mode": self._diagnostic_payload_mode,
                 "deadline_remaining_seconds": (round(max(
@@ -689,29 +931,151 @@ class SkinVision(DetectionModule):
                 "arm_check": {
                     "state": self._arm_check_state,
                     "last_error": self._arm_check_last_error,
+                    "queued": queued is not None,
+                    "queue_depth": max(
+                        len(self._manual_queue),
+                        1 if queued is not None else 0),
+                    "queued_for_seconds": (
+                        round(max(0.0, now_monotonic - queued.queued_at), 1)
+                        if queued is not None else None),
+                    "deadline_remaining_seconds": (
+                        round(max(0.0, queued.deadline_monotonic
+                                  - now_monotonic), 1)
+                        if queued is not None else None),
+                    "attempt": self._arm_check_attempt,
+                    "capture_mode": self._arm_check_capture_mode,
+                    "view_count": len(self._arm_check_view_labels),
+                    "view_labels": list(self._arm_check_view_labels),
+                    "image_count": self._arm_check_image_count,
                     "correlation_id": (self._diagnostic_correlation_id
                                        if self._diagnostic_purpose == "manual_arm_check"
-                                       else None),
+                                       else self._arm_check_correlation_id),
                 },
                 "local_classifier": local,
                 "last_attempt": copy.deepcopy(self._diagnostic_last_attempt),
+                "last_manual_failure": copy.deepcopy(
+                    self._diagnostic_last_manual_failure),
+                "recent_requests": copy.deepcopy(
+                    list(self._diagnostic_history)),
+                "recent_requests_by_purpose": by_purpose,
+                "metrics_by_purpose": metrics,
+                "manual_metrics": copy.deepcopy(
+                    metrics.get("manual_arm_check", {
+                        "completed": 0, "successes": 0, "failures": 0,
+                        "completion_rate": 0.0, "first_attempt_success": 0,
+                        "first_attempt_success_rate": 0.0, "retried": 0,
+                        "retry_recovery": 0, "retry_recovery_rate": 0.0,
+                        "p50_latency_ms": None, "p95_latency_ms": None,
+                        "encoded_bytes": 0,
+                        "failure_categories": {},
+                    })),
+                "coordinator": self._client.coordinator_diagnostics(),
             }
 
     def _begin_request_diagnostics(self, stage: str, purpose: str,
                                    correlation_id: str,
-                                   deadline_seconds: float | None = None) -> None:
+                                   deadline_monotonic: float | None = None, *,
+                                   capture_mode: str | None = None,
+                                   view_labels: tuple[str, ...] = (),
+                                   image_count: int = 0,
+                                   started_monotonic: float | None = None) -> None:
+        now_monotonic = time.monotonic()
+        started_monotonic = (now_monotonic if started_monotonic is None
+                             else float(started_monotonic))
         with self._diagnostic_lock:
             self._diagnostic_status = "in_flight"
             self._diagnostic_current_stage = stage
-            self._diagnostic_started_at = time.time()
-            self._diagnostic_started_monotonic = time.monotonic()
+            self._diagnostic_started_at = (
+                time.time() - max(0.0, now_monotonic - started_monotonic))
+            self._diagnostic_started_monotonic = started_monotonic
             self._diagnostic_request_count += 1
             self._diagnostic_purpose = purpose
             self._diagnostic_correlation_id = correlation_id
             self._diagnostic_attempt = 0
             self._diagnostic_payload_mode = "normal"
-            self._diagnostic_deadline_at = (time.time() + deadline_seconds
-                                            if deadline_seconds else None)
+            self._diagnostic_deadline_at = (
+                time.time() + max(0.0, deadline_monotonic - now_monotonic)
+                if deadline_monotonic is not None else None)
+            self._diagnostic_capture_mode = capture_mode
+            self._diagnostic_view_labels = tuple(view_labels)
+            self._diagnostic_image_count = max(0, int(image_count))
+            self._diagnostic_encoded_bytes = 0
+            self._diagnostic_attempts = []
+
+    def _record_attempt_diagnostics(
+            self, *, attempt: int, outcome: str, payload_mode: str,
+            structured: bool, max_tokens: int, latency_ms: float,
+            encoded_bytes: int = 0, http_status: int | None = None,
+            finish_reason: str | None = None, request_id: str | None = None,
+            retry_after: float | None = None, retryable: bool = False,
+            category: str | None = None, error: str | None = None,
+            validation: dict[str, Any] | None = None,
+            poll_count: int = 0, queue_ms: float = 0.0) -> None:
+        """Retain categorical attempt metadata, never request/response media."""
+        record = {
+            "attempt": max(1, int(attempt)),
+            "outcome": _bounded_text(outcome, 40),
+            "payload_mode": _bounded_text(payload_mode, 40),
+            "structured": bool(structured),
+            "max_tokens": max(1, int(max_tokens)),
+            "latency_ms": round(max(0.0, float(latency_ms)), 1),
+            "encoded_bytes": max(0, int(encoded_bytes)),
+            "http_status": http_status,
+            "finish_reason": self._safe_diagnostic_text(finish_reason, 40),
+            "request_id": self._safe_diagnostic_text(request_id, 160),
+            "retry_after_seconds": (
+                round(max(0.0, float(retry_after)), 2)
+                if retry_after is not None else None),
+            "retryable": bool(retryable),
+            "failure_category": self._safe_diagnostic_text(category, 40),
+            "error": self._safe_diagnostic_text(error, 160),
+            "validation": copy.deepcopy(validation),
+            "poll_count": max(0, int(poll_count)),
+            "queue_ms": round(max(0.0, float(queue_ms)), 1),
+        }
+        with self._diagnostic_lock:
+            self._diagnostic_attempt = record["attempt"]
+            self._diagnostic_payload_mode = record["payload_mode"]
+            self._diagnostic_encoded_bytes = max(
+                self._diagnostic_encoded_bytes, record["encoded_bytes"])
+            self._diagnostic_attempts.append(record)
+
+    def _update_metrics_locked(self, logical: dict[str, Any]) -> None:
+        """Update bounded aggregate counters from one completed logical request."""
+        purpose = str(logical.get("purpose") or "unknown")
+        attempts = logical.get("attempts")
+        attempts = attempts if isinstance(attempts, list) else []
+        stats = self._diagnostic_by_purpose.setdefault(purpose, {
+            "completed": 0,
+            "successes": 0,
+            "failures": 0,
+            "first_attempt_successes": 0,
+            "retried": 0,
+            "retry_recoveries": 0,
+            "latencies_ms": deque(maxlen=20),
+            "last_encoded_bytes": 0,
+            "failure_categories": Counter(),
+        })
+        stats["completed"] += 1
+        stats["last_encoded_bytes"] = max(
+            0, int(logical.get("encoded_bytes") or 0))
+        stats["latencies_ms"].append(float(logical.get("latency_ms") or 0.0))
+        was_retried = len(attempts) > 1
+        if was_retried:
+            stats["retried"] += 1
+        if logical.get("status") == "success":
+            stats["successes"] += 1
+            if len(attempts) <= 1:
+                stats["first_attempt_successes"] += 1
+            if was_retried:
+                stats["retry_recoveries"] += 1
+        else:
+            stats["failures"] += 1
+            category = str(logical.get("failure_category")
+                           or logical.get("status") or "provider")
+            stats["failure_categories"][category] += 1
+            if purpose == "manual_arm_check":
+                self._diagnostic_last_manual_failure = copy.deepcopy(logical)
 
     def _finish_request_diagnostics(self, status: str, stage: str, *,
                                     error: str | None = None,
@@ -719,7 +1083,8 @@ class SkinVision(DetectionModule):
                                     validation: dict[str, Any] | None = None,
                                     repair_attempted: bool = False,
                                     retryable: bool = False,
-                                    terminal_reason: str | None = None) -> None:
+                                    terminal_reason: str | None = None,
+                                    failure_category: str | None = None) -> None:
         completed_at = time.time()
         completed_monotonic = time.monotonic()
         with self._diagnostic_lock:
@@ -741,7 +1106,10 @@ class SkinVision(DetectionModule):
                 CapabilityRegistry.instance().set(
                     "nvidia_skin", "cloud", CapabilityStatus.DEGRADED,
                     terminal_reason or error or status)
-            self._diagnostic_last_attempt = {
+            attempts = copy.deepcopy(self._diagnostic_attempts)
+            category = self._safe_diagnostic_text(
+                failure_category or terminal_reason, 40)
+            logical = {
                 "status": status,
                 "stage": stage,
                 "purpose": self._diagnostic_purpose,
@@ -756,12 +1124,25 @@ class SkinVision(DetectionModule):
                 "retryable": bool(retryable),
                 "attempt_count": self._diagnostic_attempt,
                 "payload_mode": self._diagnostic_payload_mode,
+                "encoded_bytes": self._diagnostic_encoded_bytes,
+                "capture_mode": self._diagnostic_capture_mode,
+                "view_count": len(self._diagnostic_view_labels),
+                "view_labels": list(self._diagnostic_view_labels),
+                "image_count": self._diagnostic_image_count,
                 "terminal_reason": terminal_reason,
+                "failure_category": category,
+                "attempts": attempts,
             }
+            self._diagnostic_last_attempt = logical
+            self._diagnostic_history.append(copy.deepcopy(logical))
+            self._update_metrics_locked(logical)
 
     def _prompt(self, stage: str, previous: SkinAnalysis | None,
                 face_crop_available: bool = False,
-                arm_crop_label: str | None = None) -> str:
+                arm_crop_label: str | None = None,
+                purpose: str = "passive_scan",
+                paired_context: bool = False, *,
+                include_contract: bool = True) -> str:
         if stage == "preliminary":
             task = ("Screen the visible person for an obvious possible skin change. "
                     "This is a low-confidence screening step, not a diagnosis. "
@@ -793,12 +1174,100 @@ class SkinVision(DetectionModule):
                          "field and nasal_discharge_visible to unclear, with facial cue "
                          "confidence 0. ")
         else:
-            task = ("Inspect this user-provided close-up for visible skin changes. "
-                    "Be conservative and non-diagnostic.")
+            if purpose == "manual_arm_check":
+                label = arm_crop_label or "candidate close-up"
+                task = (
+                    "Validate and inspect this manual skin-check image. It may show "
+                    "either live bare forearm/upper-arm skin or a phone screen displaying "
+                    "a close-up skin photo. Set visual_source to live_skin only for skin "
+                    "physically in front of the camera, displayed_photo only when the "
+                    "skin is inside a phone display, and unclear otherwise. For a "
+                    "displayed photo, inspect the photo content rather than rejecting it "
+                    "for not being live; ignore the phone bezel, gallery controls, glare, "
+                    "reflections, and other UI. Set sufficient_skin_visible false when "
+                    "glare, blur, scale, obstruction, or non-skin content prevents a "
+                    "reliable visual screen. For live_skin, require a prominent bare "
+                    "forearm or upper arm; reject a face, neck, torso, hand only, clothing, "
+                    "or an uncertain body region. For displayed_photo, use the photographed "
+                    "body region when clear, otherwise use 'skin area in displayed photo'. "
+                    "Be conservative and non-diagnostic. "
+                    f"The capture source describes it as: {label}. ")
+                if paired_context:
+                    task += (
+                        "The single image is a labeled composite from one camera moment. "
+                        "The top panel is the complete camera frame and may contain a "
+                        "phone displaying the actual skin photo. The bottom panel is an "
+                        f"enlarged pose crop described as {label}. Inspect both panels "
+                        "before deciding. Do not reject a displayed bruise photo merely "
+                        "because it appears only in the top whole-frame panel, and do not "
+                        "assume the bottom arm crop is the intended evidence. ")
+            else:
+                task = ("Inspect this user-provided close-up for visible skin changes. "
+                        "Be conservative and non-diagnostic.")
             if previous is not None:
                 task += (f" The preliminary frame indicated {', '.join(previous.visible_features)} "
                          f"around {previous.body_region}.")
-        return task + "\n\n" + _SCHEMA_TEXT + "\nJSON contract:\n" + _schema_contract(stage)
+        if include_contract:
+            if purpose == "manual_arm_check":
+                example = {
+                    "image_quality": "good",
+                    "visual_source": "displayed_photo",
+                    "sufficient_skin_visible": True,
+                    "finding_present": True,
+                    "visible_features": ["bruising"],
+                    "body_region": "forearm in displayed photo",
+                    "confidence": 0.8,
+                    "possible_conditions": [],
+                    "follow_up_topics": [],
+                }
+                task = (
+                    "Visual JSON labeling only; no medical advice. Inspect "
+                    "either the bare arm or the skin photo visible on a phone. "
+                    "Return exactly one raw JSON object and no other text. Use "
+                    "exactly these nine keys and update every value from what "
+                    "is visible. JSON contract: example shape "
+                    + json.dumps(example, separators=(",", ":"))
+                    + ". Allowed visible_features: "
+                    + ", ".join(sorted(_FEATURES))
+                    + ". image_quality is poor, fair, or good. visual_source "
+                    "is displayed_photo, live_skin, or unclear. If no visible "
+                    "change is present, set finding_present false and "
+                    "visible_features empty. If the view is unusable, set "
+                    "sufficient_skin_visible false and visual_source unclear. "
+                    "Use image_quality fair when a finding remains recognizable "
+                    "despite moderate phone glare or blur; use poor only when "
+                    "visual labeling is not possible. "
+                    "Keep possible_conditions empty. Never explain."
+                )
+                if paired_context:
+                    task += (
+                        " The single image is a labeled composite: the top "
+                        "panel is the complete camera frame and may contain a "
+                        "phone displaying the actual skin photo; the bottom "
+                        "panel is an enlarged pose crop. Inspect both. A "
+                        "visible change that appears only in the top whole-frame "
+                        "panel is still relevant, so do not assume the crop is "
+                        "the target."
+                    )
+                return task
+            return (
+                "MACHINE-READABLE VISUAL ATTRIBUTE EXTRACTION. Return exactly "
+                "one raw JSON object and nothing else. The first character "
+                "must be { and the last character must be }. Never output an "
+                "explanation, disclaimer, diagnosis, recommendation, prose, "
+                "or markdown. Record only directly visible attributes; this "
+                "is not a request for medical advice. "
+                + _SCHEMA_TEXT
+                + "\nJSON contract:\n" + _schema_contract(stage)
+                + "\nVisual extraction task:\n" + task
+            )
+        return (
+            "Return exactly one raw JSON object matching the provider-supplied "
+            "response schema, with no prose, markdown, explanation, disclaimer, "
+            "diagnosis, or recommendation. Record only directly visible "
+            "attributes; this is not a request for medical advice.\n\n"
+            + task
+        )
 
     @staticmethod
     def _validation_detail(raw: Any, stage: str, exc: BaseException) -> dict[str, Any]:
@@ -809,57 +1278,246 @@ class SkinVision(DetectionModule):
                 "missing_fields": missing[:20],
                 "response_type": type(raw).__name__}
 
-    def _call_api(self, frames: list[np.ndarray] | bytes, stage: str,
+    def _call_api(self, frames: list[np.ndarray] | np.ndarray | bytes, stage: str,
                   previous: SkinAnalysis | None, face_crop_available: bool = False,
                   arm_crop_label: str | None = None,
-                  purpose: str = "passive_scan") -> SkinAnalysis:
+                  purpose: str = "passive_scan",
+                  paired_context: bool = False,
+                  deadline_monotonic: float | None = None,
+                  reservation_token: int | None = None,
+                  cancel_event: threading.Event | None = None) -> SkinAnalysis:
+        """Hold logical priority from capture through every provider retry."""
+        priority_work = purpose in {"manual_arm_check", "guided_closeup"}
+        if deadline_monotonic is None and purpose == "manual_arm_check":
+            deadline_monotonic = (
+                time.monotonic() + float(self.manual_retry_deadline))
+        elif deadline_monotonic is None and purpose == "guided_closeup":
+            deadline_monotonic = (
+                time.monotonic() + max(
+                    60.0, float(self.request_timeout) * 3.0))
+        if priority_work and reservation_token is None:
+            reservation_token = self._client.reserve_request(
+                purpose, float(deadline_monotonic))
+        try:
+            return self._call_api_attempts(
+                frames, stage, previous, face_crop_available,
+                arm_crop_label, purpose, paired_context,
+                deadline_monotonic, reservation_token, cancel_event)
+        finally:
+            if priority_work:
+                self._client.cancel_reservation(reservation_token)
+
+    def _call_api_attempts(
+                  self, frames: list[np.ndarray] | np.ndarray | bytes, stage: str,
+                  previous: SkinAnalysis | None, face_crop_available: bool = False,
+                  arm_crop_label: str | None = None,
+                  purpose: str = "passive_scan",
+                  paired_context: bool = False,
+                  deadline_monotonic: float | None = None,
+                  reservation_token: int | None = None,
+                  cancel_event: threading.Event | None = None) -> SkinAnalysis:
+        """Run bounded structured generation with locally validated retries."""
         preencoded = isinstance(frames, (bytes, bytearray))
         if preencoded:
             frames = [bytes(frames)]
-        prompt = self._prompt(stage, previous, face_crop_available, arm_crop_label)
-        validation = None
+        elif isinstance(frames, np.ndarray):
+            frames = [frames]
+        if len(frames) != 1:
+            self._finish_request_diagnostics(
+                "error", stage, error="exactly one composite image is required",
+                retryable=False, terminal_reason="payload_size",
+                failure_category="payload_size")
+            raise SkinVisionAPIError(
+                "exactly one composite image is required",
+                retryable=False, kind="payload_size")
+
         manual = purpose == "manual_arm_check"
-        deadline = (time.monotonic() + float(self.manual_retry_deadline)
+        deadline = (float(deadline_monotonic)
+                    if deadline_monotonic is not None else
+                    time.monotonic() + float(self.manual_retry_deadline)
                     if manual else None)
-        compact = False
-        for attempt in range(2):
-            repair = attempt == 1 and validation is not None
-            with self._diagnostic_lock:
-                self._diagnostic_attempt = attempt + 1
-                self._diagnostic_payload_mode = "compact_retry" if compact else "normal"
-            request_prompt = prompt
-            if repair:
-                request_prompt += ("\nYour prior response failed validation. Repair the "
-                                   "format now; include every required field and JSON only.")
+        max_attempts = (max(1, int(self.manual_max_attempts))
+                        if manual else 2)
+        validation: dict[str, Any] | None = None
+        terminal_category = "schema_validation"
+        terminal_status: int | None = None
+        terminal_error = "invalid structured response"
+        terminal_diagnostic_error = "invalid structured response"
+        terminal_retryable = False
+        max_tokens = int(self.manual_retry_max_tokens) if manual else 700
+
+        with self._diagnostic_lock:
+            diagnostics_active = bool(
+                self._diagnostic_status == "in_flight"
+                and self._diagnostic_current_stage == stage
+                and self._diagnostic_purpose == purpose)
+        if not diagnostics_active:
+            self._begin_request_diagnostics(
+                stage, purpose, uuid.uuid4().hex, deadline,
+                capture_mode=(self._arm_check_capture_mode if manual else None),
+                view_labels=(self._arm_check_view_labels if manual else ()),
+                image_count=1)
+
+        for attempt_index in range(max_attempts):
+            attempt = attempt_index + 1
+            is_retry = attempt > 1
+            attempt_tokens = max_tokens
+            payload_mode = "compact_retry" if is_retry else "normal"
+            request_prompt = self._prompt(
+                stage, previous, face_crop_available, arm_crop_label, purpose,
+                paired_context=paired_context, include_contract=is_retry)
+            if is_retry:
+                request_prompt += (
+                    "\nThe prior attempt did not produce a validated object. "
+                    "Return repaired JSON with every required field.")
+            request_format = None if is_retry else _response_format(stage)
+            if is_retry and terminal_category == "schema_validation":
+                validation = validation or {
+                    "reason": "prior structured result was invalid"}
+
+            remaining = ((deadline - time.monotonic())
+                         if deadline is not None else
+                         float(self.manual_attempt_timeout
+                               if manual else self.request_timeout))
+            if remaining <= 0 or (is_retry and manual and remaining < 5.0):
+                terminal_category = "timeout"
+                terminal_error = "manual analysis deadline exceeded"
+                terminal_diagnostic_error = terminal_error
+                terminal_retryable = False
+                break
+            attempt_timeout = min(
+                float(self.manual_attempt_timeout if manual
+                      else self.request_timeout),
+                remaining)
+            encode_started = time.monotonic()
+            encoded: bytes | None = None
             try:
-                images = ([self._client.encode(
-                    item, max_image_dim=int(self.manual_retry_max_image_dim),
-                    jpeg_quality=int(self.manual_retry_jpeg_quality)) for item in frames]
-                    if compact and not preencoded else
-                    [bytes(item) for item in frames] if preencoded else
-                    [self._encode(item) for item in frames])
-                remaining = ((deadline - time.monotonic()) if deadline is not None
-                             else float(self.request_timeout))
-                if remaining <= 0:
-                    raise NvidiaVLMError("manual arm deadline exceeded", retryable=False)
-                content = self._client.request(
-                    request_prompt, images,
-                    max_tokens=(int(self.manual_retry_max_tokens) if compact else 700),
-                    response_format=_response_format(stage),
-                    timeout=min(float(self.request_timeout), remaining))
+                if preencoded:
+                    encoded = bytes(frames[0])
+                    if is_retry:
+                        decoded = cv2.imdecode(
+                            np.frombuffer(encoded, dtype=np.uint8),
+                            cv2.IMREAD_COLOR)
+                        if decoded is not None:
+                            encoded = self._client.encode(
+                                decoded,
+                                max_image_dim=max(
+                                    256, int(self.manual_retry_max_image_dim)
+                                    - 128 * min(2, attempt_index)),
+                                jpeg_quality=max(
+                                    50, int(self.manual_retry_jpeg_quality)
+                                    - 10 * min(2, attempt_index)),
+                                max_inline_image_bytes=min(
+                                    int(self.max_inline_image_bytes), 130560))
+                else:
+                    max_dimension = (
+                        int(self.manual_retry_max_image_dim)
+                        if not is_retry else
+                        max(256, int(self.manual_retry_max_image_dim)
+                            - 128 * min(2, attempt_index)))
+                    quality = (
+                        int(self.manual_retry_jpeg_quality)
+                        if not is_retry else
+                        max(50, int(self.manual_retry_jpeg_quality)
+                            - 10 * min(2, attempt_index)))
+                    encoded = self._client.encode(
+                        frames[0], max_image_dim=max_dimension,
+                        jpeg_quality=quality,
+                        max_inline_image_bytes=(
+                            int(self.max_inline_image_bytes)
+                            if not is_retry else
+                            min(int(self.max_inline_image_bytes), 130560)))
+                response = self._client.request(
+                    request_prompt, [encoded],
+                    max_tokens=attempt_tokens,
+                    response_format=request_format,
+                    timeout=attempt_timeout,
+                    purpose=purpose,
+                    deadline=deadline,
+                    reservation_token=reservation_token,
+                    cancel_event=cancel_event)
             except NvidiaVLMError as exc:
-                may_retry = bool(manual and attempt == 0 and exc.retryable
-                                 and deadline is not None and time.monotonic() < deadline)
+                category = {
+                    "response_shape": "schema_validation",
+                }.get(str(getattr(exc, "kind", "")),
+                      str(getattr(exc, "kind", "") or "network")
+                      )
+                terminal_category = category
+                terminal_status = exc.status
+                terminal_error = str(exc)
+                terminal_diagnostic_error = (
+                    f"HTTP {exc.status}" if exc.status is not None
+                    else category)
+                terminal_retryable = bool(exc.retryable)
+                retry_after = getattr(exc, "retry_after", None)
+                finish_reason = getattr(exc, "finish_reason", None)
+                if finish_reason == "length":
+                    max_tokens = 700
+                if manual:
+                    if category == "authentication":
+                        self._manual_authorization_blocked = True
+                    if retry_after is not None:
+                        self._manual_next_allowed = max(
+                            self._manual_next_allowed,
+                            time.monotonic() + max(
+                                0.0, min(10.0, float(retry_after))))
+                self._record_attempt_diagnostics(
+                    attempt=attempt, outcome="error",
+                    payload_mode=payload_mode,
+                    structured=request_format is not None,
+                    max_tokens=attempt_tokens,
+                    latency_ms=(time.monotonic() - encode_started) * 1000.0,
+                    encoded_bytes=len(encoded or b""),
+                    http_status=exc.status,
+                    finish_reason=finish_reason,
+                    request_id=getattr(exc, "request_id", None),
+                    retry_after=retry_after,
+                    retryable=exc.retryable, category=category,
+                    error=terminal_diagnostic_error)
+                may_retry = bool(
+                    attempt < max_attempts and exc.retryable
+                    and category != "authentication"
+                    and (deadline is None
+                         or deadline - time.monotonic() >= 5.0))
                 if may_retry:
-                    compact = True
-                    validation = None
+                    remaining_after = (
+                        deadline - time.monotonic()
+                        if deadline is not None else
+                        float(self.request_timeout))
+                    if retry_after is not None:
+                        delay = max(0.0, min(10.0, float(retry_after)))
+                    else:
+                        delay = (0.35 * (2 ** attempt_index)
+                                 + random.uniform(0.0, 0.20))
+                    if manual and remaining_after - delay < 5.0:
+                        break
+                    if delay > 0:
+                        time.sleep(min(delay, max(0.0, remaining_after)))
                     continue
                 self._finish_request_diagnostics(
-                    "error", stage, error=str(exc), http_status=exc.status,
-                    validation=validation, repair_attempted=repair,
-                    retryable=exc.retryable, terminal_reason="provider_failure")
-                raise SkinVisionAPIError(str(exc), status=exc.status,
-                                         retryable=exc.retryable) from exc
+                    "error", stage, error=terminal_diagnostic_error,
+                    http_status=exc.status,
+                    validation=validation, repair_attempted=is_retry,
+                    retryable=exc.retryable, terminal_reason=category,
+                    failure_category=category)
+                wrapped = SkinVisionAPIError(
+                    terminal_error,
+                    status=terminal_status,
+                    retryable=terminal_retryable,
+                    kind=category,
+                    retry_after=retry_after,
+                )
+                detach_exception_context(exc)
+                raise wrapped from None
+
+            content = getattr(response, "content", response)
+            response_status = getattr(response, "status", 200)
+            finish_reason = getattr(response, "finish_reason", None)
+            encoded_bytes = int(
+                getattr(response, "encoded_image_bytes", len(encoded or b"")))
+            response_latency_ms = float(getattr(
+                response, "latency_ms",
+                (time.monotonic() - encode_started) * 1000.0))
             raw: Any = None
             try:
                 raw = _extract_json(content)
@@ -867,25 +1525,180 @@ class SkinVision(DetectionModule):
                     raw, float(self.min_confidence),
                     allow_facial_cues=stage == "preliminary",
                     min_facial_confidence=float(self.min_facial_confidence),
-                    face_crop_available=face_crop_available)
+                    face_crop_available=face_crop_available,
+                    strict_schema=True)
+                self._record_attempt_diagnostics(
+                    attempt=attempt, outcome="success",
+                    payload_mode=payload_mode,
+                    structured=request_format is not None,
+                    max_tokens=attempt_tokens, latency_ms=response_latency_ms,
+                    encoded_bytes=encoded_bytes,
+                    http_status=response_status,
+                    finish_reason=finish_reason,
+                    request_id=getattr(response, "request_id", None),
+                    retry_after=getattr(response, "retry_after", None),
+                    poll_count=getattr(response, "poll_count", 0),
+                    queue_ms=getattr(response, "queue_ms", 0.0))
                 self._finish_request_diagnostics(
-                    "success", stage, validation=None, repair_attempted=repair)
+                    "success", stage, validation=None,
+                    repair_attempted=is_retry)
+                if manual:
+                    self._manual_next_allowed = -1e9
+                    self._manual_authorization_blocked = False
                 return analysis
             except (KeyError, IndexError, TypeError, ValueError,
                     json.JSONDecodeError) as exc:
                 validation = self._validation_detail(raw, stage, exc)
+                empty = (
+                    content is None
+                    or isinstance(content, str) and not content.strip()
+                    or isinstance(content, list) and not content)
+                category = (
+                    "empty_content" if empty else
+                    "json_parse" if raw is None else
+                    "schema_validation")
+                terminal_category = category
+                terminal_status = response_status
+                terminal_error = self._safe_diagnostic_text(
+                    str(exc), 160) or category
+                terminal_diagnostic_error = terminal_error
+                terminal_retryable = True
+                self._record_attempt_diagnostics(
+                    attempt=attempt, outcome="invalid_response",
+                    payload_mode=payload_mode,
+                    structured=request_format is not None,
+                    max_tokens=attempt_tokens,
+                    latency_ms=response_latency_ms,
+                    encoded_bytes=encoded_bytes,
+                    http_status=response_status,
+                    finish_reason=finish_reason,
+                    request_id=getattr(response, "request_id", None),
+                    retry_after=getattr(response, "retry_after", None),
+                    retryable=True, category=category,
+                    error=terminal_error, validation=validation,
+                    poll_count=getattr(response, "poll_count", 0),
+                    queue_ms=getattr(response, "queue_ms", 0.0))
+                if finish_reason == "length":
+                    max_tokens = 700
+                if (attempt < max_attempts
+                        and (deadline is None
+                             or deadline - time.monotonic() >= 5.0)):
+                    delay = (0.35 * (2 ** attempt_index)
+                             + random.uniform(0.0, 0.20))
+                    if deadline is not None \
+                            and deadline - time.monotonic() - delay < 5.0:
+                        break
+                    if delay > 0:
+                        time.sleep(delay)
+                    continue
+                break
+
+        status = ("invalid_response"
+                  if terminal_category in {
+                      "empty_content", "json_parse", "schema_validation"}
+                  else "error")
         self._finish_request_diagnostics(
-            "invalid_response", stage, error="invalid structured response",
-            validation=validation, repair_attempted=True,
-            terminal_reason="schema_validation_failed")
-        raise SkinVisionAPIError("invalid structured response")
+            status, stage, error=terminal_diagnostic_error,
+            http_status=terminal_status, validation=validation,
+            repair_attempted=len(self._diagnostic_attempts) > 1,
+            retryable=terminal_retryable,
+            terminal_reason=terminal_category,
+            failure_category=terminal_category)
+        raise SkinVisionAPIError(
+            terminal_error, status=terminal_status,
+            retryable=terminal_retryable, kind=terminal_category)
+
+    @staticmethod
+    def _manual_analysis_problem(analysis: SkinAnalysis) -> str | None:
+        """Return why a manual live/photo screen is inconclusive, if anything."""
+        displayed = analysis.visual_source == "displayed_photo"
+        # A deliberately displayed full photo must not be sent back for
+        # repositioning over phone-screen glare; gate quality for live skin
+        # only. Genuinely unusable displayed photos are still caught by the
+        # sufficient_skin_visible check below.
+        if not displayed and analysis.image_quality not in {"fair", "good"}:
+            return "image_quality_poor"
+        if not analysis.sufficient_skin_visible:
+            return ("displayed_photo_not_clear" if displayed
+                    else "insufficient_skin_visible")
+        if analysis.visual_source == "unclear":
+            return "visual_source_unclear"
+        if analysis.visual_source == "displayed_photo":
+            return None
+        region = " ".join(re.findall(r"[a-z]+", analysis.body_region.lower()))
+        arm_region = bool(re.search(r"\b(?:forearm|arm)\b", region))
+        wrong_region = bool(re.search(r"\b(?:face|neck|torso|hand)\b", region))
+        return None if arm_region and not wrong_region else "arm_region_not_confirmed"
+
+    @staticmethod
+    def _manual_arm_analysis_usable(analysis: SkinAnalysis) -> bool:
+        """Compatibility predicate for a usable live or displayed-photo screen."""
+        return SkinVision._manual_analysis_problem(analysis) is None
 
     def _call_closeup(self, frames: list[np.ndarray], previous: SkinAnalysis | None,
-                      purpose: str, use_cloud: bool) -> _CloseupOutcome:
+                      purpose: str, use_cloud: bool,
+                      arm_crop_label: str | None = None,
+                      local_frame: np.ndarray | None = None,
+                      paired_context: bool = False,
+                      deadline_monotonic: float | None = None,
+                      reservation_token: int | None = None,
+                      cancel_event: threading.Event | None = None) -> _CloseupOutcome:
         """Analyze one close-up locally and in the cloud without coupling failures."""
         local = None
+        local_future: Future | None = None
         if self._local_classifier is not None and self._local_ready:
-            local = self._local_classifier.predict(frames[0])
+            local_input = local_frame if local_frame is not None else frames[0]
+            try:
+                if use_cloud:
+                    # Optional local corroboration runs beside NVIDIA and may
+                    # never delay the manual/guided terminal result.
+                    local_future = self._local_worker.submit(
+                        self._local_classifier.predict, local_input)
+                else:
+                    local = self._local_classifier.predict(local_input)
+            except BaseException as exc:  # local GPU/model failure must not block NVIDIA
+                local = LocalSkinPrediction.unavailable(
+                    str(getattr(self._local_classifier, "backend", "local")),
+                    str(getattr(self._local_classifier, "model", "unknown")),
+                    str(getattr(
+                        self._local_classifier, "revision", "unknown")),
+                    str(getattr(self._local_classifier, "target", "vitiligo")),
+                    type(exc).__name__,
+                )
+                detach_exception_context(exc)
+        analysis = None
+        cloud_error = None
+        if use_cloud:
+            try:
+                analysis = self._call_api(
+                    frames, "closeup", previous, arm_crop_label=arm_crop_label,
+                    purpose=purpose, paired_context=paired_context,
+                    deadline_monotonic=deadline_monotonic,
+                    reservation_token=reservation_token,
+                    cancel_event=cancel_event)
+            except BaseException as exc:  # cloud degradation must not discard local evidence
+                cloud_error = detach_exception_context(exc)
+        if local_future is not None:
+            remaining = (
+                deadline_monotonic - time.monotonic()
+                if deadline_monotonic is not None else 0.25)
+            try:
+                local = local_future.result(
+                    timeout=max(0.0, min(0.25, remaining)))
+            except FutureTimeoutError:
+                local_future.cancel()
+                local = None
+            except BaseException as exc:
+                local = LocalSkinPrediction.unavailable(
+                    str(getattr(self._local_classifier, "backend", "local")),
+                    str(getattr(self._local_classifier, "model", "unknown")),
+                    str(getattr(
+                        self._local_classifier, "revision", "unknown")),
+                    str(getattr(self._local_classifier, "target", "vitiligo")),
+                    type(exc).__name__,
+                )
+                detach_exception_context(exc)
+        if local is not None:
             if local.status == "unavailable":
                 CapabilityRegistry.instance().set(
                     "local_skin_classifier", "model", CapabilityStatus.DEGRADED,
@@ -894,14 +1707,6 @@ class SkinVision(DetectionModule):
                 CapabilityRegistry.instance().set(
                     "local_skin_classifier", "model", CapabilityStatus.READY,
                     f"{local.backend} close-up inference {local.inference_ms:.1f} ms")
-        analysis = None
-        cloud_error = None
-        if use_cloud:
-            try:
-                analysis = self._call_api(
-                    frames, "closeup", previous, purpose=purpose)
-            except BaseException as exc:  # cloud degradation must not discard local evidence
-                cloud_error = exc
         return _CloseupOutcome(analysis, local, cloud_error)
 
     @staticmethod
@@ -952,10 +1757,13 @@ class SkinVision(DetectionModule):
         public_key = "arm_check" if purpose == "manual_arm_check" else "visible_skin_change"
         public_value = ({"status": "succeeded", "source": "local_skin_classifier",
                          "finding_present": True, "body_region": region,
-                         "visible_features": ["discoloration"], "image_quality": "unknown"}
+                         "visible_features": ["discoloration"],
+                         "visual_source": "live_skin",
+                         "attempt": self._arm_check_attempt,
+                         "capture_mode": self._arm_check_capture_mode}
                         if purpose == "manual_arm_check" else
                         {"body_region": region, "visible_features": ["discoloration"],
-                         "image_quality": "unknown"})
+                         "visual_source": "live_skin"})
         public = self.result(
             public_key, public_value, min(local.probability, 0.65), Severity.NOTICE,
             f"Possible pigment change on {region}", ttl=120.0,
@@ -975,44 +1783,115 @@ class SkinVision(DetectionModule):
     def _submit(self, frame: np.ndarray | list[np.ndarray], stage: str, now: float,
                 face_crop_available: bool = False,
                 arm_crop_label: str | None = None,
-                purpose: str | None = None) -> None:
+                purpose: str | None = None, *,
+                local_frame: np.ndarray | None = None,
+                paired_context: bool = False,
+                deadline_monotonic: float | None = None,
+                captured_monotonic: float | None = None,
+                reservation_token: int | None = None) -> None:
         if self._pending is not None:
             return
         frames = frame if isinstance(frame, list) else [frame]
         frames = [np.array(item, copy=True) for item in frames]
+        local_frame = (np.array(local_frame, copy=True)
+                       if local_frame is not None else None)
         previous = self._preliminary
         purpose = purpose or ("passive_scan" if stage == "preliminary"
                               else "guided_closeup")
-        use_cloud = bool(self.available and now >= self._next_allowed)
+        manual = purpose == "manual_arm_check"
+        if manual and deadline_monotonic is None:
+            deadline_monotonic = (
+                time.monotonic() + float(self.manual_retry_deadline))
+        use_cloud = bool(
+            self.available
+            and (not manual and now >= self._next_allowed
+                 or manual and not self._manual_authorization_blocked
+                 and time.monotonic() >= self._manual_next_allowed))
         if stage == "preliminary" and not use_cloud:
             return
         if stage == "closeup" and not use_cloud and not self._local_ready:
             return
-        correlation_id = (self._correlation_id or uuid.uuid4().hex)
+        priority_work = purpose in {"manual_arm_check", "guided_closeup"}
+        if use_cloud and priority_work and deadline_monotonic is None:
+            deadline_monotonic = time.monotonic() + max(
+                60.0, float(self.request_timeout) * 3.0)
+        if use_cloud and priority_work and reservation_token is None:
+            reservation_token = self._client.reserve_request(
+                purpose, float(deadline_monotonic))
+        cancel_event = threading.Event() if use_cloud else None
+        correlation_id = (
+            self._arm_check_correlation_id
+            if purpose == "manual_arm_check" and self._arm_check_correlation_id
+            else self._correlation_id or uuid.uuid4().hex)
         self._pending_stage = stage
         self._pending_purpose = purpose
         self._pending_correlation_id = correlation_id
+        self._pending_capture_mode = (
+            self._arm_check_capture_mode if purpose == "manual_arm_check" else None)
+        if purpose == "manual_arm_check":
+            if self._pending_capture_mode == "pose_crop_with_context":
+                view_labels = ("whole_frame", "arm_crop")
+            elif self._pending_capture_mode == "pose_crop":
+                view_labels = ("arm_crop",)
+            else:
+                view_labels = ("whole_frame",)
+        else:
+            view_labels = ()
+        self._pending_view_labels = view_labels
+        self._pending_image_count = len(frames)
+        self._pending_arm_attempt = (
+            self._arm_check_attempt if manual else 0)
+        self._pending_deadline_monotonic = deadline_monotonic
+        self._pending_reservation_token = reservation_token
+        self._pending_cancel_event = cancel_event
         if use_cloud:
             self._begin_request_diagnostics(
-                stage, purpose, correlation_id,
-                float(self.manual_retry_deadline) if purpose == "manual_arm_check" else None)
-        if purpose == "manual_arm_check":
+                stage, purpose, correlation_id, deadline_monotonic,
+                capture_mode=self._pending_capture_mode,
+                view_labels=view_labels,
+                image_count=len(frames),
+                started_monotonic=captured_monotonic)
+        if manual:
+            self._arm_check_view_labels = view_labels
+            self._arm_check_image_count = len(frames)
             self._arm_check_state = "pending"
             self._arm_check_last_error = None
+            if use_cloud:
+                print(
+                    "[skin-vision] manual check submitted "
+                    f"(mode={self._pending_capture_mode or 'unknown'}, "
+                    f"views={'+'.join(view_labels) or 'none'}, "
+                    f"images={len(frames)})")
         try:
-            if stage == "closeup" and self._local_classifier is not None \
-                    and self._local_ready:
+            local_allowed = not (
+                purpose == "manual_arm_check"
+                and self._arm_check_capture_mode == "cloud_closeup")
+            if stage == "closeup" and local_allowed \
+                    and self._local_classifier is not None and self._local_ready:
                 self._pending = self._executor.submit(
-                    self._call_closeup, frames, previous, purpose, use_cloud)
+                    self._call_closeup, frames, previous, purpose, use_cloud,
+                    arm_crop_label, local_frame, paired_context,
+                    deadline_monotonic, reservation_token, cancel_event)
             else:
                 self._pending = self._executor.submit(
                     self._call_api, frames, stage, previous, face_crop_available,
-                    arm_crop_label, purpose)
+                    arm_crop_label, purpose, paired_context,
+                    deadline_monotonic, reservation_token, cancel_event)
         except BaseException as exc:
+            self._client.cancel_reservation(reservation_token)
             if use_cloud:
                 self._finish_request_diagnostics(
                     "error", stage, error=type(exc).__name__)
             self._pending_stage = None
+            self._pending_purpose = None
+            self._pending_correlation_id = None
+            self._pending_capture_mode = None
+            self._pending_view_labels = ()
+            self._pending_image_count = 0
+            self._pending_arm_attempt = 0
+            self._pending_deadline_monotonic = None
+            self._pending_reservation_token = None
+            self._pending_cancel_event = None
             raise
         if stage == "preliminary":
             self._last_scan = now
@@ -1026,14 +1905,30 @@ class SkinVision(DetectionModule):
         self._best_sharpness = -1.0
         self._correlation_id = None
 
-    def _failure(self, now: float, exc: BaseException) -> None:
-        self._failures += 1
-        delay = min(float(self.backoff_max),
-                    float(self.backoff_base) * (2 ** (self._failures - 1)))
-        self._next_allowed = now + delay
+    def _failure(self, now: float, exc: BaseException,
+                 purpose: str = "passive_scan") -> None:
+        category = self._safe_diagnostic_text(
+            getattr(exc, "kind", None), 40) or "provider"
         status = getattr(exc, "status", None)
-        label = f"HTTP {status}" if status else type(exc).__name__
-        print(f"[skin-vision] inference unavailable ({label}); retrying later")
+        if purpose == "manual_arm_check":
+            retry_after = getattr(exc, "retry_after", None)
+            if category == "authentication":
+                self._manual_authorization_blocked = True
+            if retry_after is not None:
+                self._manual_next_allowed = max(
+                    self._manual_next_allowed,
+                    time.monotonic() + max(
+                        0.0, min(10.0, float(retry_after))))
+        else:
+            self._failures += 1
+            delay = min(float(self.backoff_max),
+                        float(self.backoff_base) * (2 ** (self._failures - 1)))
+            self._next_allowed = now + delay
+            self._next_allowed_monotonic = time.monotonic() + delay
+        status_text = f", HTTP {status}" if status is not None else ""
+        print(
+            "[skin-vision] inference unavailable "
+            f"(category={category}{status_text}); retrying later")
 
     def _consume_pending(self, now: float):
         if self._pending is None or not self._pending.done():
@@ -1041,10 +1936,25 @@ class SkinVision(DetectionModule):
         pending, stage = self._pending, self._pending_stage
         purpose = self._pending_purpose or "passive_scan"
         correlation_id = self._pending_correlation_id
+        capture_mode = self._pending_capture_mode
+        view_labels = self._pending_view_labels
+        view_text = "+".join(view_labels) or "none"
+        image_count = self._pending_image_count
+        arm_attempt = self._pending_arm_attempt
+        deadline_monotonic = self._pending_deadline_monotonic
+        reservation_token = self._pending_reservation_token
         self._pending = None
         self._pending_stage = None
         self._pending_purpose = None
         self._pending_correlation_id = None
+        self._pending_capture_mode = None
+        self._pending_view_labels = ()
+        self._pending_image_count = 0
+        self._pending_arm_attempt = 0
+        self._pending_deadline_monotonic = None
+        self._pending_reservation_token = None
+        self._pending_cancel_event = None
+        self._client.cancel_reservation(reservation_token)
         local: LocalSkinPrediction | None = None
         cloud_error: BaseException | None = None
         try:
@@ -1056,25 +1966,48 @@ class SkinVision(DetectionModule):
             else:
                 analysis = completed
         except BaseException as exc:  # noqa: BLE001
-            self._failure(now, exc)
+            self._failure(now, exc, purpose)
             if stage == "closeup":
                 self._reset_closeup()
             if purpose == "manual_arm_check":
                 self._arm_check_state = "unavailable"
-                self._arm_check_last_error = type(exc).__name__
-                if self._elicitation.test == "arm_check":
-                    self._elicitation.clear()
-                return [self.result(
-                    "arm_check", {"status": "unavailable", "source": "nvidia_vlm"},
+                category = self._safe_diagnostic_text(
+                    getattr(exc, "kind", None), 40) or "provider"
+                status = getattr(exc, "status", None)
+                self._arm_check_last_error = (
+                    f"{category}:http_{status}" if status is not None
+                    else category)
+                self._clear_matching_arm_elicitation(correlation_id)
+                result = self.result(
+                    "arm_check",
+                    {"status": "unavailable", "source": "nvidia_vlm",
+                      "attempt": arm_attempt, "capture_mode": capture_mode,
+                     "visual_source": "unclear",
+                     "reason": "provider_failure",
+                     "failure_category": category,
+                     "http_status": status},
                     0.0, Severity.INFO,
-                    "NVIDIA arm analysis was unavailable; the local camera check is separate",
-                    ttl=30.0, source="nvidia_vlm", correlation_id=correlation_id)]
+                    "The arm check could not be completed because visual analysis was unavailable",
+                    ttl=30.0, source="nvidia_vlm", correlation_id=correlation_id)
+                self._reset_arm_capture()
+                print(
+                    "[skin-vision] manual check completed "
+                    f"(status=unavailable, mode={capture_mode or 'unknown'}, "
+                    f"views={view_text}, images={image_count}, "
+                    "visual_source=unclear, finding_present=unknown, "
+                    f"category={category}"
+                    f"{f', http_status={status}' if status is not None else ''})")
+                return [result]
             return []
         if cloud_error is not None:
-            self._failure(now, cloud_error)
+            self._failure(now, cloud_error, purpose)
         elif analysis is not None:
-            self._failures = 0
-            self._next_allowed = now
+            if purpose == "manual_arm_check":
+                self._manual_next_allowed = -1e9
+            else:
+                self._failures = 0
+                self._next_allowed = now
+                self._next_allowed_monotonic = time.monotonic()
         if stage == "closeup" and analysis is None:
             self._reset_closeup()
             local_results = self._local_only_results(purpose, correlation_id, local)
@@ -1084,17 +2017,33 @@ class SkinVision(DetectionModule):
             if purpose == "manual_arm_check":
                 self._arm_check_state = "succeeded" if screening_succeeded else "unavailable"
                 self._arm_check_last_error = None if screening_succeeded else (
-                    type(cloud_error).__name__ if cloud_error is not None else
+                    (self._safe_diagnostic_text(
+                        getattr(cloud_error, "kind", None), 40)
+                     or "provider") if cloud_error is not None else
                     (local.abstain_reason if local is not None else "no_backend"))
-                if self._elicitation.test == "arm_check":
-                    self._elicitation.clear()
+                self._clear_matching_arm_elicitation(correlation_id)
                 if not screening_succeeded:
                     local_results.insert(0, self.result(
-                        "arm_check", {"status": "unavailable", "source": "skin_screening"},
+                        "arm_check",
+                        {"status": "unavailable", "source": "skin_screening",
+                          "attempt": arm_attempt, "capture_mode": capture_mode,
+                         "visual_source": ("live_skin"
+                                           if capture_mode in (
+                                               "pose_crop",
+                                               "pose_crop_with_context")
+                                           else "unclear"),
+                         "reason": self._arm_check_last_error},
                         0.0, Severity.INFO,
                         "Skin close-up analysis was unavailable or inconclusive",
                         ttl=30.0, source="skin_screening",
                         correlation_id=correlation_id))
+                print(
+                    "[skin-vision] manual check completed "
+                    f"(status={'succeeded' if screening_succeeded else 'unavailable'}, "
+                    f"mode={capture_mode or 'unknown'}, "
+                    f"views={view_text}, images={image_count}, "
+                    f"visual_source={'live_skin' if capture_mode in ('pose_crop', 'pose_crop_with_context') else 'unclear'}, "
+                    f"finding_present={'true' if screening_succeeded else 'unknown'})")
             return local_results
         if stage == "preliminary":
             results = []
@@ -1107,8 +2056,7 @@ class SkinVision(DetectionModule):
                     labels.append(label if value == "yes" else f"{value} {label}")
                 results.append(self.result(
                     "facial_appearance",
-                    {"cues": positive, "image_quality": analysis.image_quality,
-                     "confidence": cues.confidence},
+                    {"cues": positive, "confidence": cues.confidence},
                     confidence=cues.confidence, severity=Severity.INFO,
                     message="Visible facial appearance cues: " + ", ".join(labels),
                     ttl=120.0, source="nvidia_vlm",
@@ -1135,10 +2083,21 @@ class SkinVision(DetectionModule):
                 correlation_id=self._correlation_id))
             return results
         if purpose == "manual_arm_check":
+            problem = self._manual_analysis_problem(analysis)
+            if problem is not None:
+                result = self._manual_capture_result(
+                    problem, visual_source=analysis.visual_source)
+                self._clear_matching_arm_elicitation(correlation_id)
+                self._reset_arm_capture()
+                print(
+                    "[skin-vision] manual check completed "
+                    f"(status={result.value['status']}, mode={capture_mode or 'unknown'}, "
+                    f"views={view_text}, images={image_count}, "
+                    f"visual_source={analysis.visual_source}, finding_present=unknown)")
+                return [result]
             self._arm_check_state = "succeeded"
             self._arm_check_last_error = None
-            if self._elicitation.test == "arm_check":
-                self._elicitation.clear()
+            self._clear_matching_arm_elicitation(correlation_id)
             region = analysis.body_region or "the visible arm"
             corroborated = self._local_corroborates(analysis, local)
             value = {
@@ -1147,9 +2106,19 @@ class SkinVision(DetectionModule):
                 "finding_present": bool(analysis.finding_present),
                 "body_region": region,
                 "visible_features": list(analysis.visible_features),
-                "image_quality": analysis.image_quality,
+                "visual_source": analysis.visual_source,
+                "attempt": arm_attempt,
+                "capture_mode": capture_mode,
             }
-            message = (f"Possible pigment change on {region}"
+            photo_prefix = "In the photo shown on the phone, "
+            message = (photo_prefix + f"a possible visible change appears on {region}: "
+                       + ", ".join(analysis.visible_features[:3])
+                       if (analysis.visual_source == "displayed_photo"
+                           and analysis.finding_present) else
+                       photo_prefix
+                       + "the NVIDIA VLM did not identify a clear visible skin change"
+                       if analysis.visual_source == "displayed_photo" else
+                       f"Possible pigment change on {region}"
                        if corroborated else
                        f"NVIDIA arm VLM noticed a possible visible change on {region}: "
                        + ", ".join(analysis.visible_features[:3])
@@ -1168,8 +2137,41 @@ class SkinVision(DetectionModule):
                 Severity.NOTICE if analysis.finding_present else Severity.INFO,
                 message, ttl=120.0, visibility=Visibility.AGENT_ONLY,
                 correlation_id=correlation_id, source="nvidia_vlm")
+            print(
+                "[skin-vision] manual check completed "
+                f"(status=succeeded, mode={capture_mode or 'unknown'}, "
+                f"views={view_text}, images={image_count}, "
+                f"visual_source={analysis.visual_source}, "
+                f"finding_present={'true' if analysis.finding_present else 'false'})")
+            # Also surface the cloud verdict on the local arm detector's card so
+            # the modules console shows local + cloud side by side. Routed under
+            # module="arm_skin" with source="nvidia_vlm" (mirrors
+            # _routed_cue_results) so the console labels it a VLM second opinion
+            # and never as the local heuristic having fired.
+            cloud_verdict = (
+                "possible " + ", ".join(analysis.visible_features[:3])
+                + f" on {region}"
+                if analysis.finding_present and analysis.visible_features else
+                "no clear visible skin change")
+            routed = Result(
+                module="arm_skin", key="vlm_arm_check",
+                value={"status": "succeeded",
+                       "finding_present": bool(analysis.finding_present),
+                       "visible_features": list(analysis.visible_features),
+                       "visual_source": analysis.visual_source,
+                       "body_region": region},
+                confidence=min(analysis.confidence, 0.65),
+                severity=(Severity.NOTICE if analysis.finding_present
+                          else Severity.INFO),
+                message="Cloud photo check: " + cloud_verdict,
+                ttl=120.0, source="nvidia_vlm",
+                correlation_id=correlation_id,
+                quality={"poor": .2, "fair": .6, "good": .9}[
+                    analysis.image_quality],
+                location=region)
             self._reset_closeup()
-            return [public, private]
+            self._reset_arm_capture()
+            return [public, private, routed]
         correlation_id = self._correlation_id
         self._reset_closeup()
         if not analysis.finding_present:
@@ -1180,8 +2182,7 @@ class SkinVision(DetectionModule):
         public = self.result(
             "visible_skin_change",
             {"body_region": region,
-             "visible_features": list(analysis.visible_features),
-             "image_quality": analysis.image_quality},
+             "visible_features": list(analysis.visible_features)},
             confidence=min(analysis.confidence, 0.65),
             severity=Severity.NOTICE,
             message=(f"Possible pigment change on {region}" if corroborated else
@@ -1204,6 +2205,279 @@ class SkinVision(DetectionModule):
         if score > self._best_sharpness:
             self._best_sharpness = score
             self._best_frame = ctx.frame.copy()
+
+    def _reset_arm_capture(self) -> None:
+        self._arm_check_sampling = False
+        self._arm_check_window_id = None
+        self._best_arm_frame = None
+        self._best_arm_context = None
+        self._best_arm_label = None
+        self._best_arm_sharpness = -1.0
+        self._best_arm_fallback = None
+        self._best_arm_fallback_sharpness = -1.0
+
+    def _clear_matching_arm_elicitation(
+            self, correlation_id: str | None) -> None:
+        """Never let completion of an older request cancel a newer arm window."""
+        if (self._elicitation.test == "arm_check"
+                and self._elicitation.correlation_id == correlation_id):
+            self._elicitation.clear()
+
+    def _queue_manual_capture(
+            self, frame: np.ndarray, *, local_frame: np.ndarray | None,
+            arm_crop_label: str | None, paired_context: bool) -> None:
+        """Own the best completed capture until the NVIDIA lane is available."""
+        captured_at = time.monotonic()
+        deadline = captured_at + float(self.manual_retry_deadline)
+        reservation_token = self._client.reserve_request(
+            "manual_arm_check", deadline)
+        if (self._pending is not None
+                and self._pending_purpose != "manual_arm_check"
+                and self._pending_cancel_event is not None):
+            # Withdraw this module's lower-priority coordinator ticket. A
+            # manual reservation must not block the passive/guided Future
+            # whose completion is required before manual submission.
+            self._pending_cancel_event.set()
+            self._client.notify_cancellation()
+        capture_mode = self._arm_check_capture_mode or "cloud_closeup"
+        view_labels = (
+            ("whole_frame", "arm_crop")
+            if capture_mode == "pose_crop_with_context" else
+            ("arm_crop",) if capture_mode == "pose_crop" else
+            ("whole_frame",))
+        queued = _QueuedManual(
+            frame=np.array(frame, copy=True),
+            local_frame=(np.array(local_frame, copy=True)
+                         if local_frame is not None else None),
+            arm_crop_label=arm_crop_label,
+            paired_context=bool(paired_context),
+            capture_mode=capture_mode,
+            correlation_id=(
+                self._arm_check_correlation_id or uuid.uuid4().hex),
+            arm_attempt=self._arm_check_attempt,
+            queued_at=captured_at,
+            deadline_monotonic=deadline,
+            view_labels=view_labels,
+            reservation_token=reservation_token,
+        )
+        self._manual_queue.append(queued)
+        if self._queued_manual is None:
+            self._queued_manual = queued
+        head = self._queued_manual
+        self._arm_check_state = "queued"
+        self._arm_check_last_error = None
+        self._arm_check_capture_mode = head.capture_mode
+        self._arm_check_correlation_id = head.correlation_id
+        self._arm_check_attempt = head.arm_attempt
+        self._arm_check_view_labels = head.view_labels
+        self._arm_check_image_count = 1
+        print(
+            "[skin-vision] manual check queued "
+            f"(mode={capture_mode}, views={'+'.join(view_labels)}, images=1, "
+            f"depth={len(self._manual_queue)})")
+
+    def _remove_queued_manual(self, queued: _QueuedManual) -> None:
+        """Remove exactly one owned capture and expose the next queue head."""
+        for index, item in enumerate(self._manual_queue):
+            if item is queued:
+                del self._manual_queue[index]
+                break
+        self._queued_manual = (
+            self._manual_queue[0] if self._manual_queue else None)
+
+    def _record_queued_manual_failure(
+            self, queued: _QueuedManual, category: str,
+            error: str) -> None:
+        """Complete a queued logical request without clobbering active telemetry."""
+        completed_at = time.time()
+        completed_monotonic = time.monotonic()
+        latency_ms = round(
+            max(0.0, completed_monotonic - queued.queued_at) * 1000.0, 1)
+        logical = {
+            "status": "error",
+            "stage": "closeup",
+            "purpose": "manual_arm_check",
+            "correlation_id": queued.correlation_id,
+            "started_at": completed_at - latency_ms / 1000.0,
+            "completed_at": completed_at,
+            "latency_ms": latency_ms,
+            "http_status": None,
+            "error": self._safe_diagnostic_text(error, 160),
+            "validation": None,
+            "repair_attempted": False,
+            "retryable": False,
+            "attempt_count": 0,
+            "payload_mode": "queued",
+            "encoded_bytes": 0,
+            "capture_mode": queued.capture_mode,
+            "view_count": len(queued.view_labels),
+            "view_labels": list(queued.view_labels),
+            "image_count": 1,
+            "terminal_reason": category,
+            "failure_category": category,
+            "attempts": [],
+        }
+        with self._diagnostic_lock:
+            self._diagnostic_request_count += 1
+            self._diagnostic_failure_count += 1
+            self._diagnostic_history.append(copy.deepcopy(logical))
+            self._update_metrics_locked(logical)
+            if self._diagnostic_status != "in_flight":
+                self._diagnostic_status = "error"
+                self._diagnostic_last_attempt = copy.deepcopy(logical)
+        CapabilityRegistry.instance().set(
+            "nvidia_skin", "cloud", CapabilityStatus.DEGRADED, category)
+
+    def _fail_queued_manual(
+            self, queued: _QueuedManual, category: str, message: str) -> Result:
+        self._record_queued_manual_failure(queued, category, message)
+        self._client.cancel_reservation(queued.reservation_token)
+        self._remove_queued_manual(queued)
+        next_queued = self._queued_manual
+        self._arm_check_state = (
+            "queued" if next_queued is not None else "unavailable")
+        self._arm_check_last_error = (
+            None if next_queued is not None else category)
+        self._arm_check_capture_mode = (
+            next_queued.capture_mode if next_queued is not None
+            else queued.capture_mode)
+        self._arm_check_correlation_id = (
+            next_queued.correlation_id if next_queued is not None
+            else queued.correlation_id)
+        self._arm_check_attempt = (
+            next_queued.arm_attempt if next_queued is not None
+            else queued.arm_attempt)
+        self._arm_check_view_labels = (
+            next_queued.view_labels if next_queued is not None
+            else queued.view_labels)
+        self._arm_check_image_count = 1
+        self._clear_matching_arm_elicitation(queued.correlation_id)
+        self._reset_arm_capture()
+        print(
+            "[skin-vision] manual check completed "
+            f"(status=unavailable, mode={queued.capture_mode}, "
+            f"views={'+'.join(queued.view_labels)}, images=1, "
+            f"category={category})")
+        return self.result(
+            "arm_check",
+            {"status": "unavailable", "source": "nvidia_vlm",
+             "attempt": queued.arm_attempt,
+             "capture_mode": queued.capture_mode,
+             "visual_source": "unclear",
+             "reason": "provider_failure",
+             "failure_category": category},
+            0.0, Severity.INFO,
+            "The arm check could not be completed because visual analysis was unavailable",
+            ttl=30.0, source="nvidia_vlm",
+            correlation_id=queued.correlation_id)
+
+    def _drain_queued_manual(self, now: float) -> list[Result]:
+        """Submit a captured manual request ahead of all new passive work."""
+        queued = self._queued_manual
+        if queued is None:
+            return []
+        current = time.monotonic()
+        if current >= queued.deadline_monotonic:
+            return [self._fail_queued_manual(
+                queued, "timeout", "manual analysis deadline exceeded in queue")]
+        if self._manual_authorization_blocked:
+            return [self._fail_queued_manual(
+                queued, "authentication",
+                "provider authentication is unavailable")]
+        if self._pending is not None or current < self._manual_next_allowed:
+            self._arm_check_state = "queued"
+            return []
+        if not self.available:
+            return [self._fail_queued_manual(
+                queued, "authentication", "provider credential is unavailable")]
+
+        self._arm_check_correlation_id = queued.correlation_id
+        self._arm_check_attempt = queued.arm_attempt
+        self._arm_check_capture_mode = queued.capture_mode
+        self._arm_check_view_labels = queued.view_labels
+        self._arm_check_image_count = 1
+        self._remove_queued_manual(queued)
+        try:
+            self._submit(
+                queued.frame, "closeup", now,
+                arm_crop_label=queued.arm_crop_label,
+                purpose="manual_arm_check",
+                local_frame=queued.local_frame,
+                paired_context=queued.paired_context,
+                deadline_monotonic=queued.deadline_monotonic,
+                captured_monotonic=queued.queued_at,
+                reservation_token=queued.reservation_token)
+        except BaseException as exc:  # preserve capture across handoff failure
+            if time.monotonic() < queued.deadline_monotonic:
+                queued.reservation_token = self._client.reserve_request(
+                    "manual_arm_check", queued.deadline_monotonic)
+                self._manual_queue.appendleft(queued)
+                self._queued_manual = queued
+                self._arm_check_state = "queued"
+                self._arm_check_last_error = (
+                    self._safe_diagnostic_text(type(exc).__name__, 40)
+                    or "provider")
+                return []
+            return [self._fail_queued_manual(
+                queued, "timeout",
+                "manual analysis deadline exceeded during handoff")]
+        if self._pending is None:
+            # A test seam or a transient local worker race may decline the
+            # handoff without raising. Preserve the owned capture and retry
+            # until its original deadline instead of discarding it.
+            self._manual_queue.appendleft(queued)
+            self._queued_manual = queued
+            self._arm_check_state = "queued"
+        return []
+
+    def _collect_arm_check(self, ctx: FrameContext) -> None:
+        """Keep a pose crop with matching context plus a whole-frame fallback."""
+        if ctx.timestamp < self._elicitation.started + float(
+                self.closeup_positioning_delay):
+            return
+        fallback_score = _sharpness(ctx.frame)
+        if fallback_score > self._best_arm_fallback_sharpness:
+            self._best_arm_fallback_sharpness = fallback_score
+            self._best_arm_fallback = ctx.frame.copy()
+        arm = self._best_arm_crop(ctx)
+        if arm is None:
+            return
+        crop, label = arm
+        score = _sharpness(crop)
+        if score > self._best_arm_sharpness:
+            self._best_arm_sharpness = score
+            self._best_arm_frame = crop.copy()
+            self._best_arm_context = ctx.frame.copy()
+            self._best_arm_label = label
+
+    def _manual_capture_result(
+            self, reason: str, visual_source: str = "unclear") -> Result:
+        """Return one reposition request, then an honest terminal failure."""
+        retry = self._arm_check_attempt == 0
+        status = "reposition_required" if retry else "unavailable"
+        self._arm_check_state = status
+        self._arm_check_last_error = reason
+        phone = visual_source == "displayed_photo" or reason.startswith(
+            "displayed_photo")
+        message = (
+            "The photo on the phone was not clear enough; please bring it closer, "
+            "reduce glare, and hold it steady once"
+            if retry and phone else
+            "The camera did not capture a clear bare-arm or phone-photo view; "
+            "please reposition once"
+            if retry else
+            "The phone-photo skin check could not be completed after repositioning"
+            if phone else
+            "The arm check could not be completed after the repositioning attempt")
+        return self.result(
+            "arm_check",
+            {"status": status, "source": "skin_screening",
+             "reason": reason, "attempt": self._arm_check_attempt,
+             "visual_source": visual_source,
+             "capture_mode": self._arm_check_capture_mode or "none"},
+            0.0, Severity.INFO, message, ttl=30.0,
+            source="skin_screening",
+            correlation_id=self._arm_check_correlation_id)
 
     def _best_arm_crop(self, ctx: FrameContext) -> tuple[np.ndarray, str] | None:
         """Largest bare-arm crop big enough for an enlarged detail panel."""
@@ -1228,14 +2502,37 @@ class SkinVision(DetectionModule):
         self.start()  # direct/replay callers also receive idempotent preload
         self._refresh_local_load()
         now = ctx.timestamp
-        if self._elicitation.active("arm_check", now=now):
+        arm_active = self._elicitation.active("arm_check", now=now)
+        manual_busy = bool(
+            self._queued_manual is not None
+            or self._pending is not None
+            and self._pending_purpose == "manual_arm_check")
+        if arm_active and not manual_busy:
+            if self._arm_check_window_id != self._elicitation.started:
+                self._reset_arm_capture()
+                self._arm_check_window_id = self._elicitation.started
+                self._arm_check_sampling = True
+                self._arm_check_correlation_id = self._elicitation.correlation_id
+                self._arm_check_attempt = self._elicitation.attempt
+                self._arm_check_capture_mode = None
             self._arm_check_state = "sampling"
+            self._collect_arm_check(ctx)
         results = self._consume_pending(now)
+        results.extend(self._drain_queued_manual(now))
         if not self.available and not self._local_ready:
-            if self._elicitation.test == "arm_check" and now >= self._elicitation.until:
-                self._arm_check_state = "unavailable"
-                self._arm_check_last_error = "skin_backends_unconfigured"
+            if (self._arm_check_sampling and self._elicitation.test == "arm_check"
+                    and now >= self._elicitation.until):
+                pose_captured = self._best_arm_frame is not None
+                self._arm_check_capture_mode = "pose_crop" if pose_captured else "none"
+                failure = None if pose_captured else self._manual_capture_result(
+                    "cloud_required_for_forearm_only")
+                if pose_captured:
+                    self._arm_check_state = "local_only"
+                    self._arm_check_last_error = None
                 self._elicitation.clear()
+                self._reset_arm_capture()
+                if failure is not None:
+                    results.append(failure)
             return results or None
 
         active = self._elicitation.active("skin_closeup", now=now)
@@ -1249,33 +2546,64 @@ class SkinVision(DetectionModule):
             self._awaiting_closeup = False
             self._elicitation.clear()
             if (frame is not None and self._pending is None
+                    and self._queued_manual is None
                     and (self._local_ready or now >= self._next_allowed)):
                 self._submit(frame, "closeup", now)
             else:
                 self._reset_closeup()
 
-        # A user-initiated arm check reuses the sharpest-frame close-up
-        # machinery without needing a preliminary finding first. The window
-        # is owned by the voice agent / hotkey, so it expires on its own.
-        if (self._elicitation.active("arm_check", now=now)
-                and not self._sampling_closeup):
-            self._arm_check_sampling = True
-            self._collect_closeup(ctx)
-        elif (self._arm_check_sampling and self._elicitation.test == "arm_check"
-              and now >= self._elicitation.until):
-            frame = self._best_frame
-            self._arm_check_sampling = False
-            self._best_frame = None
-            self._best_sharpness = -1.0
-            if (frame is not None and self._pending is None
-                    and (self._local_ready or now >= self._next_allowed)):
-                self._submit(frame, "closeup", now,
-                             purpose="manual_arm_check")
-            else:
-                self._arm_check_state = "unavailable"
-                self._arm_check_last_error = ("no_usable_frame" if frame is None
-                                              else "cloud_backoff_active")
+        # Cloud checks pair a pose crop with its exact whole-frame context so a
+        # phone screen cannot be cropped out. The whole-frame fallback remains
+        # cloud-only when no pose crop exists.
+        if (self._arm_check_sampling and self._elicitation.test == "arm_check"
+                and now >= self._elicitation.until):
+            can_cloud = bool(
+                self.available and not self._manual_authorization_blocked)
+            frame = None
+            label = None
+            if self._best_arm_frame is not None:
+                label = self._best_arm_label
+                if can_cloud and self._best_arm_context is not None:
+                    frame = _compose_preliminary_frame(
+                        self._best_arm_context, None, self._best_arm_frame,
+                        arm_label=(label or "ARM CROP").upper())
+                    self._arm_check_capture_mode = "pose_crop_with_context"
+                else:
+                    frame = self._best_arm_frame
+                    self._arm_check_capture_mode = "pose_crop"
+            elif self._best_arm_fallback is not None and can_cloud:
+                frame = self._best_arm_fallback
+                self._arm_check_capture_mode = "cloud_closeup"
+            if frame is not None and can_cloud:
+                self._arm_check_sampling = False
+                self._queue_manual_capture(
+                    frame, arm_crop_label=label,
+                    local_frame=(
+                        self._best_arm_frame
+                        if self._arm_check_capture_mode
+                        == "pose_crop_with_context" else None),
+                    paired_context=(
+                        self._arm_check_capture_mode
+                        == "pose_crop_with_context"))
                 self._elicitation.clear()
+                self._reset_arm_capture()
+                results.extend(self._drain_queued_manual(now))
+            elif (frame is not None and self._pending is None
+                  and self._local_ready
+                  and self._arm_check_capture_mode == "pose_crop"):
+                self._arm_check_sampling = False
+                self._submit(
+                    frame, "closeup", now, arm_crop_label=label,
+                    purpose="manual_arm_check")
+                self._elicitation.clear()
+                self._reset_arm_capture()
+            else:
+                reason = ("cloud_required_for_forearm_only"
+                          if self._best_arm_frame is None and not can_cloud else
+                          "no_usable_frame")
+                results.append(self._manual_capture_result(reason))
+                self._elicitation.clear()
+                self._reset_arm_capture()
 
         if (self._awaiting_closeup and not self._sampling_closeup
                 and now - self._preliminary_at > 60.0):
@@ -1284,6 +2612,10 @@ class SkinVision(DetectionModule):
         ready_for_scan = (self.available and ctx.person_present and self._pending is None
                           and not self._awaiting_closeup
                           and not self._arm_check_sampling
+                          and self._queued_manual is None
+                          and self._arm_check_state not in (
+                              "sampling", "queued", "pending",
+                              "reposition_required")
                           and self._preliminary is None
                           and now >= self._next_allowed
                           and now - self._last_scan >= float(self.scan_interval))
@@ -1312,10 +2644,24 @@ class SkinVision(DetectionModule):
         if self._closed:
             return
         self._closed = True
+        if self._pending_cancel_event is not None:
+            self._pending_cancel_event.set()
+        self._client.notify_cancellation()
+        self._client.cancel_reservation(self._pending_reservation_token)
+        self._pending_reservation_token = None
+        self._pending_cancel_event = None
+        for queued in self._manual_queue:
+            self._client.cancel_reservation(queued.reservation_token)
         if self._pending is not None:
             self._pending.cancel()
+        self._pending = None
         if self._local_load_future is not None:
             self._local_load_future.cancel()
+        self._local_load_future = None
+        self._manual_queue.clear()
+        self._queued_manual = None
+        self._reset_arm_capture()
+        self._reset_closeup()
         stopped = self._executor.shutdown(timeout=0.5)
         self._local_worker.shutdown(wait=False, cancel_futures=True, timeout=0.5)
         if self._local_classifier is not None:

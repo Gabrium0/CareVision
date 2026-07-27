@@ -1,0 +1,316 @@
+# Enable/disable and tune detection modules without touching code.
+# Each key is a registered module name; params besides `enabled` are passed
+# to the module constructor.
+
+camera:
+  location: unspecified       # living_room | kitchen | entryway | bedroom
+
+# The CLI --quality-profile selects the effective policy. Maximum keeps native
+# 1920x1080 detail crops and sheds cadence before spatial resolution.
+runtime:
+  quality_profile: maximum
+  fast_sampler_target_hz: 12.0
+  native_thread_budget: auto
+  detail_roi_caps: {maximum: 640, balanced: 480, realtime: 320}
+  background_budgets_ms: {maximum: 350, balanced: 225, realtime: 150}
+
+tracking:
+  enabled: false              # opt in with --enable-multi-person
+
+modules:
+  # --- Vitals ---
+  heart_rate:
+    enabled: true
+    window_seconds: 30        # longer rPPG buffer improves HRV/breathing reliability
+    backends: [classical, openrppg]   # run both and show numbers side by side;
+                                       # openrppg auto-disables if `rppg`/jax missing
+    classical_method: chrom           # chrom | pos | green (green = legacy, for A/B)
+    classical_smoothing_window: 5     # median-smooth last N raw FFT bpm picks (parity w/ openrppg)
+    classical_talk_delta_threshold: 0.05  # mouth-aspect-ratio delta that flags talking; drops cheek ROIs for that sample
+    openrppg_model: null              # null = open-rppg default; try physformer/efficientphys
+    openrppg_brightness_normalize: true  # lift dark face crops toward the model's training range
+    openrppg_infer_every: 5.0       # CPU-only JAX is heavy; same 30s window, fewer freezes
+    openrppg_min_seconds: 10.0
+    openrppg_hrv_min_seconds: 30.0    # HRV/breathing need longer clean windows than HR
+    openrppg_min_confidence: 0.35
+    openrppg_smoothing_window: 5
+    openrppg_motion_threshold: 35.0
+    openrppg_face_jitter_threshold: 0.25
+    openrppg_face_reacquire_frames: 3
+    openrppg_inference_timeout_seconds: 90.0
+    openrppg_cpu_reserved_cores: auto  # reserve ~75% of logical CPUs for capture/MediaPipe
+    openrppg_result_fresh_seconds: 15.0  # never publish an old neural estimate as current
+    openrppg_cpu_inference_hz: 8.0       # bounded uniform tensor on CPU
+    openrppg_gpu_inference_hz: 20.0      # retain more temporal detail on GPU
+    openrppg_async_inference: true     # keeps CPU-only Open-RPPG from freezing camera frames
+    debug_backend_values: true        # true shows raw per-backend vitals; false emits trusted canonical bpm
+    min_canonical_quality: 0.35        # low-quality backend candidates remain debug-only
+  respiration:
+    enabled: true
+    window_seconds: 25
+  spo2:                        # contactless rPPG pulse oximetry (RealSense only)
+    enabled: true              # requires=("face","depth"); scheduler skips it on RGB-only sources
+    window_seconds: 20
+    ac_band: [0.7, 3.0]        # cardiac band for the pulsatile AC component
+    channels: [red, blue]      # ratio-of-ratios numerator/denominator (blue SNR is weak; green is the alt)
+    calibration_file: assets/spo2_calibration.json
+    min_pulse_prominence: 0.15 # require a clean concurrent pulse before reporting
+    display_min: 70
+    display_max: 100
+    warn_below: 92             # only fires when calibrated=true AND confidence high
+    debug_ratio: false         # true emits spo2_ratio for tuning / calibration capture
+
+  # --- Clothing / weather recommendations ---
+  weather:
+    enabled: true
+    latitude: 40.7128                  # or set WEATHER_LAT / WEATHER_LON env vars
+    longitude: -74.0060
+    refresh_seconds: 600
+  clothing:
+    enabled: true
+    interval: 3.0                   # zero-shot classifier is expensive; its only consumer
+                                     # (clothing_advice) runs at 5s anyway, and per-frame
+                                     # updates were the heavy loop's main bottleneck, which
+                                     # widened the vitals fast-path's staleness window
+    backend: owlvit                 # "none" disables clothing; else uses `recognizer`
+    recognizer: clip                # clip (FashionCLIP, fast) | owlvit (detection)
+    model: null                     # null = auto (FashionCLIP for clip / OWLv2 for owlvit)
+    labels: [tank top, t-shirt, long sleeve shirt, hoodie,
+             sweater, jacket, coat, raincoat]
+    pipeline_threshold: 0.02        # owlvit detection threshold (unused for clip)
+    min_confidence: 0.15            # gate on the top score
+    infer_every: 8.0
+    load_timeout_seconds: 90.0      # surface stalled model downloads/initialization
+    download_if_missing: true       # cached fallbacks first; only primary may download
+  clothing_advice:
+    enabled: true
+    cold_c: 8.0
+    cool_c: 15.0
+    warm_c: 24.0
+    hot_c: 28.0
+    rain_mm_threshold: 0.1
+    wind_kph_threshold: 25.0
+    uv_high: 6.0
+    clothing_max_age_seconds: 30.0  # bridge the detector/advice scheduling cadences
+
+  # --- Skin & face ---
+  skin_color:                 # pallor / flushing / jaundice / cyanosis
+    enabled: true
+  rash:
+    enabled: true
+  arm_skin:                   # rash/bruise/dryness/dark spots on bare arms
+    enabled: true             # pose-driven ROIs; depth (D435i) adds mm sizing
+    rash_notice: 0.02
+    rash_warning: 0.06
+    dryness_notice: 0.04
+    min_window_samples: 3     # never report clear from an unseen/jittering arm
+  skin_vision:
+    enabled: true
+    consent: false                 # runtime --enable-cloud-skin is required
+    endpoint: https://integrate.api.nvidia.com/v1/chat/completions
+    model: meta/llama-3.2-11b-vision-instruct
+    scan_interval: 60.0
+    request_timeout: 25.0
+    max_image_dim: 1024
+    jpeg_quality: 85
+    manual_retry_deadline: 45.0
+    manual_retry_max_image_dim: 768
+    manual_retry_jpeg_quality: 80
+    manual_retry_max_tokens: 450
+    closeup_seconds: 10.0
+    closeup_positioning_delay: 2.0
+    min_confidence: 0.35
+    min_facial_confidence: 0.45
+    min_face_crop_size: 64
+    min_arm_crop_size: 64          # bare-arm crop panel in the preliminary scan
+    local_classifier:
+      enabled: true
+      mode: debug                  # screening requires a validated calibration file
+      backend: auto               # TensorRT on Jetson; PyTorch reference fallback
+      model: LaurianeMD/vit-skin-disease
+      revision: 1b4fccab2c8b83bf6964e394c40f0dcdd21b1d1c
+      target_labels: [vitiligo]
+      calibration_file: assets/skin_models/vit_skin_calibration.json
+      onnx_file: assets/skin_models/vit_skin.onnx
+      tensorrt_engine: runtime-models/vit_skin_orin_fp16.engine
+      download_if_missing: false  # use the export/setup tool explicitly
+      cache_dir: runtime-models/huggingface
+      load_timeout_seconds: 120.0
+      device: auto
+      min_sharpness: 25.0
+      min_brightness: 25.0
+      max_brightness: 230.0
+      max_clipped_fraction: 0.55
+  scene_vision:
+    enabled: true
+    consent: false
+    endpoint: https://integrate.api.nvidia.com/v1/chat/completions
+    model: meta/llama-3.2-11b-vision-instruct
+    scan_interval: 90.0
+    request_timeout: 25.0
+    location: unspecified
+    window_frames: 3
+    window_spacing: 0.5
+  guided_assessments:
+    enabled: true
+  replay_events:
+    enabled: true
+  multi_person:
+    enabled: false
+  routine:
+    enabled: false
+    location: unspecified
+  near_fall:
+    enabled: true
+  bruise:
+    enabled: true
+  eye_redness:
+    enabled: true
+  sweating:
+    enabled: true
+  dry_lips:
+    enabled: true
+  facial_asymmetry:           # stroke-relevant droop
+    enabled: true
+    threshold: 0.05
+    alert_threshold: 0.08
+    alert_after_count: 3
+    learning_seconds: 20.0
+  facial_swelling:
+    enabled: true
+
+  # --- Motor / neurological ---
+  tremor:
+    enabled: true
+  gait:
+    enabled: true
+  balance:
+    enabled: true
+  bradykinesia:
+    enabled: true
+  masked_face:                # reduced expressiveness / flat affect
+    enabled: true
+  eye_movement:               # gaze + nystagmus screen
+    enabled: true
+
+  # --- Fatigue & consciousness ---
+  drowsiness:                 # PERCLOS + blink rate + microsleep
+    enabled: true
+    perclos_window_seconds: 60.0
+    baseline_seconds: 3.0
+    closed_ear_ratio: 0.60
+    perclos_notice: 0.15
+    perclos_warning: 0.30
+    microsleep_seconds: 1.2
+  yawn:
+    enabled: true
+    mar_threshold: 0.60
+    sustained_seconds: 1.5
+    window_seconds: 180.0
+  head_nod:
+    enabled: true
+    window_seconds: 6.0
+    droop_threshold: 0.10
+    nod_drop_threshold: 0.06
+    nod_crossings: 3
+
+  # --- Safety ---
+  fall:
+    enabled: true
+  unresponsive:
+    enabled: true
+    threshold_minutes: 3
+  wandering:
+    enabled: true
+  hazard_zones:
+    enabled: false            # needs per-room calibration; zones are
+    zones: []                 # [{name: stove, polygon: [[x,y], ...]}] normalized 0..1
+
+  # --- Interaction (showcase conversation triggers) ---
+  attention:                  # eye contact / looking-at-robot + engagement
+    enabled: true
+  gesture:                    # MediaPipe GestureRecognizer + waving heuristic
+    enabled: true             # self-disables if models/gesture_recognizer.task missing
+
+  # --- Cold-symptom composite inputs (advice.cold combines them) ---
+  sneeze:
+    enabled: true
+  face_touch:                 # nose-wipe frequency (runny-nose behavioral proxy)
+    enabled: true
+
+  expressivity:               # flat-affect screen vs 30-day personal history
+    enabled: true
+
+  # --- Emotion & cognition ---
+  emotion:
+    enabled: true
+    backends: [heuristic, hsemotion, deepface]  # deepface runs in a TensorFlow subprocess
+  pain:
+    enabled: true
+  agitation:
+    enabled: true
+
+  # --- Behavior (longitudinal, persisted to SQLite) ---
+  activity_level:
+    enabled: true
+  presence:
+    enabled: true
+  grooming:                   # hair/facial-hair texture drift vs weekly baseline
+    enabled: true
+    rise_ratio: 1.5            # today's mean vs the trailing week's that flags a change
+
+  # --- Depth-only (RealSense D435i; scheduler skips these on RGB sources) ---
+  height_distance:            # metric height + distance via deprojection
+    enabled: true
+
+  # --- Demographics / context ---
+  age_estimation:
+    enabled: true             # auto-disables if models/age_googlenet.onnx missing
+  body_estimate:              # rough build proxy; low precision by nature
+    enabled: true
+
+showcase:
+  enabled: true
+  conversation_min_m: 0.8
+  conversation_max_m: 1.5
+  movement_min_m: 2.5
+  movement_max_m: 3.2
+  min_face_px: 110
+  min_brightness: 45.0
+  max_brightness: 220.0
+  max_motion: 12.0
+  capture_reset_grace_seconds: 1.0
+
+advice:
+  enabled: true
+  vitals:
+    enabled: true
+    interval: 8.0
+    bpm_high: 100.0
+    bpm_warning: 120.0
+    bpm_low: 55.0
+    bpm_low_warning: 45.0
+    hrv_low: 20.0
+    resp_high: 24.0
+    min_confidence: 0.35
+  cold:                        # cold-symptom composite (sneeze + face_touch + flushing + fatigue)
+    enabled: true
+    interval: 60.0
+    sneeze_count: 2            # sneezes/10min that trigger alone
+    face_touch_count: 4        # touches/10min that count as a signal
+  routine:
+    enabled: true
+    interval: 30.0
+    summary_hour: 20
+
+sensors:
+  realsense_depth_imu: {enabled: false}
+  ble_heart_rate: {enabled: false}
+  pulse_oximeter: {enabled: false}
+  smart_scale: {enabled: false}
+  ble_blood_pressure: {enabled: false}
+  thermal: {enabled: false}
+  environment: {enabled: false}
+  door: {enabled: false}
+  bed_pressure: {enabled: false}
+  appliance: {enabled: false}

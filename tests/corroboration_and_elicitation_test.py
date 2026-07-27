@@ -241,6 +241,211 @@ def test_voice_agent_scripted_test_opens_window():
     ag.elicitation.clear()
 
 
+class _DelayedGeneration:
+    def __init__(self, generated=None):
+        self.generated = generated
+        self.polls = 0
+
+    def submit_generation(self, *_args):
+        return "pending-generation"
+
+    def poll_generation(self, _request_id):
+        self.polls += 1
+        return (self.polls >= 2, self.generated)
+
+    def select_topic(self, *_args):
+        return None
+
+    def close(self):
+        pass
+
+
+def test_async_arm_prompt_keeps_post_speech_callback():
+    ag = _agent()
+    ag.policy.min_gap = 0
+    ag.moondream.close()
+    ag.moondream = _DelayedGeneration("Please hold your forearm steady.")
+    ag.elicitation.clear()
+    try:
+        ag.request_test("arm_check")
+        assert ag.tick([], now=2000.0) is None       # generation submitted
+        assert ag.tick([], now=2000.1) is None      # candidates rebuilt
+        said = ag.tick([], now=2000.2)              # delayed completion
+        assert "forearm" in said.lower()
+        assert ag.elicitation.active("arm_check")
+        assert ag.elicitation.correlation_id == ag._arm_check_session_id
+        assert ag._arm_check_requested is False
+    finally:
+        ag.elicitation.clear()
+        ag.close()
+
+
+def test_async_arm_prompt_timeout_uses_fallback_and_callback():
+    ag = _agent()
+    ag.policy.min_gap = 0
+    ag.moondream.close()
+    ag.moondream = _DelayedGeneration()
+    ag.elicitation.clear()
+    try:
+        ag.request_test("arm_check")
+        assert ag.tick([], now=2100.0) is None
+        request_id, intent, _mono, requested_at, action = ag._pending_speech
+        ag._pending_speech = (
+            request_id, intent, _time.monotonic() - 2.0, requested_at, action)
+        said = ag.tick([], now=2100.1)
+        assert "forearm" in said.lower()
+        assert ag.elicitation.active("arm_check")
+        assert ag._arm_check_requested is False
+    finally:
+        ag.elicitation.clear()
+        ag.close()
+
+
+def test_arm_capture_repositions_once_then_stops():
+    ag = _agent()
+    ag.policy.min_gap = 0
+    ag.elicitation.clear()
+    base = _time.time()
+    try:
+        ag.request_test("arm_check")
+        assert ag.tick([], now=base) is not None
+        session_id = ag._arm_check_session_id
+        ag.elicitation.clear()
+        retry_result = Result(
+            "skin_vision", "arm_check",
+            {"status": "reposition_required", "attempt": 0},
+            0.0, Severity.INFO,
+            "The camera did not capture a clear bare-arm view",
+            timestamp=base + 1, correlation_id=session_id)
+        correction = ag.tick([retry_result], now=base + 1)
+        assert correction is not None and "once more" in correction.lower()
+        assert ag.elicitation.active("arm_check")
+        assert ag.elicitation.attempt == 1
+
+        ag.elicitation.clear()
+        unavailable = Result(
+            "skin_vision", "arm_check",
+            {"status": "unavailable", "attempt": 1},
+            0.0, Severity.INFO,
+            "The arm check could not be completed after the repositioning attempt",
+            timestamp=base + 2, correlation_id=session_id)
+        conclusion = ag.tick([unavailable], now=base + 2)
+        assert conclusion is not None and "could not be completed" in conclusion.lower()
+        assert not ag.elicitation.active("arm_check")
+        assert ag.tick([unavailable], now=base + 3) is None
+    finally:
+        ag.elicitation.clear()
+        ag.close()
+
+
+def test_phone_photo_retry_uses_glare_specific_guidance():
+    ag = _agent()
+    ag.policy.min_gap = 0
+    ag.elicitation.clear()
+    base = _time.time()
+    try:
+        ag.request_test("arm_check")
+        assert ag.tick([], now=base) is not None
+        session_id = ag._arm_check_session_id
+        ag.elicitation.clear()
+        retry_result = Result(
+            "skin_vision", "arm_check",
+            {"status": "reposition_required", "attempt": 0,
+             "visual_source": "displayed_photo",
+             "reason": "displayed_photo_quality"},
+            0.0, Severity.INFO,
+            "The phone photo was not clear enough",
+            timestamp=base + 1, correlation_id=session_id)
+        correction = ag.tick([retry_result], now=base + 1)
+        assert correction is not None
+        assert "phone closer" in correction.lower()
+        assert "glare" in correction.lower()
+        assert ag.elicitation.active("arm_check")
+        assert ag.elicitation.attempt == 1
+    finally:
+        ag.elicitation.clear()
+        ag.close()
+
+
+def test_arm_check_speaks_both_local_and_cloud_verdicts():
+    ag = _agent()
+    ag.policy.min_gap = 0
+    ag.elicitation.clear()
+    base = _time.time()
+    try:
+        ag.request_test("arm_check")
+        assert ag.tick([], now=base) is not None
+        session_id = ag._arm_check_session_id
+        ag.elicitation.clear()
+        local = Result(
+            "arm_skin", "arm_check",
+            {"status": "succeeded", "source": "local_arm_skin",
+             "finding_present": True},
+            0.6, Severity.NOTICE,
+            "Local camera arm check: possible bruise-like discoloration on the "
+            "left arm (screening only)",
+            timestamp=base + 1, correlation_id=session_id)
+        cloud = Result(
+            "skin_vision", "arm_check",
+            {"status": "succeeded", "source": "nvidia_vlm",
+             "finding_present": True, "visual_source": "displayed_photo"},
+            0.6, Severity.NOTICE,
+            "In the photo shown on the phone, a possible visible change appears "
+            "on forearm in displayed photo: bruising",
+            timestamp=base + 1, correlation_id=session_id)
+        spoken = ag.tick([local, cloud], now=base + 1)
+        assert spoken is not None
+        low = spoken.lower()
+        # One statement attributes BOTH the on-device and the cloud verdict.
+        assert "on-device camera screening" in low
+        assert "cloud photo check" in low
+        assert "bruis" in low
+    finally:
+        ag.elicitation.clear()
+        ag.close()
+
+
+def test_second_manual_request_waits_for_first_terminal_result():
+    ag = _agent()
+    ag.policy.min_gap = 0
+    ag.elicitation.clear()
+    base = _time.time()
+    try:
+        ag.request_test("arm_check")
+        assert ag.tick([], now=base) is not None
+        first_session = ag._arm_check_session_id
+        assert ag._arm_check_in_flight is True
+
+        # SkinVision closes the capture window while provider analysis remains
+        # active. A second explicit request must be deferred, not opened into
+        # a window that the busy skin module cannot sample.
+        ag.elicitation.clear()
+        ag.request_test("arm_check")
+        assert ag._arm_check_followup_requested is True
+        assert ag._arm_check_session_id == first_session
+        assert not ag.elicitation.active("arm_check")
+
+        first_result = Result(
+            "skin_vision", "arm_check",
+            {"status": "unavailable", "attempt": 0,
+             "failure_category": "timeout"},
+            0.0, Severity.INFO,
+            "The first arm check could not be completed",
+            timestamp=base + 20, correlation_id=first_session)
+        assert ag.tick([first_result], now=base + 20) is not None
+        second_session = ag._arm_check_session_id
+        assert second_session != first_session
+        assert ag._arm_check_requested is True
+
+        prompt = ag.tick([], now=base + 20.1)
+        assert prompt is not None and "forearm" in prompt.lower()
+        assert ag.elicitation.active("arm_check")
+        assert ag.elicitation.correlation_id == second_session
+    finally:
+        ag.elicitation.clear()
+        ag.close()
+
+
 # ------------------------------------------------------------- expressivity
 
 def _face_ctx(t, smile=0.20):

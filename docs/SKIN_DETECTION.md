@@ -58,8 +58,12 @@ flowchart TD
 ```
 
 Heavy network inference runs in a single-worker background executor, so the
-camera capture thread does not wait for NVIDIA. Only one skin request can be in
-flight at a time. Composites and individual frames are never written to disk.
+camera capture thread does not wait for NVIDIA. A process-wide coordinator
+allows only one NVIDIA request in flight and prioritizes manual arm checks,
+then guided close-ups, then passive skin and scene scans. The best captured
+manual frame is queued instead of discarded while another request finishes,
+and new passive requests are suspended while manual work is queued or active.
+Composites and individual frames are never written to disk.
 
 ## Optional local vitiligo corroboration
 
@@ -308,8 +312,9 @@ The debug output can include:
   conversation tags, TTL, and persistence policy.
 - Active workflow and reasoning state.
 - NVIDIA capability/consent state.
-- Latest NVIDIA request state, stage, timing, sanitized HTTP/validation error,
-  missing fields, repair-attempt state, and backoff/circuit state.
+- Latest NVIDIA request state, queue state, stage, timing, sanitized
+  HTTP/validation error, attempt history, manual completion/latency metrics,
+  encoded byte count, failure categories, and backoff/circuit state.
 - Moondream availability, enabled state, request counters, and error state.
 - Capture, preview, analysis, and module-performance diagnostics.
 
@@ -317,10 +322,11 @@ The debug endpoint binds to `127.0.0.1` and is separate from the normal
 dashboard. Raw image arrays, audio arrays, bytes, binary values, and data URLs
 are displayed as `<redacted-media>` rather than serialized.
 
-Provider output is never copied verbatim into debug state. The complete JSON
-contract is placed in the prompt as well as `response_format`, because a hosted
-endpoint may ignore schema enforcement. Invalid prose or partial JSON receives
-one bounded repair attempt and can never create or dismiss a finding.
+Provider output is never copied verbatim into debug state. Images, Base64,
+prompts, credentials, and raw response envelopes are not retained. The first
+attempt uses NVIDIA JSON-schema generation; retries use a compact prompt JSON
+contract with the same local validation. Invalid prose, partial JSON, or a
+provider failure can never create or dismiss a finding.
 
 ## Configuration
 
@@ -342,7 +348,10 @@ skin_vision:
   request_timeout: 25.0
   max_image_dim: 1024
   jpeg_quality: 85
-  manual_retry_deadline: 45.0
+  max_inline_image_bytes: 174080
+  manual_max_attempts: 3
+  manual_attempt_timeout: 20.0
+  manual_retry_deadline: 60.0
   manual_retry_max_image_dim: 768
   manual_retry_jpeg_quality: 80
   manual_retry_max_tokens: 450
@@ -362,7 +371,13 @@ Additional built-in retry defaults are:
 - Initial backoff: 15 seconds.
 - Exponential multiplier: 2 after each consecutive failure.
 - Maximum backoff: 900 seconds.
-- One request in flight.
+- One NVIDIA request in flight across skin and scene analysis.
+- Up to three provider attempts for a manual check inside a 60-second deadline
+  that starts after capture; each attempt is capped at 20 seconds.
+- One composite is adaptively encoded through a JPEG quality/dimension ladder
+  until it is no larger than 170 KiB (`174080` bytes).
+- Provider-supplied HTTPS pending URLs may be polled for `202` responses, and a
+  bounded `Retry-After` is honored for rate limits or temporary outages.
 
 For a faster supervised demonstration, temporarily reduce the scan interval:
 
@@ -431,7 +446,9 @@ negative/clear finding.
 | Invalid structured response | The attempt is marked `invalid_response`; localhost diagnostics retain only bounded validation details, never raw provider content. |
 | Invalid model JSON | The response is rejected and the module enters sanitized exponential backoff. |
 | Timeout, rate limit, or API outage | Capture continues; the worker backs off and retries later without blocking the camera. |
-| Manual arm request times out or receives a retryable HTTP failure | One compact retry is allowed inside a 45-second total deadline. The result is explicitly marked unavailable if both attempts fail; failure is never reported as clear skin. |
+| Manual arm request waits behind another request | Its best captured frame is queued with priority over guided close-ups and passive scans; queue time counts toward the 60-second deadline. |
+| Manual arm request times out or receives a retryable HTTP failure | Up to three attempts are allowed inside the 60-second total deadline. Retries use the compact prompt contract and honor bounded provider `Retry-After` guidance. The result is explicitly marked unavailable if all attempts fail; failure is never reported as clear skin. |
+| Provider returns `202 Pending` | Only a provider-supplied HTTPS `Location` or `statusUrl` is polled within the same deadline; CareVision never synthesizes a polling URL. |
 | Person does not provide a close-up | The request expires and enters a short cooldown without publishing a skin finding. |
 | No sharp close-up frame is collected | The close-up state resets without publishing a result. |
 | Microphone unavailable | Visual screening and the close-up can still complete, but spoken answers cannot be collected; the pending dialogue expires safely. |
@@ -510,3 +527,7 @@ The tests use mocked network responses and cover:
 - The feature does not replace examination by a healthcare professional.
 - CareVision deliberately reports visible observations and screening context
   rather than presenting a diagnosis.
+- The default NVIDIA API Catalog endpoint is a prototype/trial service with an
+  external reliability ceiling. Retries improve transient failures but cannot
+  guarantee availability; production uptime requires a supported partner or
+  self-hosted endpoint.

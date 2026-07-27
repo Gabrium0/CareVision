@@ -1,0 +1,9 @@
+Traceback (most recent call last):
+  File "C:\Users\Gabriel\Downloads\proj\.tmp\live_arm_runner.py", line 21, in <module>
+    runpy.run_path(str(PROJECT / "main.py"), run_name="__main__")
+  File "<frozen runpy>", line 287, in run_path
+  File "<frozen runpy>", line 98, in _run_module_code
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\Gabriel\Downloads\proj\main.py", line 30, in <module>
+    from core.runtime_resources import (apply_loaded_limits, configure_environment,
+ModuleNotFoundError: No module named 'core'

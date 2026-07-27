@@ -5,13 +5,15 @@ import json
 import re
 import uuid
 from collections import Counter, deque
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Future
 from dataclasses import dataclass
+import threading
 from typing import Any
 
 from agent.env import nvidia_api_key
 from core.capabilities import CapabilityRegistry, CapabilityStatus
 from core.events import PersistencePolicy, Result, Severity
+from core.one_flight import DaemonOneFlight
 from core.registry import register
 from integrations.nvidia_vlm import NvidiaVLMClient
 from modules.base import DetectionModule
@@ -90,7 +92,8 @@ class SceneVision(DetectionModule):
         self.available = bool(self.consent and key)
         self._client = NvidiaVLMClient(key or "", self.endpoint, self.model,
                                        self.request_timeout, self.max_image_dim, self.jpeg_quality)
-        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="scene-vision")
+        self._executor = DaemonOneFlight("scene-vision")
+        self._close_event = threading.Event()
         self._pending: Future | None = None
         self._last_scan = self._next_allowed = -1e9
         self._failures = 0
@@ -103,7 +106,10 @@ class SceneVision(DetectionModule):
         CapabilityRegistry.instance().set("nvidia_scene", "cloud", status, detail)
 
     def _analyze(self, images: list[bytes]) -> SceneAnalysis:
-        content = self._client.request(_PROMPT, images)
+        response = self._client.request(
+            _PROMPT, images, purpose="passive_scan",
+            cancel_event=self._close_event)
+        content = getattr(response, "content", response)
         if isinstance(content, list):
             content = "".join(str(p.get("text", "")) for p in content if isinstance(p, dict))
         text = str(content).strip()
@@ -158,7 +164,10 @@ class SceneVision(DetectionModule):
             self._capture_frames.append(self._client.encode(ctx.frame))
             self._last_capture_frame = now
             if len(self._capture_frames) >= max(1, int(self.window_frames)):
-                images = self._capture_frames
+                # NVIDIA's VLM endpoint accepts one inline image. JPEG byte
+                # count is a cheap in-memory proxy for retained scene detail
+                # across this short sampling window.
+                images = [max(self._capture_frames, key=len)]
                 self._capture_frames = []
                 self._capture_started = None
                 self._pending = self._executor.submit(self._analyze, images)
@@ -167,5 +176,10 @@ class SceneVision(DetectionModule):
 
     def close(self) -> None:
         """Cancel pending work without retaining image payloads."""
-        self._executor.shutdown(wait=False, cancel_futures=True)
+        self._close_event.set()
+        self._client.notify_cancellation()
+        if self._pending is not None:
+            self._pending.cancel()
+        self._pending = None
+        self._executor.shutdown(wait=False, cancel_futures=True, timeout=0.5)
         self._capture_frames.clear()

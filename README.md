@@ -50,7 +50,9 @@ python dev.py
 
 The default is hardware-free, headless, private, and safe for unattended testing.
 It exposes a readable dashboard at `http://127.0.0.1:8771/debug` and
-machine-readable health at `http://127.0.0.1:8771/debug/state`. See
+machine-readable health at `http://127.0.0.1:8771/debug/state`. Stop it with
+Ctrl+C when you're done — a supervisor left running keeps holding those ports.
+See
 [AI development workflow](docs/AI_DEVELOPMENT.md) for the log markers, health
 acceptance gate, failure recipes, privacy rules, and real-camera/cloud opt-ins.
 

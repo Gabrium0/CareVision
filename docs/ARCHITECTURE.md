@@ -150,11 +150,12 @@ The video loop in `main.py` must never block. Heavy work runs off it:
 
 - **Run:** `python main.py` (see README for flags: `--webui`, `--no-voice`,
   `--source`, `--headless`, `--debug-modules`, …).
-- **Autonomous development:** `python dev.py` runs a hardware-free replay under
-  a process-level hot-reload supervisor. Supervisor and child stdout share one
-  terminal; the private live acceptance endpoint is
-  `http://127.0.0.1:8771/debug/state`. See
-  [AI_DEVELOPMENT.md](AI_DEVELOPMENT.md).
+- **Local hot reload (optional, manual):** `python dev.py` runs a hardware-free
+  replay under a process-level hot-reload supervisor for a developer iterating
+  locally. Supervisor and child stdout share one terminal; the private live
+  acceptance endpoint is `http://127.0.0.1:8771/debug/state`. Stop it (Ctrl+C)
+  when done — don't leave it running. Agents should prefer a bounded
+  `--max-frames` run; see [AI_DEVELOPMENT.md](AI_DEVELOPMENT.md).
 - **`config/modules.yaml`** — enable/tune each module; params flow to the
   module's `__init__` via `build_enabled`. Also holds the `advice` section.
 - **`config/alerts.yaml`** — channels, confirm/cooldown/escalation, quiet hours.

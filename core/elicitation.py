@@ -25,6 +25,8 @@ class ElicitationState:
         self.test: str | None = None     # e.g. "hold_still"
         self.started: float = 0.0
         self.until: float = 0.0
+        self.correlation_id: str | None = None
+        self.attempt: int = 0
 
     @classmethod
     def instance(cls) -> "ElicitationState":
@@ -33,12 +35,15 @@ class ElicitationState:
             cls._instance = cls()
         return cls._instance
 
-    def begin(self, test: str, duration: float, now: float | None = None) -> None:
+    def begin(self, test: str, duration: float, now: float | None = None, *,
+              correlation_id: str | None = None, attempt: int = 0) -> None:
         """Open a test window (called by the agent when it speaks the ask)."""
         now = time.time() if now is None else now
         self.test = test
         self.started = now
         self.until = now + duration
+        self.correlation_id = correlation_id
+        self.attempt = max(0, int(attempt))
 
     def active(self, test: str | None = None, now: float | None = None) -> bool:
         """True while a (matching) test window is open."""
@@ -51,3 +56,5 @@ class ElicitationState:
         """Close the window early."""
         self.test = None
         self.until = 0.0
+        self.correlation_id = None
+        self.attempt = 0

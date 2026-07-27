@@ -51,6 +51,7 @@ class ArmSkin(DetectionModule):
     recent_seconds = 24 * 60 * 60
     baseline_seconds = 7 * 24 * 60 * 60
     window_interval = 0.4          # dense cadence inside an arm_check window
+    min_window_samples = 3         # never call an unseen/unstable arm "clear"
 
     def __init__(self, **params):
         super().__init__(**params)
@@ -64,6 +65,9 @@ class ArmSkin(DetectionModule):
         self._passive_interval = float(self.interval)
         self._window_id = None         # started-ts of the window being sampled
         self._window_best: dict[str, tuple[float, str]] = {}
+        self._window_usable_samples = 0
+        self._window_attempt = 0
+        self._window_correlation_id: str | None = None
 
     # ------------------------------------------------------------- analysis
 
@@ -246,19 +250,39 @@ class ArmSkin(DetectionModule):
 
     def _window_result(self):
         """One consolidated result when the arm_check window closes."""
+        if self._window_usable_samples < int(self.min_window_samples):
+            return self.result(
+                "arm_check",
+                {"status": "unavailable", "source": "local_arm_skin",
+                 "reason": "insufficient_arm_samples",
+                 "attempt": self._window_attempt,
+                 "capture_mode": "pose_crop"},
+                0.0, Severity.INFO,
+                "Local camera arm check could not capture a stable bare-arm view",
+                ttl=15.0, source="local_arm_skin",
+                correlation_id=self._window_correlation_id)
         if self._window_best:
             notes = [note for _, note in self._window_best.values()]
             worst = max(value for value, _ in self._window_best.values())
             return self.result(
-                "arm_check", {key: round(value, 3) for key, (value, _)
-                              in self._window_best.items()},
+                "arm_check",
+                {"status": "succeeded", "source": "local_arm_skin",
+                 "finding_present": True, "attempt": self._window_attempt,
+                 "capture_mode": "pose_crop",
+                 "findings": {key: round(value, 3) for key, (value, _)
+                              in self._window_best.items()}},
                 float(min(0.7, 0.3 + worst * 5)), Severity.NOTICE,
                 "Local camera arm check: possible " + "; ".join(notes) +
-                " (screening only)", ttl=15.0, source="local_arm_skin")
+                " (screening only)", ttl=15.0, source="local_arm_skin",
+                correlation_id=self._window_correlation_id)
         return self.result(
-            "arm_check", "clear", 0.6, Severity.INFO,
+            "arm_check",
+            {"status": "succeeded", "source": "local_arm_skin",
+             "finding_present": False, "attempt": self._window_attempt,
+             "capture_mode": "pose_crop"},
+            0.6, Severity.INFO,
             "Local camera arm check: the visible arm skin looked clear", ttl=15.0,
-            source="local_arm_skin")
+            source="local_arm_skin", correlation_id=self._window_correlation_id)
 
     def process(self, ctx: FrameContext):
         """Run this detector on the current frame; return Result(s) or None."""
@@ -267,14 +291,22 @@ class ArmSkin(DetectionModule):
             if self._window_id != es.started:      # window just opened
                 self._window_id = es.started
                 self._window_best = {}
+                self._window_usable_samples = 0
+                self._window_attempt = es.attempt
+                self._window_correlation_id = es.correlation_id
                 self.interval = float(self.window_interval)
-            self._track_window_best(self._side_findings(ctx))
+            sides = self._side_findings(ctx)
+            if sides:
+                self._window_usable_samples += 1
+            self._track_window_best(sides)
             return None                            # one consolidated report
         if self._window_id is not None:            # window just closed
             self.interval = self._passive_interval
             result = self._window_result()
             self._window_id = None
             self._window_best = {}
+            self._window_usable_samples = 0
+            self._window_correlation_id = None
             return [result]
         sides = self._side_findings(ctx)
         if not sides:

@@ -1,0 +1,3 @@
+[reload] watching C:\Users\Gabriel\Downloads\proj\agent, C:\Users\Gabriel\Downloads\proj\core, C:\Users\Gabriel\Downloads\proj\modules, C:\Users\Gabriel\Downloads\proj\config
+[reload] starting: .\.venv\Scripts\python.exe .tmp\live_arm_runner.py
+[reload] child exited with code 1; waiting for a file change

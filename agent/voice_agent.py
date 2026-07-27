@@ -16,6 +16,7 @@ speaking gap so conversation feels responsive.
 from __future__ import annotations
 
 import time
+import uuid
 
 from agent.state import ObservationMemory
 from agent.policy import Intent, Policy
@@ -36,6 +37,8 @@ _ARM_TRIGGERS = ("check my arm", "check my arms", "look at my arm",
                  "check my skin", "look at my skin", "arm check")
 _HOLD_STILL_SECONDS = 10.0     # ~2 s to comply + 8 s of sampling
 _ARM_CHECK_SECONDS = 12.0      # ~2 s positioning + 10 s of arm sampling
+_ARM_CHECK_SESSION_TIMEOUT = _ARM_CHECK_SECONDS + 65.0
+_MISSING_ACTION = object()
 _ASSESSMENT_QUESTIONS = {
     "symptoms": "Did you notice any discomfort, weakness, dizziness, or other symptoms during that?",
     "progression": "Has this movement or task changed recently compared with what is normal for you?",
@@ -86,6 +89,11 @@ class VoiceAgent:
         self.last_utterance = ""
         self._test_requested = False
         self._arm_check_requested = False
+        self._arm_check_session_id: str | None = None
+        self._arm_check_attempt = 0
+        self._arm_check_in_flight = False
+        self._arm_check_in_flight_until = 0.0
+        self._arm_check_followup_requested = False
         self._demo_queue: list[str] = []
         self._demo_subject: str = "primary"
         self._demo_active_cid: str | None = None    # correlation id of the running step
@@ -94,7 +102,7 @@ class VoiceAgent:
         self._actions: dict = {}       # intent signature -> post-speech callback
         self._safety_results: list[Result] = []
         self._conversation_results: list[Result] = []
-        self._pending_speech: tuple[str, object, float, float] | None = None
+        self._pending_speech: tuple[str, object, float, float, object] | None = None
         self._cloud_speech_deadline = 0.75
         moondream = self.moondream.status()
         mode = ("Moondream" if moondream["active"] else
@@ -122,14 +130,48 @@ class VoiceAgent:
         if test in PROTOCOLS:
             self.workflows.start(test)
         elif test == "arm_check":
-            now = time.time()
-            if (self._arm_check_requested or
-                    (self.elicitation.test == "arm_check"
-                     and now < self.elicitation.until + 50.0)):
-                return
-            self._arm_check_requested = True
+            self._queue_arm_check()
         else:
             self._test_requested = True
+
+    def _queue_arm_check(self) -> None:
+        """Queue one new manual arm-check session."""
+        if self._arm_check_requested:
+            return
+        if (self._arm_check_in_flight
+                or self.elicitation.active("arm_check")):
+            # Preserve one explicit follow-up instead of opening a capture
+            # window that SkinVision cannot sample while the prior analysis
+            # still owns the manual lane.
+            self._arm_check_followup_requested = True
+            if not self._arm_check_in_flight:
+                self._arm_check_in_flight = True
+                self._arm_check_in_flight_until = (
+                    time.monotonic() + _ARM_CHECK_SESSION_TIMEOUT)
+            return
+        self._arm_check_session_id = uuid.uuid4().hex
+        self._arm_check_attempt = 0
+        self._arm_check_requested = True
+
+    def _finish_arm_check_session(self) -> None:
+        """Release one terminal session and schedule one deferred request."""
+        if not self._arm_check_in_flight:
+            return
+        if (self.elicitation.test == "arm_check"
+                and self.elicitation.correlation_id
+                == self._arm_check_session_id):
+            self.elicitation.clear()
+        self._arm_check_in_flight = False
+        self._arm_check_in_flight_until = 0.0
+        if self._arm_check_followup_requested:
+            self._arm_check_followup_requested = False
+            self._queue_arm_check()
+
+    def _expire_arm_check_session(self) -> None:
+        """Recover if a module never publishes the terminal manual result."""
+        if (self._arm_check_in_flight
+                and time.monotonic() >= self._arm_check_in_flight_until):
+            self._finish_arm_check_session()
 
     def start_demo_circuit(self, subject_id: str = "primary") -> bool:
         """Queue a short scripted tour of guided assessments (the 'd' hotkey /
@@ -259,7 +301,7 @@ class VoiceAgent:
             if any(t in low for t in _TEST_TRIGGERS):
                 self._test_requested = True
             if any(t in low for t in _ARM_TRIGGERS):
-                self._arm_check_requested = True
+                self._queue_arm_check()
         return heard, handled
 
     def pop_safety_results(self) -> list[Result]:
@@ -278,6 +320,7 @@ class VoiceAgent:
         """Candidates from the corroboration/elicitation layers this tick."""
         extra: list[Intent] = []
         self._actions.clear()
+        self._expire_arm_check_session()
 
         workflow = self.workflows.active("primary")
         if workflow is not None and workflow.stage == WorkflowStage.INSTRUCTION:
@@ -340,14 +383,15 @@ class VoiceAgent:
 
         # 1b) Scripted arm check: speak the instruction, then open the window.
         if self._arm_check_requested and not self.elicitation.active(now=now):
-            sig = f"elicit-arm:{int(now)}"
+            sig = f"elicit-arm:{self._arm_check_session_id or 'pending'}:0"
             extra.append(Intent(
                 "elicit_test", sig,
-                "Ask them, warmly, to hold a forearm up toward the camera "
-                "with the skin facing the lens and keep it steady for about "
-                "ten seconds.", "",
-                "Could you hold your forearm up toward the camera, skin "
-                "facing the lens, and keep it steady for about ten seconds?",
+                "Ask them, warmly, to show either a bare forearm or a phone "
+                "displaying a close-up skin photo, centered toward the camera "
+                "and steady for about ten seconds.", "",
+                "Could you center either your bare forearm or a phone showing "
+                "the skin photo close to the camera and hold it steady for "
+                "about ten seconds?",
                 90))
             self._actions[sig] = self._begin_arm_check
 
@@ -364,30 +408,93 @@ class VoiceAgent:
                     "in one kind sentence; do not diagnose.",
                     str(res.message), str(res.message), 85))
 
-        # 2b) Report a fresh arm-check result.
+        # 2b) Report a fresh arm-check result. When both the on-device screening
+        # and the cloud photo check have concluded for this session, say what
+        # EACH one thought in a single attributed statement; otherwise report
+        # whichever one is available.
+        local_fresh = None
         res = self.memory.get("arm_skin", "arm_check")
         if res is not None:
             first = self.memory.first_seen.get(
                 ("arm_skin", "arm_check", str(res.value)))
-            if first is not None and now - first <= 12.0:
-                sig = f"arm_check_result:{int(first)}"
-                extra.append(Intent(
-                    "conclusion", sig,
-                    "Tell them what the quick arm skin check showed in one "
-                    "kind, non-diagnostic sentence.",
-                    str(res.message), str(res.message), 85))
+            value = res.value if isinstance(res.value, dict) else {}
+            status = str(value.get("status") or "succeeded")
+            if first is not None and now - first <= 12.0 and status == "succeeded":
+                local_fresh = (first, res)
 
+        vlm_fresh = None
+        vlm_reposition = False
         vlm_arm = self.memory.get("skin_vision", "arm_check")
         if vlm_arm is not None:
             first = self.memory.first_seen.get(
                 ("skin_vision", "arm_check", str(vlm_arm.value)))
             if first is not None and now - first <= 12.0:
-                sig = f"vlm_arm_check_result:{int(first)}"
+                value = vlm_arm.value if isinstance(vlm_arm.value, dict) else {}
+                status = str(value.get("status") or "succeeded")
+                same_session = (not self._arm_check_session_id
+                                or vlm_arm.correlation_id == self._arm_check_session_id)
+                if (same_session and status != "reposition_required"
+                        and self._arm_check_in_flight):
+                    self._finish_arm_check_session()
+                if status == "reposition_required" and same_session:
+                    vlm_reposition = True
+                    phone = (str(value.get("visual_source")) == "displayed_photo"
+                             or str(value.get("reason", "")).startswith(
+                                 "displayed_photo"))
+                    sig = f"elicit-arm:{self._arm_check_session_id}:retry"
+                    extra.append(Intent(
+                        "elicit_test", sig,
+                        ("Explain that the phone photo was not clear enough, then ask "
+                         "them once to bring it closer, reduce glare, and hold still."
+                         if phone else
+                         "Explain that the view was not clear enough, then ask them once "
+                         "to center a bare forearm or phone photo and hold still."),
+                        "",
+                        ("I couldn't get a clear view of the photo. Please bring the "
+                         "phone closer, reduce glare, and hold it steady once more."
+                         if phone else
+                         "I couldn't get a clear skin view. Please center a bare "
+                         "forearm or phone photo close to the camera and hold it "
+                         "steady once more."), 91))
+                    self._actions[sig] = self._retry_arm_check
+                else:
+                    vlm_fresh = (first, vlm_arm)
+
+        if not vlm_reposition and (local_fresh or vlm_fresh):
+            if local_fresh and vlm_fresh:
+                lfirst, lres = local_fresh
+                vfirst, vres = vlm_fresh
+                local_line = str(lres.message)
+                for pre in ("Local camera arm check: ", "Local camera arm check "):
+                    if local_line.startswith(pre):
+                        local_line = local_line[len(pre):]
+                        break
+                combined = ("Two quick skin checks just finished. "
+                            f"The on-device camera screening thought: {local_line}. "
+                            f"The cloud photo check thought: {vres.message}")
+                sig = f"arm_check_both:{int(lfirst)}:{int(vfirst)}"
                 extra.append(Intent(
                     "conclusion", sig,
-                    "Report the NVIDIA arm VLM result in one cautious sentence; "
-                    "keep it separate from the local camera screening and do not diagnose.",
-                    str(vlm_arm.message), str(vlm_arm.message), 86))
+                    "Tell them what BOTH skin checks found in one or two kind, "
+                    "non-diagnostic sentences, clearly attributing the on-device "
+                    "camera screening and the cloud photo check separately.",
+                    combined, combined, 86))
+            elif local_fresh:
+                lfirst, lres = local_fresh
+                sig = f"arm_check_result:{int(lfirst)}"
+                extra.append(Intent(
+                    "conclusion", sig,
+                    "Tell them what the quick arm skin check showed in one "
+                    "kind, non-diagnostic sentence.",
+                    str(lres.message), str(lres.message), 85))
+            else:
+                vfirst, vres = vlm_fresh
+                sig = f"vlm_arm_check_result:{int(vfirst)}"
+                extra.append(Intent(
+                    "conclusion", sig,
+                    "Report the arm-check outcome in one cautious, "
+                    "non-diagnostic sentence.",
+                    str(vres.message), str(vres.message), 86))
 
         # 3) Guided skin close-up, questions, or safe conclusion.
         skin_prompt = self.skin_dialogue.next_prompt(now)
@@ -459,8 +566,25 @@ class VoiceAgent:
         self._test_requested = False
 
     def _begin_arm_check(self) -> None:
-        self.elicitation.begin("arm_check", _ARM_CHECK_SECONDS)
+        self.elicitation.begin(
+            "arm_check", _ARM_CHECK_SECONDS,
+            correlation_id=self._arm_check_session_id,
+            attempt=self._arm_check_attempt)
         self._arm_check_requested = False
+        self._arm_check_in_flight = True
+        self._arm_check_in_flight_until = (
+            time.monotonic() + _ARM_CHECK_SESSION_TIMEOUT)
+
+    def _retry_arm_check(self) -> None:
+        """Open the single permitted corrected capture window."""
+        self._arm_check_attempt = 1
+        self.elicitation.begin(
+            "arm_check", _ARM_CHECK_SECONDS,
+            correlation_id=self._arm_check_session_id,
+            attempt=self._arm_check_attempt)
+        self._arm_check_in_flight = True
+        self._arm_check_in_flight_until = (
+            time.monotonic() + _ARM_CHECK_SESSION_TIMEOUT)
 
     def reasoning_card(self) -> dict | None:
         """A compact, non-diagnostic explanation for the showcase dashboard."""
@@ -514,12 +638,14 @@ class VoiceAgent:
         self.corroboration.observe(corroboration_snapshot, now)
         extra = self._extra_intents(now, heard, handled)
         if self._pending_speech is not None:
-            request_id, pending_intent, requested_mono, requested_at = self._pending_speech
+            (request_id, pending_intent, requested_mono, requested_at,
+             pending_action) = self._pending_speech
             done, generated = self.moondream.poll_generation(request_id)
             if done or time.monotonic() - requested_mono >= self._cloud_speech_deadline:
                 self._pending_speech = None
                 text = generated or pending_intent.fallback
-                return self._speak_intent(pending_intent, text, requested_at)
+                return self._speak_intent(
+                    pending_intent, text, requested_at, action=pending_action)
             return None
         intent = self.policy.next_intent(
             self.memory, now, extra=extra,
@@ -529,11 +655,14 @@ class VoiceAgent:
         request_id = self.moondream.submit_generation(
             intent.llm_intent, self.memory.context_text(), intent.detail)
         if request_id is not None:
-            self._pending_speech = (request_id, intent, time.monotonic(), now)
+            action = self._actions.get(intent.signature)
+            self._pending_speech = (
+                request_id, intent, time.monotonic(), now, action)
             return None
         return self._speak_intent(intent, intent.fallback, now)
 
-    def _speak_intent(self, intent, candidate: str, now: float) -> str:
+    def _speak_intent(self, intent, candidate: str, now: float,
+                      action=_MISSING_ACTION) -> str:
         """Apply safety wording and commit one selected intent after generation."""
         generated = candidate
         if intent.signature.startswith("skin:"):
@@ -547,7 +676,8 @@ class VoiceAgent:
             text = generated or intent.fallback
         self.policy.mark_spoken(intent, now)
         active_workflow = self.workflows.active("primary")
-        action = self._actions.get(intent.signature)
+        if action is _MISSING_ACTION:
+            action = self._actions.get(intent.signature)
         if action is not None:
             action()
         if active_workflow is not None and intent.kind == "conclusion":

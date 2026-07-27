@@ -1,9 +1,31 @@
 # AI development workflow
 
-This guide is the canonical workflow for an AI coding agent that needs to test
-live application behavior. Hot reload is recommended for runtime, UI,
-configuration, integration, health, and performance changes. Documentation-only
-changes and isolated pure-function work may use focused checks instead.
+This guide describes how to test live application behavior. For runtime, UI,
+configuration, integration, health, and performance changes, an agent should
+prefer a **bounded, self-terminating run** (see "Bounded verification" below)
+over the long-lived supervisor. Documentation-only changes and isolated
+pure-function work may use focused checks instead.
+
+> **Mandatory cleanup.** Whatever you start, stop before the task ends. Never
+> leave a `python dev.py` supervisor or an app process running past your
+> session — an orphaned run keeps holding the debug/web ports and can shadow a
+> later live run with stale data. Run the app in the foreground with a frame
+> budget, or stop any backgrounded process explicitly (Ctrl+C / kill) when done.
+
+## Bounded verification (preferred for agents)
+
+Run a capped headless replay that exits on its own after the frame budget, so
+nothing can outlive the task:
+
+```bash
+python main.py --source replay:dev_hot_reload --headless --debug-endpoint --dev-mode --no-voice --no-moondream --max-frames 600
+```
+
+`--max-frames` (wired through `main.py` to `pipeline.run`) stops the run after N
+frames; at the fixture's ~12 fps, 600 frames is ~50 s — long enough to reach
+steady state and query `http://127.0.0.1:8771/debug/state` while it runs. If you
+need that live reading, start the process, query it, and let it exit (or stop it
+in the same session).
 
 ## Stable development interfaces
 
@@ -21,10 +43,12 @@ workers. It does not require a camera. The project root is watched by default;
 polling defaults to 0.25 seconds and restart debounce to 0.2 seconds. Repeat
 `--watch PATH` to narrow monitoring to selected files or trees.
 
-## Start and observe the supervisor
+## Optional: the hot-reload supervisor (manual use)
 
-Use the active project interpreter and keep the command running in a long-lived
-terminal:
+`python dev.py` is an optional convenience for a human developer iterating
+locally — it restarts the app on file changes. It is **not** the agent default;
+an agent that starts it must stop it (Ctrl+C) before the session ends (see
+"Mandatory cleanup" above). Use the active project interpreter:
 
 ```powershell
 # Windows virtual environment
@@ -44,8 +68,8 @@ A healthy startup reaches these markers in order:
 ```
 
 The supervisor sets unbuffered Python output, so its own messages and all child
-logs appear in the same terminal. Preserve that terminal while editing. Do not
-start a second default supervisor on the same debug port.
+logs appear in the same terminal. Do not start a second default supervisor on
+the same debug port, and stop it (Ctrl+C) when you are done.
 
 After saving a watched Python, YAML, JSON, HTML, CSS, or JavaScript file, wait for
 both markers before testing the new process:
@@ -63,9 +87,10 @@ another change.
 
 ## Use debug state as the live acceptance gate
 
-Query the private endpoint only after the post-reload startup markers. Record the
-reload time and require the returned `timestamp` to be newer so an old process or
-cached response cannot be mistaken for the new build.
+Query the private endpoint only after the run's `[main] starting` marker (and,
+when using the supervisor, the post-reload markers). Record the start time and
+require the returned `timestamp` to be newer so an old or orphaned process, or a
+cached response, cannot be mistaken for the current build.
 
 PowerShell:
 

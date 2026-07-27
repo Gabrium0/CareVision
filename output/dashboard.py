@@ -49,6 +49,7 @@ _METRIC_NAMES = {
     "backend_status": "Backend Status",
     "emotion": "Emotion", "valence": "Mood",
     "fall": "Fall", "pain": "Pain", "age": "Age",
+    "arm_check": "Arm check", "vlm_arm_check": "Cloud photo check",
 }
 _METRIC_ORDER = ["bpm", "hrv_rmssd_ms", "hrv_sdnn_ms", "breaths_per_min",
                  "status", "backend_status", "emotion", "valence", "fall", "pain", "age"]

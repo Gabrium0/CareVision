@@ -1,0 +1,17 @@
+# Caregiver alerting. Credentials come from environment variables / .env, never
+# from this file. Channels whose creds are missing are skipped automatically;
+# 'console' always works so alerts are never lost.
+#
+# Env vars per channel:
+#   email:   SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, ALERT_EMAIL_TO
+#   webhook: ALERT_WEBHOOK_URL            (Slack/Discord/custom)
+#   sms:     TWILIO_SID, TWILIO_TOKEN, TWILIO_FROM, ALERT_SMS_TO
+
+enabled: true
+channels: [console, email, webhook, sms]
+confirm_seconds: 3.0        # alert must persist this long before notifying
+cooldown_seconds: 120.0     # min gap between repeat notifications of one alert
+escalate_after: 300.0       # re-notify (ESCALATION) if still ongoing after 5 min
+quiet_hours: null           # e.g. [22, 7] to hold suppressible alerts overnight
+quiet_suppress: []          # alert keys that may wait during quiet hours
+                            # (fall/unresponsive stay critical and always send)

@@ -1,11 +1,21 @@
-## Autonomous runtime verification (recommended)
+## Runtime verification
 
 For runtime, UI, configuration, integration, health, or performance changes,
-prefer the hot-reload workflow in [docs/AI_DEVELOPMENT.md](docs/AI_DEVELOPMENT.md):
-keep `python dev.py` running, observe the `[reload]`/`[main]`/`[debug]` logs, and
-use `http://127.0.0.1:8771/debug/state` as the live acceptance gate. Focused
-checks are sufficient for documentation-only and isolated pure-function work.
-Never expose `.env` values, credentials, raw media, or provider responses in logs.
+verify with a **bounded, self-terminating** run so nothing outlives the task —
+never leave a supervisor or app process running after you finish. Prefer a
+capped headless replay that exits on its own after the frame budget:
+
+```bash
+python main.py --source replay:dev_hot_reload --headless --debug-endpoint --dev-mode --no-voice --no-moondream --max-frames 600
+```
+
+If you need a live `http://127.0.0.1:8771/debug/state` reading, start the
+process, query it while it runs, then stop it in the same session. The `python
+dev.py` hot-reload supervisor (see [docs/AI_DEVELOPMENT.md](docs/AI_DEVELOPMENT.md))
+is an optional manual tool; if you start it, stop it (Ctrl+C) before ending the
+session. Focused checks are sufficient for documentation-only and isolated
+pure-function work. Never expose `.env` values, credentials, raw media, or
+provider responses in logs.
 
 ## graphify
 

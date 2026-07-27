@@ -20,7 +20,8 @@ from output.dashboard import _MODULE_TRIGGERS
 
 def _raw(confidence: float = 0.8, **cues) -> dict:
     raw = {
-        "image_quality": "good", "sufficient_skin_visible": True,
+        "image_quality": "good", "visual_source": "live_skin",
+        "sufficient_skin_visible": True,
         "finding_present": False, "visible_features": [],
         "body_region": "visible skin", "confidence": 0.1,
         "possible_conditions": [], "follow_up_topics": [],
@@ -73,8 +74,8 @@ def test_routed_results_carry_module_key_and_provenance():
     row = rows["vlm_lip_dryness"]
     assert row.module == "dry_lips"            # lands on the Lip dryness card
     assert row.source == "nvidia_vlm"          # never mistakable for the heuristic
-    assert row.value == {"cue": "lip_dryness", "value": "mild",
-                         "image_quality": "good"}
+    assert row.value == {"cue": "lip_dryness", "value": "mild"}
+    assert row.quality == .9
     assert "VLM" in row.message
 
 

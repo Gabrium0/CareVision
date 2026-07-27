@@ -5,6 +5,25 @@ import threading
 from concurrent.futures import Future
 
 
+def detach_exception_context(exc: BaseException) -> BaseException:
+    """Remove traceback/context chains that may retain task arguments.
+
+    One-flight callers still receive the original typed, sanitized exception
+    and its metadata, but completed futures do not keep worker-frame locals
+    such as image arrays or provider payloads alive.
+    """
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        next_error = current.__cause__ or current.__context__
+        current.__traceback__ = None
+        current.__cause__ = None
+        current.__context__ = None
+        current = next_error
+    return exc
+
+
 class DaemonOneFlight:
     """Run at most one callable without creating non-daemon executor threads."""
     def __init__(self, name: str):
@@ -29,7 +48,13 @@ class DaemonOneFlight:
                 try:
                     future.set_result(fn(*args, **kwargs))
                 except BaseException as exc:  # Future must preserve worker errors
-                    future.set_exception(exc)
+                    future.set_exception(detach_exception_context(exc))
+                finally:
+                    # Do not let the worker object retain a completed Future:
+                    # its result/exception traceback may own media arguments.
+                    with self._lock:
+                        if self._future is future:
+                            self._future = None
 
             self._thread = threading.Thread(target=run, name=self.name, daemon=True)
             self._thread.start()

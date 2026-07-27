@@ -167,13 +167,35 @@ def test_arm_check_window_consolidates_once(monkeypatch):
     es.begin("arm_check", 5.0, now=100.0)
     try:
         assert module.process(_ctx(ts=101.0)) is None    # sampling, no chatter
+        assert module.process(_ctx(ts=102.0)) is None
+        assert module.process(_ctx(ts=103.0)) is None
         assert module.interval == module.window_interval
         out = module.process(_ctx(ts=106.0))             # window closed
         assert module.interval == module._passive_interval
         assert len(out) == 1 and out[0].key == "arm_check"
-        assert out[0].value == "clear" and out[0].severity == Severity.INFO
+        assert out[0].value["status"] == "succeeded"
+        assert out[0].value["finding_present"] is False
+        assert out[0].severity == Severity.INFO
         assert out[0].source == "local_arm_skin"
         assert out[0].message.startswith("Local camera arm check:")
+    finally:
+        es.clear()
+
+
+def test_arm_check_without_usable_samples_is_never_clear(monkeypatch):
+    module = _module(monkeypatch)
+    es = ElicitationState.instance()
+    es.begin("arm_check", 2.0, now=100.0, correlation_id="arm-session")
+    hidden = _ctx(ts=101.0)
+    hidden.pose = None
+    try:
+        assert module.process(hidden) is None
+        out = module.process(_ctx(ts=103.0))
+        assert len(out) == 1
+        assert out[0].value["status"] == "unavailable"
+        assert out[0].value["reason"] == "insufficient_arm_samples"
+        assert out[0].correlation_id == "arm-session"
+        assert "clear" not in out[0].message.lower()
     finally:
         es.clear()
 
