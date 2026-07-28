@@ -466,7 +466,8 @@ class Pipeline:
             if self._background_stop:
                 return
             if self.showcase_gate is not None:
-                results = [r for r in results if self.showcase_gate.allow(r.module, ctx)]
+                results = [r for r in results
+                           if self.showcase_gate.allow(r.module, ctx, r.source)]
             if self.advisor_engine is not None:
                 results.extend(self._poll_or_submit_advisor(ctx, results))
             throttled = self._background_scheduler.pop_throttled()
@@ -992,7 +993,8 @@ class Pipeline:
         if self.background_analysis:
             results = self._critical_scheduler.tick(ctx, timings=timings)
             if self.showcase_gate is not None:
-                results = [r for r in results if self.showcase_gate.allow(r.module, ctx)]
+                results = [r for r in results
+                           if self.showcase_gate.allow(r.module, ctx, r.source)]
             drain_started = time.perf_counter()
             results.extend(self._drain_background())
             timings["coordinator:background_drain"] = round(
@@ -1004,7 +1006,8 @@ class Pipeline:
         else:
             results = self.scheduler.tick(ctx, timings=timings)
             if self.showcase_gate is not None:
-                results = [r for r in results if self.showcase_gate.allow(r.module, ctx)]
+                results = [r for r in results
+                           if self.showcase_gate.allow(r.module, ctx, r.source)]
         results = showcase_results + results
         routing_started = time.perf_counter()
         if self.camera_location:

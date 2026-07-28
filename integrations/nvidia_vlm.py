@@ -686,7 +686,8 @@ class NvidiaVLMClient:
             queue_ms=round(queue_ms, 1),
         )
 
-    def request(self, prompt: str, images: list[bytes], max_tokens: int = 700,
+    def request(self, prompt: str, images: list[bytes] | None = None,
+                max_tokens: int = 700,
                 response_format: dict[str, Any] | None = None,
                 timeout: float | None = None, *, purpose: str = "passive",
                 deadline: float | None = None,
@@ -713,15 +714,17 @@ class NvidiaVLMClient:
                 queue_deadline,
                 time.monotonic() + attempt_timeout,
             )
-            image = self._single_image(images)
             content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
-            content.append({
-                "type": "image_url",
-                "image_url": {
-                    "url": "data:image/jpeg;base64,"
-                           + base64.b64encode(image).decode("ascii")
-                },
-            })
+            image = b""
+            if images:
+                image = self._single_image(images)
+                content.append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": "data:image/jpeg;base64,"
+                               + base64.b64encode(image).decode("ascii")
+                    },
+                })
             payload: dict[str, Any] = {
                 "model": self.model,
                 "messages": [{"role": "user", "content": content}],

@@ -432,8 +432,35 @@
     if(lastTriggerResult && lastTriggerResult.module === mod.module){
       resultHtml = `<div class="trigresult ${lastTriggerResult.ok ? 'ok' : 'err'}">${esc(lastTriggerResult.text)}</div>`;
     }
+    // The scan itself finishes ~15s after the POST returns, so a healthy
+    // "Triggered." says nothing about whether the cloud can answer. Show the
+    // provider's own state or an outage looks exactly like a dead button.
     return `<button type="button" class="trigbtn" id="trigBtn" ${busy?'disabled':''}>` +
-      `${esc(busy ? 'Running…' : label)}</button>${resultHtml}`;
+      `${esc(busy ? 'Running…' : label)}</button>${resultHtml}` +
+      providerNote(mod.provider);
+  }
+
+  // Renders nothing while the cloud is healthy — the button already says it.
+  function providerNote(p){
+    if(!p) return '';
+    if(!p.available){
+      return '<div class="trigresult err">Cloud vision is off for this run '
+        + '(no consent or no credentials).</div>';
+    }
+    if(p.ok) return '';
+    const bits = [];
+    if(p.http_status === 400 && p.retryable === false){
+      bits.push('The hosted vision model is unavailable (provider reports it degraded).');
+    } else if(p.reason){
+      bits.push('Last scan failed: ' + esc(String(p.reason))
+        + (p.http_status ? ' (HTTP ' + esc(String(p.http_status)) + ')' : '') + '.');
+    } else {
+      bits.push('The last scan did not complete.');
+    }
+    if(p.consecutive_failures > 1) bits.push(p.consecutive_failures + ' in a row.');
+    const wait = Number(p.retry_in_seconds);
+    if(isFinite(wait) && wait > 1) bits.push('Retrying in ' + Math.ceil(wait) + 's.');
+    return `<div class="trigresult err">${bits.join(' ')}</div>`;
   }
 
   // The most important part per spec: never render a blank panel.

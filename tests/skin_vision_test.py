@@ -19,8 +19,10 @@ from core.events import PersistencePolicy, Result, Severity, Visibility
 from integrations.nvidia_vlm import NvidiaVLMClient, NvidiaVLMError
 from modules.local_skin_classifier import LocalSkinPrediction
 from modules.skin_vision import (FacialCues, SkinAnalysis, SkinVision,
-                                 SkinVisionAPIError, _compose_preliminary_frame,
-                                 _extract_json, _response_format,
+                                 SkinVisionAPIError, _CLOSEUP_SCHEMA,
+                                 _compose_preliminary_frame,
+                                 _extract_json, _response_content_diagnostic,
+                                 _response_diagnostic_hint, _response_format,
                                  validate_analysis)
 from output.aggregator import Aggregator
 from output.dashboard import to_payload
@@ -113,10 +115,18 @@ def test_validate_analysis_requires_bounded_visual_source():
     with pytest.raises(ValueError, match="visual_source"):
         validate_analysis(_raw_analysis(visual_source="printed_photo"))
 
-    closeup = _response_format("closeup")["json_schema"]["schema"]
-    assert "visual_source" in closeup["required"]
-    assert closeup["properties"]["visual_source"]["enum"] == [
+    assert _response_format("closeup") == {"type": "json_object"}
+    assert "visual_source" in _CLOSEUP_SCHEMA["required"]
+    assert _CLOSEUP_SCHEMA["properties"]["visual_source"]["enum"] == [
         "displayed_photo", "live_skin", "unclear"]
+    assert "pigment_loss" in \
+        _CLOSEUP_SCHEMA["properties"]["visible_features"]["items"]["enum"]
+    assert _CLOSEUP_SCHEMA["properties"]["visible_features"]["maxItems"] == 3
+
+    contradictory = _raw_closeup(finding=True)
+    contradictory["visible_features"] = ["pigment_loss", "bruising"]
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        validate_analysis(contradictory, strict_schema=True)
 
 
 def test_validate_facial_cues_bounds_enums_quality_confidence_and_face_crop():
@@ -133,16 +143,24 @@ def test_validate_facial_cues_bounds_enums_quality_confidence_and_face_crop():
         "lip_dryness": "mild", "nasal_discharge_visible": "yes",
     }
 
+    # Low confidence and poor frames are gated out of the spoken path but stay
+    # readable for the console, carrying their real confidence.
     low = validate_analysis({**raw, "facial_cue_confidence": 0.44},
                             allow_facial_cues=True, face_crop_available=True)
     assert low.facial_cues.positive() == {}
-    assert low.facial_cues.confidence == 0.0
+    assert low.facial_cues.gated is True
+    assert low.facial_cues.confidence == 0.44
+    assert low.facial_cues.observed()["under_eye_darkness"] == "mild"
+    # No face crop stays a hard erase: there was no face to describe.
     no_crop = validate_analysis(raw, allow_facial_cues=True,
                                 face_crop_available=False)
     assert no_crop.facial_cues.positive() == {}
+    assert no_crop.facial_cues.observed() == {}
+    assert no_crop.facial_cues.confidence == 0.0
     poor = validate_analysis({**raw, "image_quality": "poor"},
                              allow_facial_cues=True, face_crop_available=True)
     assert poor.facial_cues.positive() == {}
+    assert poor.facial_cues.observed()["under_eye_darkness"] == "mild"
 
     try:
         validate_analysis({**raw, "nose_redness": "very red"},
@@ -222,12 +240,10 @@ def test_nvidia_request_uses_auth_and_in_memory_jpeg(monkeypatch):
         assert [base64.b64decode(url.split(",", 1)[1]) for url in image_urls] == [
             b"composite-jpeg"]
         response_format = payload["response_format"]
-        assert response_format["type"] == "json_schema"
-        schema = response_format["json_schema"]["schema"]
-        assert schema["additionalProperties"] is False
-        assert "under_eye_darkness" in schema["required"]
-        assert "under_eye_darkness" not in \
-            _response_format("closeup")["json_schema"]["schema"]["properties"]
+        assert response_format == {"type": "json_object"}
+        prompt = payload["messages"][0]["content"][0]["text"]
+        assert "under_eye_darkness" in prompt
+        assert "All keys below are required exactly once" in prompt
         assert not result.finding_present
         assert result.facial_cues.positive() == {"under_eye_darkness": "mild"}
     finally:
@@ -332,6 +348,22 @@ def test_diagnostics_describe_invalid_response_without_retaining_content(monkeyp
         assert "raw_model_content" not in invalid["last_attempt"]
         assert invalid["last_attempt"]["repair_attempted"] is True
         assert invalid["last_attempt"]["validation"]["reason"]
+        validation = invalid["last_attempt"]["validation"]
+        assert validation["response_type"] == "NoneType"
+        assert validation["diagnostic_hint"] == "provider_non_json_text"
+        assert validation["provider_content"] == {
+            "content_type": "str",
+            "character_count": len("not structured JSON"),
+            "line_count": 1,
+            "leading_kind": "prose",
+            "starts_with_object": False,
+            "ends_with_object": False,
+            "has_object_start": False,
+            "has_object_end": False,
+            "has_object_bounds": False,
+            "has_markdown_fence": False,
+        }
+        assert "not structured JSON" not in json.dumps(invalid)
 
         module._pending = None
         module._pending_stage = None
@@ -360,12 +392,57 @@ def test_diagnostics_describe_invalid_response_without_retaining_content(monkeyp
         module.close()
 
 
-def test_repair_attempt_drops_strict_schema_and_recovers(monkeypatch):
+@pytest.mark.parametrize(
+    ("content", "leading_kind", "hint"),
+    [
+        ("plain refusal", "prose", "provider_non_json_text"),
+        ('{"finding_present": true', "object", "provider_partial_json"),
+        ('{"finding_present": }', "object", "provider_malformed_json"),
+        ([{"type": "text", "text": "plain refusal"},
+          {"type": "image"}], "prose", "provider_non_json_text"),
+        (None, "empty", "provider_empty_content"),
+    ],
+)
+def test_provider_content_diagnostics_are_structural_only(
+        content, leading_kind, hint):
+    shape = _response_content_diagnostic(content)
+    assert shape["leading_kind"] == leading_kind
+    assert _response_diagnostic_hint(None, shape) == hint
+    serialized = json.dumps(shape)
+    assert "plain refusal" not in serialized
+    assert "finding_present" not in serialized
+
+
+def test_inference_unavailable_log_explains_non_json_without_content(
+        monkeypatch, capsys):
+    monkeypatch.setattr("modules.skin_vision.nvidia_api_key", lambda: "secret")
+    module = SkinVision(consent=True)
+    provider_text = "private provider prose"
+    try:
+        monkeypatch.setattr(module, "_encode", lambda _frame: b"private-jpeg")
+        monkeypatch.setattr(module._client, "request",
+                            lambda *_args, **_kwargs: provider_text)
+        with pytest.raises(SkinVisionAPIError) as caught:
+            module._call_api(
+                np.zeros((8, 8, 3), np.uint8), "preliminary", None)
+        module._failure(100.0, caught.value)
+        output = capsys.readouterr().out
+        assert "hint=provider_non_json_text" in output
+        assert "content=str/prose" in output
+        assert "object_bounds=no" in output
+        assert provider_text not in output
+        assert "private-jpeg" not in output
+        assert "secret" not in output
+    finally:
+        module.close()
+
+
+def test_repair_attempt_drops_json_mode_and_recovers(monkeypatch):
     """A null/invalid first response retries free-form so the model can comply.
 
-    meta/llama-3.2-11b-vision returns empty content under strict json_schema
-    decoding for the heavy manual prompts; the repair attempt must send no
-    response_format (the contract is already in the prompt) and succeed.
+    The first attempt asks only for a JSON object while local validation keeps
+    the full contract strict. The repair attempt drops response_format and uses
+    the same unbiased prompt contract.
     """
     monkeypatch.setattr("modules.skin_vision.nvidia_api_key", lambda: "secret")
     module = SkinVision(consent=True)
@@ -374,7 +451,7 @@ def test_repair_attempt_drops_strict_schema_and_recovers(monkeypatch):
     def request(_prompt, _images, **kwargs):
         formats.append(kwargs.get("response_format"))
         if len(formats) == 1:
-            return None  # strict decoding returned empty content
+            return None
         return json.dumps(_raw_closeup())
 
     try:
@@ -385,11 +462,84 @@ def test_repair_attempt_drops_strict_schema_and_recovers(monkeypatch):
         result = module._pending.result(timeout=2)
         assert result.finding_present is False
         assert len(formats) == 2
-        assert formats[0] is not None and formats[0]["type"] == "json_schema"
+        assert formats[0] == {"type": "json_object"}
         assert formats[1] is None
         diagnostic = module.diagnostics()
         assert diagnostic["status"] == "success"
         assert diagnostic["last_attempt"]["repair_attempted"] is True
+    finally:
+        module.close()
+
+
+def test_prose_vision_reply_is_rescued_by_text_only_reformat(monkeypatch):
+    """A vision reply that drifts into prose (json_parse) is re-encoded to JSON.
+
+    The NVIDIA vision endpoint ignores response_format/guided decoding and often
+    answers with a scene description. The module runs one text-only reformat call
+    whose schema-valid reply preserves the observed finding instead of surfacing
+    json_parse.
+    """
+    monkeypatch.setattr("modules.skin_vision.nvidia_api_key", lambda: "secret")
+    module = SkinVision(consent=True)
+    seen_images = []
+
+    def request(_prompt, _images=None, **kwargs):
+        seen_images.append(_images)
+        if len(seen_images) == 1:
+            return ("The image shows a left forearm with a well-demarcated "
+                    "reddish patch consistent with redness.")
+        return json.dumps(_raw_closeup(finding=True))
+
+    try:
+        monkeypatch.setattr(module, "_encode", lambda _frame: b"jpeg")
+        monkeypatch.setattr(module._client, "request", request)
+        module._submit(np.zeros((8, 8, 3), np.uint8), "closeup", 100.0,
+                       purpose="manual_arm_check")
+        result = module._pending.result(timeout=2)
+        assert result.finding_present is True
+        assert "redness" in result.visible_features
+        # Exactly two calls: the prose image call and one text-only reformat.
+        assert len(seen_images) == 2
+        assert seen_images[0]  # image call carried the encoded frame
+        assert not seen_images[1]  # reformat call is text-only
+        diagnostic = module.diagnostics()
+        assert diagnostic["status"] == "success"
+        attempts = diagnostic["last_attempt"]["attempts"]
+        assert attempts[0]["failure_category"] == "json_parse"
+        assert attempts[-1]["payload_mode"] == "reformat_rescue"
+    finally:
+        module.close()
+
+
+def test_truncated_json_parse_is_not_reformatted(monkeypatch):
+    """A length-truncated reply retries with a bigger budget, not a reformat."""
+    monkeypatch.setattr("modules.skin_vision.nvidia_api_key", lambda: "secret")
+    module = SkinVision(consent=True)
+    modes = []
+
+    class _Resp:
+        def __init__(self, content, finish_reason=None):
+            self.content = content
+            self.status = 200
+            self.finish_reason = finish_reason
+
+    def request(_prompt, _images=None, **kwargs):
+        modes.append(kwargs.get("max_tokens"))
+        if len(modes) == 1:
+            return _Resp("{", finish_reason="length")
+        return _Resp(json.dumps(_raw_closeup(finding=True)))
+
+    try:
+        monkeypatch.setattr(module, "_encode", lambda _frame: b"jpeg")
+        monkeypatch.setattr(module._client, "request", request)
+        module._submit(np.zeros((8, 8, 3), np.uint8), "closeup", 100.0,
+                       purpose="manual_arm_check")
+        result = module._pending.result(timeout=2)
+        assert result.finding_present is True
+        attempts = module.diagnostics()["last_attempt"]["attempts"]
+        # The second call is a retry, not a reformat rescue.
+        assert "reformat_rescue" not in [a["payload_mode"] for a in attempts]
+        assert attempts[0]["failure_category"] == "json_parse"
     finally:
         module.close()
 
@@ -748,6 +898,51 @@ def test_manual_prompt_explains_paired_crop_and_whole_frame(monkeypatch):
         assert "bottom panel is an enlarged pose crop" in prompt
         assert "phone displaying the actual skin photo" in prompt
         assert "appears only in the top whole-frame panel" in prompt
+        assert "JSON contract:" in prompt
+        assert "requires pigment_loss" in prompt
+        assert "Use bruising only when" in prompt
+        assert "Use discoloration only when" in prompt
+        assert "lighter or white patch as bruising" in prompt
+        assert "Never return both pigment_loss and bruising" in prompt
+        assert "never fill the list speculatively" in prompt
+        assert '"visible_features":["bruising"]' not in prompt
+        assert "displayed bruise photo" not in prompt
+        assert "possible_conditions and follow_up_topics as empty arrays" \
+            in prompt
+    finally:
+        module.close()
+
+
+def test_manual_retry_keeps_full_unbiased_task_and_names_missing_fields(
+        monkeypatch):
+    monkeypatch.setattr("modules.skin_vision.nvidia_api_key", lambda: "key")
+    module = SkinVision(consent=True)
+    calls = []
+    invalid = _raw_closeup()
+    invalid.pop("body_region")
+
+    def request(prompt, _images, **kwargs):
+        calls.append((prompt, kwargs.get("response_format")))
+        return (json.dumps(invalid) if len(calls) == 1
+                else json.dumps(_raw_closeup()))
+
+    try:
+        monkeypatch.setattr(module._client, "encode",
+                            lambda _frame, **_kwargs: b"jpeg")
+        monkeypatch.setattr(module._client, "request", request)
+        module._call_api(
+            np.zeros((12, 12, 3), np.uint8), "closeup", None,
+            arm_crop_label="left forearm", purpose="manual_arm_check",
+            paired_context=True)
+        assert [response_format for _, response_format in calls] == [
+            {"type": "json_object"}, None]
+        for prompt, _ in calls:
+            assert "top panel is the complete camera frame" in prompt
+            assert "requires pigment_loss" in prompt
+            assert '"visible_features":["bruising"]' not in prompt
+        assert "Missing required fields: body_region." in calls[1][0]
+        assert "Validation issue: missing required fields: body_region." \
+            in calls[1][0]
     finally:
         module.close()
 
@@ -977,6 +1172,57 @@ def test_manual_arm_accepts_displayed_photo_with_source_aware_wording(
         assert "visual_source=displayed_photo" in logged
         assert "finding_present=" in logged
         assert "possible_conditions" not in logged
+    finally:
+        module.close()
+
+
+def test_manual_pigment_loss_is_neutral_and_cloud_hypotheses_are_removed(
+        monkeypatch):
+    monkeypatch.setattr("modules.skin_vision.nvidia_api_key", lambda: "key")
+    module = SkinVision(consent=True)
+    raw = _raw_closeup(finding=True)
+    raw.update({
+        "visual_source": "displayed_photo",
+        "visible_features": ["pigment_loss"],
+        "body_region": "forearm in displayed photo",
+        "confidence": 0.84,
+        "possible_conditions": ["vitiligo"],
+        "follow_up_topics": ["duration"],
+    })
+    try:
+        monkeypatch.setattr(module._client, "encode",
+                            lambda _frame, **_kwargs: b"jpeg")
+        monkeypatch.setattr(
+            module._client, "request",
+            lambda *_args, **_kwargs: json.dumps(raw))
+        analysis = module._call_api(
+            np.zeros((12, 12, 3), np.uint8), "closeup", None,
+            purpose="manual_arm_check")
+        assert analysis.visible_features == ("pigment_loss",)
+        assert analysis.possible_conditions == ()
+
+        module._pending = _done(analysis)
+        module._pending_stage = "closeup"
+        module._pending_purpose = "manual_arm_check"
+        module._pending_correlation_id = "pigment-session"
+        module._pending_capture_mode = "pose_crop_with_context"
+        results = module._consume_pending(100.0)
+        public = next(result for result in results
+                      if result.module == "skin_vision"
+                      and result.key == "arm_check")
+        private = next(result for result in results
+                       if result.key == "arm_analysis")
+        routed = next(result for result in results
+                      if result.module == "arm_skin")
+        assert public.message == (
+            "In the photo shown on the phone, a possible pigment change "
+            "appears on forearm in displayed photo")
+        assert routed.message == (
+            "Cloud photo check: possible pigment change on "
+            "forearm in displayed photo")
+        assert "vitiligo" not in public.message.lower()
+        assert "vitiligo" not in json.dumps(public.value).lower()
+        assert private.value["possible_conditions"] == []
     finally:
         module.close()
 

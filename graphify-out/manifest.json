@@ -825,8 +825,8 @@
     "semantic_hash": ""
   },
   "modules/skin_vision.py": {
-    "mtime": 1785142330.5566275,
-    "ast_hash": "3683c6e0cef9a2e0082ffe59ff22149c",
+    "mtime": 1785144863.8949404,
+    "ast_hash": "16344071fb1c92c13860325c1ecfe455",
     "semantic_hash": ""
   },
   "tests/showcase_gate_test.py": {
@@ -835,8 +835,8 @@
     "semantic_hash": ""
   },
   "tests/skin_vision_test.py": {
-    "mtime": 1785142549.173764,
-    "ast_hash": "7a33c73ad474da48f49a9f3e8261d68b",
+    "mtime": 1785144881.8457665,
+    "ast_hash": "428b7fc6caf9bd27360be8df4e8edd0f",
     "semantic_hash": ""
   },
   "timeline.md": {
@@ -1085,8 +1085,8 @@
     "semantic_hash": ""
   },
   "docs/SKIN_DETECTION.md": {
-    "mtime": 1785134313.89117,
-    "ast_hash": "df5346b6e8d79dc84bc84646079e0fef",
+    "mtime": 1785144478.724487,
+    "ast_hash": "b38e6d62d2ba741798ccf7f634087391",
     "semantic_hash": ""
   },
   "audio/microphone.py": {
@@ -1425,8 +1425,8 @@
     "semantic_hash": ""
   },
   "tests/local_skin_classifier_test.py": {
-    "mtime": 1784709859.1683378,
-    "ast_hash": "0beb8005f07368bee7f62f08bf4774ef",
+    "mtime": 1785144507.8505423,
+    "ast_hash": "500695b3355d5b3d6455efb633790f2f",
     "semantic_hash": ""
   },
   "tools/build_skin_tensorrt.py": {
@@ -1560,8 +1560,8 @@
     "semantic_hash": ""
   },
   "tools/skin_bench.py": {
-    "mtime": 1785135402.1613717,
-    "ast_hash": "1f59e598424f2959d84942f2c41b6917",
+    "mtime": 1785144459.0638196,
+    "ast_hash": "39c2bab1d425db07aaf45d49b861e452",
     "semantic_hash": ""
   },
   ".claude/plan/llm-topic-steering-and-coverage.md": {
@@ -1600,8 +1600,8 @@
     "semantic_hash": ""
   },
   "tests/skin_vision_reliability_test.py": {
-    "mtime": 1785138377.3565469,
-    "ast_hash": "0f6104352914da5fc8c2e04470fe676e",
+    "mtime": 1785144888.0364702,
+    "ast_hash": "cc3e4bba293db47c7e26cbd4205ff080",
     "semantic_hash": ""
   },
   "improved_formula.png": {
@@ -1617,6 +1617,16 @@
   "vlmpics/WIN_20260727_12_12_41_Pro.jpg": {
     "mtime": 1785134561.3149922,
     "ast_hash": "1773ef6401e0167ba25995a4fdef46f6",
+    "semantic_hash": ""
+  },
+  ".tmp/skin-bias-bench.json": {
+    "mtime": 1785144947.9305694,
+    "ast_hash": "20926b9bcfa2bd73f880b6a6a92ccac7",
+    "semantic_hash": ""
+  },
+  "vlmpics/v.jpg": {
+    "mtime": 1785144049.4214828,
+    "ast_hash": "89fcf4da30ba06770c4ee8b370918751",
     "semantic_hash": ""
   }
 }

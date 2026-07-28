@@ -20,9 +20,11 @@ more informative, but the combined result still does not establish a diagnosis.
    64 pixels per side, the whole frame and enlarged crop are placed in the top
    and bottom panels of one labeled 1024-by-1024 in-memory JPEG. This respects
    the hosted model's one-image-per-prompt limit.
-2. NVIDIA structured generation enforces strict JSON describing image quality,
+2. NVIDIA JSON-object mode requests parseable JSON describing image quality,
    visible skin features, body region, confidence, uncertain possible
-   conditions, follow-up topics, and bounded facial appearance cues.
+   conditions, follow-up topics, and bounded facial appearance cues. CareVision
+   enforces the complete stage schema locally and retries malformed output with
+   the same neutral prompt contract.
 3. If the preliminary image contains a sufficiently clear possible change, the
    result is sent privately to `SkinDialogue`.
 4. The companion asks the person to show the named body area closer to the
@@ -90,7 +92,9 @@ person-disjoint external evaluation has produced and reviewed a validated
 calibration file.
 
 When a calibrated local vitiligo signal agrees with an NVIDIA `discoloration`
-observation, the public wording remains neutral: `Possible pigment change`.
+or `pigment_loss` observation, the public wording remains neutral:
+`Possible pigment change`. A cloud `pigment_loss` observation uses the same
+neutral public wording without naming a condition.
 The condition name stays inside the private analysis and remains subject to the
 existing dashboard, persistence, alert, and speech-disclosure guards. When the
 two sources disagree, the local signal does not change public output.
@@ -149,8 +153,9 @@ python tools/calibrate_skin_classifier.py data/skin-eval.csv
 ## Structured NVIDIA result
 
 Both preliminary and close-up responses must contain one JSON object matching
-the stage-specific `response_format` JSON schema. Close-up responses use the
-skin fields below:
+the locally enforced stage schema. The first request uses provider JSON-object
+mode; prompt-only repair attempts retain the same contract. Close-up responses
+use the skin fields below:
 
 ```json
 {
@@ -167,10 +172,10 @@ skin fields below:
 
 | Field | Purpose |
 | --- | --- |
-| `image_quality` | Must be `poor`, `fair`, or `good`. Poor images cannot produce a finding. |
+| `image_quality` | Must be `poor`, `fair`, or `good`. Poor live-skin images cannot produce a finding; a confident, evidenced displayed-photo finding remains eligible. |
 | `sufficient_skin_visible` | Confirms that enough skin is visible for screening. |
 | `finding_present` | Indicates that the model observed a possible visible change. |
-| `visible_features` | Bounded neutral features such as redness, discoloration, swelling, scaling, blistering, dryness, bruising, irritation, lesion, or rash-like texture. |
+| `visible_features` | Bounded neutral features such as redness, discoloration, pigment loss, swelling, scaling, blistering, dryness, bruising, irritation, lesion, or rash-like texture. |
 | `body_region` | A short location such as `left forearm`, used when requesting the close-up. |
 | `confidence` | Model confidence from 0 to 1, bounded again by CareVision. |
 | `possible_conditions` | Up to three uncertain likely-condition hypotheses for internal context and debugging. |
@@ -443,7 +448,7 @@ negative/clear finding.
 | Person or sufficient skin not visible | No preliminary request is scheduled or the response is rejected as not usable. |
 | Poor image or confidence below threshold | No finding, hypothesis, or question workflow is created. |
 | Missing/small face crop | Skin screening may continue from the whole frame, but every facial cue is suppressed. |
-| Invalid structured response | The attempt is marked `invalid_response`; localhost diagnostics retain only bounded validation details, never raw provider content. |
+| Invalid structured response | The attempt is marked `invalid_response`. Localhost diagnostics report a privacy-safe content shape (`str/prose`, `str/object`, list part counts, character count, JSON-boundary booleans) and a categorical hint such as `provider_non_json_text`, `provider_partial_json`, or `provider_json_failed_schema_validation`. They never retain raw provider content. |
 | Invalid model JSON | The response is rejected and the module enters sanitized exponential backoff. |
 | Timeout, rate limit, or API outage | Capture continues; the worker backs off and retries later without blocking the camera. |
 | Manual arm request waits behind another request | Its best captured frame is queued with priority over guided close-ups and passive scans; queue time counts toward the 60-second deadline. |
@@ -458,6 +463,12 @@ Manual arm results identify their source. `local_arm_skin` is the deterministic
 camera heuristic; `nvidia_vlm` is the separately completed cloud assessment.
 The private debug state reports `sampling`, `pending`, `succeeded`, or
 `unavailable`, plus a correlation ID and sanitized attempt metadata.
+An `inference unavailable` line with HTTP 200 means transport completed but
+local JSON/schema validation rejected the provider response; the appended
+`hint`, content shape, object-boundary status, and finish reason distinguish
+prose/refusal output, partial JSON, malformed JSON, and schema mismatches
+without printing the response. A non-200 category instead identifies the
+sanitized transport failure.
 
 MediaPipe may print `portable_clearcut_uploader` with
 `FAILED_PRECONDITION: Not valid for uploading until`. This is an internal,

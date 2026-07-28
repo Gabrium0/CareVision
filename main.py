@@ -475,6 +475,13 @@ def main():
             "moondream": voice_agent.moondream_status(),
             "modules_enabled": sorted(m.name for m in pipeline.scheduler.modules),
         }
+        # Bounded provider health for every consumer, not just the private
+        # debug port: without it a cloud outage is indistinguishable from a
+        # dead "Ask the vision model now" button on /modules.
+        _screening = next((m for m in pipeline.scheduler.modules
+                           if m.name == "skin_vision"), None)
+        if _screening is not None and hasattr(_screening, "provider_health"):
+            system["cloud_vision"] = _screening.provider_health()
         if private:
             audio_enabled = bool(args.listen or args.detect_cough or is_replay)
             audio_mode = ("replay" if is_replay else

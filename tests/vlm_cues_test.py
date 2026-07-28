@@ -136,20 +136,97 @@ def test_missing_new_cue_is_rejected():
     raise AssertionError("a missing required cue must not validate")
 
 
-def test_low_confidence_suppresses_every_cue():
+def test_low_confidence_reaches_the_console_but_not_the_spoken_path():
+    """Below the spoken-path bar the model still answered, so the console keeps it.
+
+    Blanking these used to leave a manual scan showing nothing at all. The
+    reading stays visible (carrying its real, low confidence) while
+    positive() -- which feeds the agent -- stays empty.
+    """
     analysis = validate_analysis(
         _raw(confidence=0.44, forehead_shine="marked"),
         allow_facial_cues=True, face_crop_available=True)
-    assert analysis.facial_cues.observed() == {}
-    assert _routed(analysis.facial_cues) == []
+    cues = analysis.facial_cues
+    assert cues.gated is True
+    assert cues.observed()["forehead_shine"] == "marked"
+    assert cues.positive() == {}
+    routed = _routed(cues)
+    assert any(r.key == "vlm_forehead_shine" for r in routed)
+    assert all(r.confidence == cues.confidence for r in routed)
+    assert cues.confidence == 0.44
 
 
-def test_poor_image_quality_suppresses_every_cue():
+def test_poor_image_quality_gates_cues_without_erasing_them():
     raw = _raw(forehead_shine="marked")
     raw["image_quality"] = "poor"
     analysis = validate_analysis(raw, allow_facial_cues=True,
                                  face_crop_available=True)
+    assert analysis.facial_cues.gated is True
+    assert analysis.facial_cues.observed()["forehead_shine"] == "marked"
+    assert analysis.facial_cues.positive() == {}
+
+
+def test_absent_face_crop_still_erases_every_cue():
+    """No face crop means the model described a face it could not see."""
+    analysis = validate_analysis(
+        _raw(forehead_shine="marked"),
+        allow_facial_cues=True, face_crop_available=False)
     assert analysis.facial_cues.observed() == {}
+    assert _routed(analysis.facial_cues) == []
+
+
+# ------------------------------------------------------------ manual scan
+
+def test_request_scan_latches_intent_and_lifts_provider_backoff():
+    """A console request must survive the backoff left by earlier failures.
+
+    request_scan() used to clear only the passive cadence, so after a run of
+    provider failures `_next_allowed` sat minutes in the future and the
+    request was swallowed without a trace.
+    """
+    # `available` is a property over consent + credentials, so a bare instance
+    # can satisfy it without constructing SkinVision (which spins up workers).
+    module = SkinVision.__new__(SkinVision)
+    module.consent = True
+    module._key = "secret"
+    module._manual_scan_requested = False
+    module._last_scan = 500.0
+    module._next_allowed = 1e9  # a long backoff from earlier failures
+    module._failures = 4
+    module._last_failure_retryable = True   # the failures looked transient
+    module._last_failure_at = 400.0
+    assert module.available is True
+
+    assert SkinVision.request_scan(module) is True
+    assert module._manual_scan_requested is True
+    assert module._next_allowed == -1e9
+    assert module._last_scan == -1e9
+    # The passive backoff curve is deliberately left intact.
+    assert module._failures == 4
+
+
+def test_request_scan_spaces_reprobes_while_provider_is_hard_failing():
+    """A non-retryable provider error must not be hammered by repeat clicks.
+
+    NVIDIA answering "DEGRADED function cannot be invoked" (HTTP 400) fails
+    again the instant it is asked, so a click re-probes on a fixed interval
+    instead of firing immediately or waiting out a 15-minute backoff.
+    """
+    module = SkinVision.__new__(SkinVision)
+    module.consent = True
+    module._key = "secret"
+    module._manual_scan_requested = False
+    module._last_scan = 500.0
+    module._next_allowed = 1000.0 + float(SkinVision.backoff_max)
+    module._failures = 10
+    module._last_failure_retryable = False  # HTTP 400, degraded model
+    module._last_failure_at = 1000.0
+
+    assert SkinVision.request_scan(module) is True
+    assert module._manual_scan_requested is True
+    # Re-probe is spaced, not immediate and not the full backoff.
+    assert module._next_allowed == 1000.0 + SkinVision.manual_probe_interval
+    assert module._next_allowed > -1e9
 
 
 # --------------------------------------------------------------- triggers

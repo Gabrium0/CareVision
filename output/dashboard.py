@@ -679,18 +679,25 @@ def to_payload(snapshot, fps: float = 0.0, greeting: str | None = None,
         registered = {}
     enabled = set((system or {}).get("modules_enabled", []) if system else [])
     modules_list = []
+    cloud_vision = (system or {}).get("cloud_vision")
     for slug, cls in registered.items():
         label, blurb = module_label(slug)
         # requires/interval/consent come straight off the registered class, so
         # the /modules console can never drift from what the scheduler enforces.
-        modules_list.append({"module": slug, "label": label, "blurb": blurb,
-                             "running": slug in enabled,
-                             "requires": list(getattr(cls, "requires", ()) or ()),
-                             "interval": round(float(getattr(cls, "interval", 0.0) or 0.0), 2),
-                             "consent": bool(getattr(cls, "consent", False)),
-                             "internal": slug in INTERNAL_MODULES,
-                             "reliability": _reliability(slug),
-                             "trigger": _MODULE_TRIGGERS.get(slug)})
+        trigger = _MODULE_TRIGGERS.get(slug)
+        entry = {"module": slug, "label": label, "blurb": blurb,
+                 "running": slug in enabled,
+                 "requires": list(getattr(cls, "requires", ()) or ()),
+                 "interval": round(float(getattr(cls, "interval", 0.0) or 0.0), 2),
+                 "consent": bool(getattr(cls, "consent", False)),
+                 "internal": slug in INTERNAL_MODULES,
+                 "reliability": _reliability(slug),
+                 "trigger": trigger}
+        # Only the cards whose button actually calls the cloud carry provider
+        # health, so an outage explains itself where the button is.
+        if cloud_vision and trigger and trigger.get("action") == "vlm_scan":
+            entry["provider"] = cloud_vision
+        modules_list.append(entry)
     modules_list.sort(key=lambda m: m["label"])
     module_counts = {"registered": len(registered),
                      "running": sum(1 for m in modules_list if m["running"])}

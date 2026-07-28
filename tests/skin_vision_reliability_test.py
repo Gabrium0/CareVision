@@ -87,11 +87,12 @@ def test_timeout_then_freeform_retry_recovers_and_records_manual_metrics(
             purpose="manual_arm_check")
         assert analysis.body_region == "left forearm"
         assert len(calls) == 2
-        assert calls[0][2]["response_format"]["type"] == "json_schema"
-        assert "strict" not in calls[0][2]["response_format"]["json_schema"]
+        assert calls[0][2]["response_format"] == {"type": "json_object"}
         assert calls[1][2]["response_format"] is None
-        assert "JSON contract:" not in calls[0][0]
+        assert "JSON contract:" in calls[0][0]
         assert "JSON contract:" in calls[1][0]
+        assert "requires pigment_loss" in calls[0][0]
+        assert '"visible_features":["bruising"]' not in calls[0][0]
         assert calls[0][2]["max_tokens"] == 450
         assert calls[1][2]["max_tokens"] == 450
 
@@ -488,7 +489,7 @@ def test_unsupported_positive_can_never_be_normalized_to_clear(
         module.close()
 
 
-def test_valid_negative_wrapped_in_prose_can_never_become_clear(monkeypatch):
+def test_valid_negative_wrapped_in_prose_stays_negative(monkeypatch):
     module = _module(monkeypatch)
     _no_retry_wait(monkeypatch)
     content = "I am unsure " + json.dumps(_raw_analysis()) + " trailing prose"
@@ -502,13 +503,15 @@ def test_valid_negative_wrapped_in_prose_can_never_become_clear(monkeypatch):
         module._submit(
             np.zeros((12, 12, 3), np.uint8), "closeup", 100.0,
             purpose="manual_arm_check")
-        assert isinstance(module._pending.exception(timeout=2),
-                          SkinVisionAPIError)
-        result = module._consume_pending(101.0)
-        assert len(result) == 1
-        assert result[0].value["status"] == "unavailable"
-        assert result[0].value["failure_category"] == "json_parse"
-        assert "finding_present" not in result[0].value
+        analysis = module._pending.result(timeout=2)
+        assert analysis.finding_present is False
+        results = module._consume_pending(101.0)
+        public = next(result for result in results
+                      if result.module == "skin_vision"
+                      and result.key == "arm_check")
+        assert public.value["status"] == "succeeded"
+        assert public.value["finding_present"] is False
+        assert "did not identify" in public.message
     finally:
         module.close()
 

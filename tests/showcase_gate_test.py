@@ -37,6 +37,36 @@ def test_conversation_zone_allows_stable_face_measurements():
     assert {r.key for r in results} == {"zone", "capture_ready", "heart_rate_ready"}
 
 
+def test_vlm_second_opinion_bypasses_the_conversation_stability_gate():
+    """A routed cloud cue must not be judged by the label it is published under.
+
+    skin_vision publishes each cue onto the detector that owns its subject, so
+    a lip reading arrives labelled `dry_lips` -- a conversation module. Gating
+    that on `stable` hid the reading whenever the subject was off the
+    conversation marker, while the very same scan stayed visible under
+    `skin_vision`, which the gate never touches.
+    """
+    gate = ShowcaseGate()
+    ctx = _ctx(distance_m=2.8)  # movement zone: not "stable"
+    gate.assess(ctx)
+    assert ctx.extras["showcase"]["stable"] is False
+    # The detector's own heuristic stays gated ...
+    assert not gate.allow("dry_lips", ctx)
+    assert not gate.allow("dry_lips", ctx, "local")
+    # ... while the cloud second opinion published under it comes through.
+    assert gate.allow("dry_lips", ctx, "nvidia_vlm")
+    for module in ("facial_swelling", "skin_color", "sweating", "eye_redness",
+                   "rash"):
+        assert gate.allow(module, ctx, "nvidia_vlm"), module
+
+
+def test_disabled_gate_still_allows_everything():
+    gate = ShowcaseGate(enabled=False)
+    ctx = _ctx(distance_m=2.8)
+    assert gate.allow("dry_lips", ctx, "local")
+    assert gate.allow("dry_lips", ctx, "nvidia_vlm")
+
+
 def test_gate_rejects_multiple_people_and_bad_capture():
     gate = ShowcaseGate()
     ctx = _ctx(faces=2)

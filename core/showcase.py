@@ -140,8 +140,21 @@ class ShowcaseGate:
                 Result("showcase", "heart_rate_ready", heart_rate_ready, 1.0,
                        Severity.INFO, hr_guidance, ttl=2.0)]
 
-    def allow(self, module_name: str, ctx: FrameContext) -> bool:
+    def allow(self, module_name: str, ctx: FrameContext,
+              source: str | None = None) -> bool:
         if not self.enabled:
+            return True
+        # A cloud second opinion is published under the detector that owns its
+        # subject (modules/skin_vision.py _CUE_ROUTES), so it arrives wearing a
+        # label like "dry_lips" while actually coming from skin_vision. This
+        # gate exists to hide jittery per-frame heuristics until the subject is
+        # posed, and a VLM reading is not one: it comes from a deliberate scan
+        # that already enforced its own face-crop size, image quality and
+        # confidence bar, and the console renders it in a separate, explicitly
+        # labelled "VLM second opinion" block. Judging it by its label also
+        # made one scan visible under skin_vision (never gated) yet hidden
+        # under dry_lips, which is the asymmetry this removes.
+        if source == "nvidia_vlm":
             return True
         state = ctx.extras.get("showcase", {})
         if module_name == "heart_rate":

@@ -201,6 +201,10 @@ def test_fusion_keeps_vitiligo_private_and_public_wording_neutral(tmp_path, monk
         private = module._private_analysis(_analysis(), prediction)
         assert private["local_fusion"] == "corroborated"
         assert "vitiligo" in private["possible_conditions"]
+        pigment_private = module._private_analysis(
+            _analysis(("pigment_loss",)), prediction)
+        assert pigment_private["local_fusion"] == "corroborated"
+        assert pigment_private["possible_conditions"][-1] == "vitiligo"
         results = module._local_only_results("guided_closeup", "cid", prediction)
         public = next(result for result in results if result.visibility.value == "public")
         hidden = next(result for result in results if result.visibility.value == "agent_only")

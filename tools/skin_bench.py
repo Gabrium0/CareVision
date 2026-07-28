@@ -38,46 +38,17 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from agent.env import nvidia_api_key  # noqa: E402
-from integrations.nvidia_vlm import NvidiaVLMClient, NvidiaVLMError  # noqa: E402
+from integrations.nvidia_vlm import NvidiaVLMClient  # noqa: E402
 from modules.skin_vision import (  # noqa: E402
-    _FACIAL_LABELS, _SCHEMA_TEXT, _extract_json, _response_format,
-    _schema_contract, validate_analysis,
+    _FACIAL_LABELS, SkinVision, SkinVisionAPIError,
 )
 
 SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
 ENDPOINT = "https://integrate.api.nvidia.com/v1/chat/completions"
 MODEL = "meta/llama-3.2-11b-vision-instruct"
 
-# Mirrors SkinVision._prompt(stage="closeup"): a supplied condition photo is
-# precisely the "user-provided close-up" case.
-_CLOSEUP_TASK = ("Inspect this user-provided close-up for visible skin changes. "
-                 "Be conservative and non-diagnostic.")
-
-# The preliminary stage is the only one that asks for facial appearance cues
-# (SkinVision passes allow_facial_cues=stage=="preliminary"), so it is the only
-# way to exercise them off-camera. The module's own preliminary prompt describes
-# a multi-panel composite built from a live frame; a supplied portrait is a
-# single image, so the framing differs while the non-diagnostic constraints and
-# the schema stay identical to production.
-_PRELIMINARY_TASK = (
-    "Screen the person in this photograph for an obvious possible skin change. "
-    "This is a low-confidence screening step, not a diagnosis. "
-    "Name the body region precisely enough to request a close-up. "
-    "The single image is a photograph of a person. Use it for skin context and "
-    "report only directly visible facial appearance cues. Do not infer "
-    "tiredness, illness, allergies, dehydration, or any diagnosis.")
-
-_TASKS = {"closeup": _CLOSEUP_TASK, "preliminary": _PRELIMINARY_TASK}
-
-
-def prompt_for(stage: str) -> str:
-    """Task text plus the provider-enforced contract, as the module does."""
-    return (_TASKS[stage] + "\n\n" + _SCHEMA_TEXT
-            + "\nJSON contract:\n" + _schema_contract(stage))
-
-
-def screen(client: NvidiaVLMClient, path: Path, min_confidence: float,
-           stage: str = "closeup", min_facial_confidence: float = 0.45) -> dict:
+def screen(module: SkinVision, path: Path,
+           stage: str = "closeup") -> dict:
     """Return one row describing what the model made of a single image."""
     row = {"image": path.name, "status": "error", "error": None,
            "finding_present": None, "visible_features": [], "body_region": None,
@@ -89,30 +60,18 @@ def screen(client: NvidiaVLMClient, path: Path, min_confidence: float,
         return row
     started = time.monotonic()
     try:
-        response = client.request(
-            prompt_for(stage), [client.encode(frame)],
-            max_tokens=700, response_format=_response_format(stage),
+        analysis = module._call_api(
+            frame, stage, None,
+            face_crop_available=stage == "preliminary",
+            arm_crop_label=("user-provided skin image"
+                            if stage == "closeup" else None),
             purpose=("manual_arm_check" if stage == "closeup"
                      else "passive_scan"))
-        content = getattr(response, "content", response)
-    except NvidiaVLMError as exc:
+    except SkinVisionAPIError as exc:
         row["error"] = str(exc)
         return row
     finally:
         row["latency_ms"] = round((time.monotonic() - started) * 1000)
-    try:
-        analysis = validate_analysis(
-            _extract_json(content), min_confidence,
-            allow_facial_cues=stage == "preliminary",
-            min_facial_confidence=min_facial_confidence,
-            face_crop_available=True)
-    except (KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as exc:
-        # The guardrail rejected it — a limit worth showing, not a crash.
-        # In preliminary mode this is also how a model that omits one of the
-        # required cue fields shows up, which is the point of running it.
-        row["status"] = "rejected"
-        row["error"] = f"{type(exc).__name__}: {exc}"
-        return row
     row.update(status="ok", finding_present=analysis.finding_present,
                visible_features=list(analysis.visible_features),
                body_region=analysis.body_region,
@@ -222,20 +181,30 @@ def main() -> int:
         print(f"no images found under {args.images}", file=sys.stderr)
         return 2
 
-    client = NvidiaVLMClient(key, ENDPOINT, MODEL)
+    module = SkinVision(
+        consent=False, local_classifier=None,
+        min_confidence=args.min_confidence,
+        min_facial_confidence=args.min_facial_confidence)
+    module._client = NvidiaVLMClient(key, ENDPOINT, MODEL)
     rows, embedded = [], {}
-    for path in paths:
-        row = screen(client, path, args.min_confidence, args.stage,
-                     args.min_facial_confidence)
-        rows.append(row)
-        detail = (_cue_text(row) if args.stage == "preliminary" and row["cues"]
-                  else ", ".join(row["visible_features"]) or row["error"] or "")
-        print(f"{row['image'][:38]:<40} {_verdict(row):<12} {detail[:60]}")
-        if args.embed_images and args.out:
-            thumb = cv2.imread(str(path))
-            if thumb is not None:
-                embedded[row["image"]] = ("data:image/jpeg;base64," + base64.b64encode(
-                    client.encode(thumb, max_image_dim=320)).decode())
+    try:
+        for path in paths:
+            row = screen(module, path, args.stage)
+            rows.append(row)
+            detail = (_cue_text(row)
+                      if args.stage == "preliminary" and row["cues"]
+                      else ", ".join(row["visible_features"])
+                      or row["error"] or "")
+            print(f"{row['image'][:38]:<40} {_verdict(row):<12} {detail[:60]}")
+            if args.embed_images and args.out:
+                thumb = cv2.imread(str(path))
+                if thumb is not None:
+                    embedded[row["image"]] = (
+                        "data:image/jpeg;base64," + base64.b64encode(
+                            module._client.encode(
+                                thumb, max_image_dim=320)).decode())
+    finally:
+        module.close()
 
     counts: dict[str, int] = {}
     for row in rows:

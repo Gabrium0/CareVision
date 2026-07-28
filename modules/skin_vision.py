@@ -21,7 +21,7 @@ import urllib.error
 import urllib.request
 from collections import Counter, deque
 from concurrent.futures import Future, TimeoutError as FutureTimeoutError
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 import cv2
@@ -45,6 +45,7 @@ from core.capabilities import CapabilityRegistry, CapabilityStatus
 _FEATURES = {
     "redness", "discoloration", "swelling", "scaling", "blistering",
     "rash-like texture", "dryness", "lesion", "bruising", "irritation",
+    "pigment_loss",
 }
 _TOPICS = {
     "itching", "pain", "duration", "spreading", "fever_unwell",
@@ -113,7 +114,7 @@ def _skin_properties() -> dict[str, Any]:
         "finding_present": {"type": "boolean"},
         "visible_features": {
             "type": "array", "items": {"type": "string", "enum": sorted(_FEATURES)},
-            "maxItems": 5,
+            "maxItems": 3,
         },
         "body_region": {"type": "string", "maxLength": 60},
         "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
@@ -150,14 +151,9 @@ _PRELIMINARY_SCHEMA = {
 
 
 def _response_format(stage: str) -> dict[str, Any]:
-    schema = _PRELIMINARY_SCHEMA if stage == "preliminary" else _CLOSEUP_SCHEMA
-    return {
-        "type": "json_schema",
-        "json_schema": {
-            "name": f"skin_{stage}_analysis",
-            "schema": schema,
-        },
-    }
+    """Request parseable JSON while strict stage validation remains local."""
+    del stage
+    return {"type": "json_object"}
 
 
 def _schema_contract(stage: str) -> str:
@@ -167,7 +163,7 @@ def _schema_contract(stage: str) -> str:
         "visual_source: string, one of displayed_photo|live_skin|unclear",
         "sufficient_skin_visible: boolean",
         "finding_present: boolean",
-        "visible_features: array of up to 5 from "
+        "visible_features: array of up to 3 from "
         + "|".join(sorted(_FEATURES)),
         "body_region: string",
         "confidence: number from 0 to 1",
@@ -259,9 +255,19 @@ class FacialCues:
     visible_skin_marking: str = "unclear"
     nasal_discharge_visible: str = "unclear"
     confidence: float = 0.0
+    # True when the model did answer but below the spoken-path confidence bar
+    # (or on a poor-quality frame). The readings stay legible to the console
+    # via observed(); positive() stays empty so nothing reaches the agent.
+    gated: bool = False
 
     def positive(self) -> dict[str, str]:
-        """Return only affirmative observable cues, omitting none/unclear values."""
+        """Return only affirmative observable cues, omitting none/unclear values.
+
+        Empty while `gated`: this feeds the spoken/agent path, which must never
+        open a conversation about a low-confidence model guess.
+        """
+        if self.gated:
+            return {}
         out = {}
         for key in _FACIAL_KEYS[:-1]:
             value = getattr(self, key)
@@ -508,7 +514,9 @@ def validate_analysis(raw: Any, min_confidence: float = 0.35, *,
         confidence = max(0.0, min(1.0, float(raw.get("confidence", 0.0))))
     except (TypeError, ValueError) as exc:
         raise ValueError("invalid confidence") from exc
-    features = _string_list(raw.get("visible_features"), _FEATURES, limit=5)
+    features = _string_list(raw.get("visible_features"), _FEATURES, limit=3)
+    if strict_schema and {"pigment_loss", "bruising"}.issubset(features):
+        raise ValueError("pigment_loss and bruising are mutually exclusive")
     topics = _string_list(raw.get("follow_up_topics"), _TOPICS, limit=5)
     conditions = _string_list(raw.get("possible_conditions"), limit=3)
     region = _bounded_text(raw.get("body_region") or "visible skin", 60)
@@ -545,13 +553,22 @@ def validate_analysis(raw: Any, min_confidence: float = 0.35, *,
                 float(raw.get("facial_cue_confidence", 0.0))))
         except (TypeError, ValueError) as exc:
             raise ValueError("invalid facial_cue_confidence") from exc
-        if (not face_crop_available or quality == "poor"
-                or facial_confidence < min_facial_confidence):
+        # No usable face crop means the model was describing a face it could
+        # not actually see, so those values are discarded outright. A low
+        # confidence or poor frame is different: the model did look and did
+        # commit to an answer, so the reading is kept for the console and only
+        # `gated` out of the spoken path. Blanking it here used to leave a
+        # manual scan showing nothing at all.
+        gated = False
+        if not face_crop_available:
             values = {key: "unclear" for key in _FACIAL_KEYS[:-1]}
             nasal = "unclear"
             facial_confidence = 0.0
+        elif quality == "poor" or facial_confidence < min_facial_confidence:
+            gated = True
         facial_cues = FacialCues(**values, nasal_discharge_visible=nasal,
-                                  confidence=round(facial_confidence, 3))
+                                  confidence=round(facial_confidence, 3),
+                                  gated=gated)
     return SkinAnalysis(
         quality, sufficient, finding, features, region,
         round(confidence, 3), conditions, topics, facial_cues,
@@ -582,6 +599,95 @@ def _extract_json(content: Any) -> dict:
     return parsed
 
 
+def _content_text(content: Any) -> str:
+    """Extract the raw text from provider content (str or list-of-dict)."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(
+            str(part.get("text", ""))
+            for part in content
+            if isinstance(part, dict))
+    return str(content) if content is not None else ""
+
+
+def _response_content_diagnostic(content: Any) -> dict[str, Any]:
+    """Describe provider content structurally without retaining its text."""
+    def text_shape(value: str) -> dict[str, Any]:
+        stripped = value.strip()
+        starts_object = stripped.startswith("{")
+        ends_object = stripped.endswith("}")
+        has_start = "{" in stripped
+        has_end = "}" in stripped
+        if not stripped:
+            leading_kind = "empty"
+        elif starts_object:
+            leading_kind = "object"
+        elif stripped.startswith("["):
+            leading_kind = "array"
+        elif stripped.startswith("```"):
+            leading_kind = "markdown_fence"
+        else:
+            leading_kind = "prose"
+        return {
+            "character_count": len(value),
+            "line_count": value.count("\n") + (1 if value else 0),
+            "leading_kind": leading_kind,
+            "starts_with_object": starts_object,
+            "ends_with_object": ends_object,
+            "has_object_start": has_start,
+            "has_object_end": has_end,
+            "has_object_bounds": bool(
+                has_start and has_end and value.rfind("}") > value.find("{")),
+            "has_markdown_fence": "```" in value,
+        }
+
+    if isinstance(content, str):
+        return {"content_type": "str", **text_shape(content)}
+    if isinstance(content, list):
+        text_parts = [
+            part.get("text")
+            for part in content
+            if isinstance(part, dict) and isinstance(part.get("text"), str)
+        ]
+        joined = "".join(text_parts)
+        return {
+            "content_type": "list",
+            "part_count": len(content),
+            "text_part_count": len(text_parts),
+            "non_text_part_count": len(content) - len(text_parts),
+            **text_shape(joined),
+        }
+    if isinstance(content, dict):
+        return {
+            "content_type": "dict",
+            "field_count": len(content),
+            "leading_kind": "object",
+        }
+    if content is None:
+        return {"content_type": "none", "leading_kind": "empty"}
+    return {
+        "content_type": type(content).__name__,
+        "leading_kind": "unsupported",
+    }
+
+
+def _response_diagnostic_hint(raw: Any,
+                              shape: dict[str, Any]) -> str:
+    """Return an actionable categorical cause, never provider content."""
+    if shape.get("leading_kind") == "empty":
+        return "provider_empty_content"
+    if raw is not None:
+        return "provider_json_failed_schema_validation"
+    if shape.get("has_object_start") != shape.get("has_object_end"):
+        return "provider_partial_json"
+    if shape.get("has_object_bounds"):
+        return "provider_malformed_json"
+    if shape.get("leading_kind") in {"prose", "markdown_fence", "array"}:
+        return "provider_non_json_text"
+    return "provider_content_not_json_object"
+
+
 def _sharpness(frame: np.ndarray) -> float:
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     return float(cv2.Laplacian(gray, cv2.CV_64F).var())
@@ -608,6 +714,10 @@ class SkinVision(DetectionModule):
     min_arm_crop_size = 64
     backoff_base = 15.0
     backoff_max = 900.0
+    # Shortest gap between console-requested scans while the provider is
+    # returning non-retryable errors, so repeated clicks re-probe rather than
+    # burst. Ignored entirely once the provider looks healthy again.
+    manual_probe_interval = 30.0
     manual_retry_deadline = 60.0
     manual_max_attempts = 3
     manual_attempt_timeout = 20.0
@@ -676,6 +786,16 @@ class SkinVision(DetectionModule):
         self._diagnostic_history: deque[dict[str, Any]] = deque(maxlen=20)
         self._diagnostic_last_manual_failure: dict[str, Any] | None = None
         self._diagnostic_by_purpose: dict[str, dict[str, Any]] = {}
+        # Set by request_scan() and cleared only once a scan is actually
+        # submitted, so a console request survives the frames where a gate
+        # (no person yet, a request still in flight) is momentarily closed.
+        self._manual_scan_requested = False
+        # Provider health as last observed on the passive path, so a console
+        # request can be spaced sensibly and the reason shown on the card.
+        self._last_failure_retryable = True
+        self._last_failure_category: str | None = None
+        self._last_failure_status: int | None = None
+        self._last_failure_at = 0.0
         self._last_scan = -1e9
         self._next_allowed = -1e9
         self._next_allowed_monotonic = -1e9
@@ -757,17 +877,54 @@ class SkinVision(DetectionModule):
                 quality=_QUALITY_SCORE.get(quality)))
         return out
 
+    def provider_health(self) -> dict[str, Any]:
+        """Bounded, LAN-safe view of cloud availability for the console.
+
+        diagnostics() carries correlation ids, provider request ids and model
+        detail and is only ever exposed on the private debug port. This is the
+        subset a caregiver console may show beside the scan button, so that a
+        provider outage reads as an outage instead of a dead button.
+        """
+        waiting = max(0.0, float(self._next_allowed) - time.time())
+        return {
+            "available": bool(self.available),
+            "ok": bool(self.available and self._failures == 0),
+            "consecutive_failures": int(self._failures),
+            "retry_in_seconds": round(waiting, 1),
+            "reason": self._last_failure_category,
+            "http_status": self._last_failure_status,
+            "retryable": bool(self._last_failure_retryable),
+        }
+
     def request_scan(self) -> bool:
-        """Clear the passive cadence so the next eligible frame may scan.
+        """Ask for a face scan on the next frame that can carry one.
 
         A 60s wait is unremarkable in a home and reads as the system doing
-        nothing in front of an audience. Every other gate (consent, a person
-        present, no request already in flight, image quality) still applies,
-        so this asks for a scan rather than forcing one.
+        nothing in front of an audience. Beyond clearing the passive cadence
+        this also lifts the provider backoff for this one request and latches
+        the intent: after a run of provider failures `_next_allowed` can sit
+        minutes in the future, which used to swallow a console request without
+        a trace. `_failures` is deliberately left alone so passive backoff
+        resumes its normal curve afterwards.
+
+        Consent, a person being present and no request already being in flight
+        still apply, so this asks for a scan rather than forcing one.
         """
         if not self.available:
             return False
+        self._manual_scan_requested = True
         self._last_scan = -1e9
+        if self._last_failure_retryable:
+            self._next_allowed = -1e9
+        else:
+            # A non-retryable provider error (a degraded model, a rejected
+            # request, bad credentials) fails again the instant it is asked,
+            # so clicking repeatedly must not turn into a burst of doomed
+            # calls. Space the re-probe instead of either hammering or making
+            # the operator sit out a backoff that can reach 15 minutes.
+            self._next_allowed = min(
+                self._next_allowed,
+                self._last_failure_at + float(self.manual_probe_interval))
         return True
 
     def start(self) -> None:
@@ -1198,9 +1355,9 @@ class SkinVision(DetectionModule):
                         "The top panel is the complete camera frame and may contain a "
                         "phone displaying the actual skin photo. The bottom panel is an "
                         f"enlarged pose crop described as {label}. Inspect both panels "
-                        "before deciding. Do not reject a displayed bruise photo merely "
-                        "because it appears only in the top whole-frame panel, and do not "
-                        "assume the bottom arm crop is the intended evidence. ")
+                        "before deciding. A visible change that appears only in the top "
+                        "whole-frame panel is still relevant; do not assume the bottom "
+                        "arm crop is the intended evidence. ")
             else:
                 task = ("Inspect this user-provided close-up for visible skin changes. "
                         "Be conservative and non-diagnostic.")
@@ -1208,49 +1365,7 @@ class SkinVision(DetectionModule):
                 task += (f" The preliminary frame indicated {', '.join(previous.visible_features)} "
                          f"around {previous.body_region}.")
         if include_contract:
-            if purpose == "manual_arm_check":
-                example = {
-                    "image_quality": "good",
-                    "visual_source": "displayed_photo",
-                    "sufficient_skin_visible": True,
-                    "finding_present": True,
-                    "visible_features": ["bruising"],
-                    "body_region": "forearm in displayed photo",
-                    "confidence": 0.8,
-                    "possible_conditions": [],
-                    "follow_up_topics": [],
-                }
-                task = (
-                    "Visual JSON labeling only; no medical advice. Inspect "
-                    "either the bare arm or the skin photo visible on a phone. "
-                    "Return exactly one raw JSON object and no other text. Use "
-                    "exactly these nine keys and update every value from what "
-                    "is visible. JSON contract: example shape "
-                    + json.dumps(example, separators=(",", ":"))
-                    + ". Allowed visible_features: "
-                    + ", ".join(sorted(_FEATURES))
-                    + ". image_quality is poor, fair, or good. visual_source "
-                    "is displayed_photo, live_skin, or unclear. If no visible "
-                    "change is present, set finding_present false and "
-                    "visible_features empty. If the view is unusable, set "
-                    "sufficient_skin_visible false and visual_source unclear. "
-                    "Use image_quality fair when a finding remains recognizable "
-                    "despite moderate phone glare or blur; use poor only when "
-                    "visual labeling is not possible. "
-                    "Keep possible_conditions empty. Never explain."
-                )
-                if paired_context:
-                    task += (
-                        " The single image is a labeled composite: the top "
-                        "panel is the complete camera frame and may contain a "
-                        "phone displaying the actual skin photo; the bottom "
-                        "panel is an enlarged pose crop. Inspect both. A "
-                        "visible change that appears only in the top whole-frame "
-                        "panel is still relevant, so do not assume the crop is "
-                        "the target."
-                    )
-                return task
-            return (
+            prompt = (
                 "MACHINE-READABLE VISUAL ATTRIBUTE EXTRACTION. Return exactly "
                 "one raw JSON object and nothing else. The first character "
                 "must be { and the last character must be }. Never output an "
@@ -1259,8 +1374,30 @@ class SkinVision(DetectionModule):
                 "is not a request for medical advice. "
                 + _SCHEMA_TEXT
                 + "\nJSON contract:\n" + _schema_contract(stage)
-                + "\nVisual extraction task:\n" + task
             )
+            if purpose == "manual_arm_check":
+                prompt += (
+                    "\nFeature-label guidance: first compare the affected area's "
+                    "color with the immediately surrounding skin. A directly "
+                    "visible lighter or white, well-demarcated hypopigmented patch "
+                    "requires pigment_loss. Do not label a lighter or white patch "
+                    "as bruising because of edge shadows, screen tint, or contrast. "
+                    "Use bruising only when the affected skin itself is darker with "
+                    "an injury-like red, purple, blue, or brown color. Never return "
+                    "both pigment_loss and bruising. Use discoloration only when a "
+                    "color change is visible but cannot be classified more "
+                    "specifically. Select no more than three directly supported "
+                    "features and never fill the list speculatively. "
+                    "Do not infer vitiligo or any diagnosis. If no visible change "
+                    "is present, set finding_present false and visible_features "
+                    "empty. If the view is unusable, set sufficient_skin_visible "
+                    "false and visual_source unclear. Use image_quality fair when "
+                    "a finding remains recognizable despite moderate phone glare "
+                    "or blur; use poor only when visual labeling is not possible. "
+                    "Include both possible_conditions and follow_up_topics as "
+                    "empty arrays for every manual arm check."
+                )
+            return prompt + "\nVisual extraction task:\n" + task
         return (
             "Return exactly one raw JSON object matching the provider-supplied "
             "response schema, with no prose, markdown, explanation, disclaimer, "
@@ -1270,13 +1407,74 @@ class SkinVision(DetectionModule):
         )
 
     @staticmethod
-    def _validation_detail(raw: Any, stage: str, exc: BaseException) -> dict[str, Any]:
+    def _validation_detail(raw: Any, stage: str, exc: BaseException,
+                           content: Any) -> dict[str, Any]:
         schema = _PRELIMINARY_SCHEMA if stage == "preliminary" else _CLOSEUP_SCHEMA
         missing = ([key for key in schema["required"] if key not in raw]
                    if isinstance(raw, dict) else list(schema["required"]))
+        shape = _response_content_diagnostic(content)
         return {"reason": _bounded_text(str(exc), 160) or type(exc).__name__,
                 "missing_fields": missing[:20],
-                "response_type": type(raw).__name__}
+                "response_type": type(raw).__name__,
+                "provider_content": shape,
+                "diagnostic_hint": _response_diagnostic_hint(raw, shape)}
+
+    def _reformat_prompt(self, stage: str, prose: str) -> str:
+        """Turn a vision reply that drifted into prose into a JSON encode task.
+
+        The NVIDIA Llama-3.2 vision endpoint ignores ``response_format`` and
+        guided decoding on image calls and frequently answers with a scene
+        description instead of the schema object. A text-only follow-up that
+        re-encodes that description does honor ``response_format`` and reliably
+        yields schema-valid JSON, so the finding the model already observed is
+        preserved instead of being discarded as ``json_parse``.
+        """
+        return (
+            "You are a JSON extraction function. The observation below was "
+            "written by a vision model describing a single image. Encode it into "
+            "exactly one raw JSON object and nothing else: the first character "
+            "must be { and the last must be }. Emit no preamble, prose, markdown, "
+            "explanation, or disclaimer. Record only attributes the observation "
+            "supports; when it does not mention an attribute, use the schema's "
+            "neutral value (false, an empty array, \"unclear\", or 0). Do not "
+            "invent findings the observation does not describe. "
+            "This is not a request for medical advice.\n"
+            + _schema_contract(stage)
+            + "\n\nObservation to encode:\n" + prose
+        )
+
+    def _reformat_json(self, prose: str, stage: str, *, timeout: float,
+                       purpose: str, deadline: float | None,
+                       reservation_token: int | None,
+                       cancel_event: threading.Event | None) -> dict | None:
+        """Best-effort text-only rescue of a prose vision reply into JSON.
+
+        Returns the parsed object, or ``None`` on any transport or parse
+        failure so the caller falls through to its normal retry path. Never
+        logs the prose, which may describe the person in view.
+        """
+        prose = (prose or "").strip()
+        if not prose:
+            return None
+        try:
+            response = self._client.request(
+                self._reformat_prompt(stage, prose),
+                None,
+                max_tokens=700,
+                response_format=_response_format(stage),
+                timeout=timeout,
+                purpose=purpose,
+                deadline=deadline,
+                reservation_token=reservation_token,
+                cancel_event=cancel_event)
+        except NvidiaVLMError:
+            return None
+        content = getattr(response, "content", response)
+        try:
+            raw = _extract_json(content)
+        except (ValueError, json.JSONDecodeError):
+            return None
+        return raw if isinstance(raw, dict) else None
 
     def _call_api(self, frames: list[np.ndarray] | np.ndarray | bytes, stage: str,
                   previous: SkinAnalysis | None, face_crop_available: bool = False,
@@ -1365,11 +1563,26 @@ class SkinVision(DetectionModule):
             payload_mode = "compact_retry" if is_retry else "normal"
             request_prompt = self._prompt(
                 stage, previous, face_crop_available, arm_crop_label, purpose,
-                paired_context=paired_context, include_contract=is_retry)
+                paired_context=paired_context, include_contract=True)
             if is_retry:
+                missing = (
+                    validation.get("missing_fields", [])
+                    if isinstance(validation, dict) else [])
+                missing_text = (
+                    " Missing required fields: "
+                    + ", ".join(str(name) for name in missing[:8]) + "."
+                    if missing else "")
+                validation_reason = (
+                    self._safe_diagnostic_text(
+                        validation.get("reason"), 120)
+                    if isinstance(validation, dict) else "")
+                validation_text = (
+                    " Validation issue: " + validation_reason + "."
+                    if validation_reason else "")
                 request_prompt += (
                     "\nThe prior attempt did not produce a validated object. "
-                    "Return repaired JSON with every required field.")
+                    "Return repaired JSON with every required field."
+                    + missing_text + validation_text)
             request_format = None if is_retry else _response_format(stage)
             if is_retry and terminal_category == "schema_validation":
                 validation = validation or {
@@ -1527,6 +1740,8 @@ class SkinVision(DetectionModule):
                     min_facial_confidence=float(self.min_facial_confidence),
                     face_crop_available=face_crop_available,
                     strict_schema=True)
+                if manual and analysis.possible_conditions:
+                    analysis = replace(analysis, possible_conditions=())
                 self._record_attempt_diagnostics(
                     attempt=attempt, outcome="success",
                     payload_mode=payload_mode,
@@ -1548,7 +1763,8 @@ class SkinVision(DetectionModule):
                 return analysis
             except (KeyError, IndexError, TypeError, ValueError,
                     json.JSONDecodeError) as exc:
-                validation = self._validation_detail(raw, stage, exc)
+                validation = self._validation_detail(
+                    raw, stage, exc, content)
                 empty = (
                     content is None
                     or isinstance(content, str) and not content.strip()
@@ -1578,6 +1794,52 @@ class SkinVision(DetectionModule):
                     error=terminal_error, validation=validation,
                     poll_count=getattr(response, "poll_count", 0),
                     queue_ms=getattr(response, "queue_ms", 0.0))
+                if category == "json_parse" and finish_reason != "length":
+                    reformat_remaining = (
+                        (deadline - time.monotonic()) if deadline is not None
+                        else float(self.request_timeout))
+                    cancelled = (cancel_event is not None
+                                 and cancel_event.is_set())
+                    if reformat_remaining >= 5.0 and not cancelled:
+                        rescued = self._reformat_json(
+                            _content_text(content), stage,
+                            timeout=min(float(self.request_timeout),
+                                        reformat_remaining),
+                            purpose=purpose, deadline=deadline,
+                            reservation_token=reservation_token,
+                            cancel_event=cancel_event)
+                        rescued_analysis = None
+                        if rescued is not None:
+                            try:
+                                rescued_analysis = validate_analysis(
+                                    rescued, float(self.min_confidence),
+                                    allow_facial_cues=stage == "preliminary",
+                                    min_facial_confidence=float(
+                                        self.min_facial_confidence),
+                                    face_crop_available=face_crop_available,
+                                    strict_schema=True)
+                            except (KeyError, IndexError, TypeError, ValueError,
+                                    json.JSONDecodeError):
+                                rescued_analysis = None
+                        if rescued_analysis is not None:
+                            if manual and rescued_analysis.possible_conditions:
+                                rescued_analysis = replace(
+                                    rescued_analysis, possible_conditions=())
+                            self._record_attempt_diagnostics(
+                                attempt=attempt, outcome="success",
+                                payload_mode="reformat_rescue",
+                                structured=True, max_tokens=attempt_tokens,
+                                latency_ms=response_latency_ms,
+                                encoded_bytes=encoded_bytes,
+                                http_status=response_status,
+                                finish_reason=finish_reason)
+                            self._finish_request_diagnostics(
+                                "success", stage, validation=None,
+                                repair_attempted=True)
+                            if manual:
+                                self._manual_next_allowed = -1e9
+                                self._manual_authorization_blocked = False
+                            return rescued_analysis
                 if finish_reason == "length":
                     max_tokens = 700
                 if (attempt < max_attempts
@@ -1714,8 +1976,15 @@ class SkinVision(DetectionModule):
                             local: LocalSkinPrediction | None) -> bool:
         return bool(local is not None and local.status == "accepted"
                     and local.target == "vitiligo"
-                    and "discoloration" in analysis.visible_features
+                    and any(feature in {"discoloration", "pigment_loss"}
+                            for feature in analysis.visible_features)
                     and analysis.image_quality in {"fair", "good"})
+
+    @staticmethod
+    def _is_pigment_change(analysis: SkinAnalysis,
+                           corroborated: bool = False) -> bool:
+        """Return whether public wording should use neutral pigment language."""
+        return bool(corroborated or "pigment_loss" in analysis.visible_features)
 
     def _private_analysis(self, analysis: SkinAnalysis,
                           local: LocalSkinPrediction | None) -> dict[str, Any]:
@@ -1925,10 +2194,54 @@ class SkinVision(DetectionModule):
                         float(self.backoff_base) * (2 ** (self._failures - 1)))
             self._next_allowed = now + delay
             self._next_allowed_monotonic = time.monotonic() + delay
+            # Remembered so a console request can tell "try again, it was a
+            # blip" apart from "this will fail again the moment we ask".
+            self._last_failure_retryable = bool(
+                getattr(exc, "retryable", True))
+            self._last_failure_category = category
+            self._last_failure_status = status
+            self._last_failure_at = now
         status_text = f", HTTP {status}" if status is not None else ""
+        diagnostic_text = ""
+        with self._diagnostic_lock:
+            logical = copy.deepcopy(self._diagnostic_last_attempt)
+        if (isinstance(logical, dict)
+                and logical.get("purpose") == purpose):
+            attempts = logical.get("attempts")
+            last = attempts[-1] if isinstance(attempts, list) and attempts else {}
+            validation = (last.get("validation")
+                          if isinstance(last, dict) else None)
+            shape = (validation.get("provider_content")
+                     if isinstance(validation, dict) else None)
+            details = []
+            if logical.get("stage"):
+                details.append(f"stage={logical['stage']}")
+            if logical.get("attempt_count"):
+                details.append(f"attempts={logical['attempt_count']}")
+            if isinstance(validation, dict) and validation.get(
+                    "diagnostic_hint"):
+                details.append(f"hint={validation['diagnostic_hint']}")
+            if isinstance(shape, dict):
+                details.append(
+                    "content="
+                    f"{shape.get('content_type', 'unknown')}/"
+                    f"{shape.get('leading_kind', 'unknown')}")
+                if "character_count" in shape:
+                    details.append(f"chars={shape['character_count']}")
+                if "has_object_bounds" in shape:
+                    details.append(
+                        "object_bounds="
+                        f"{'yes' if shape['has_object_bounds'] else 'no'}")
+            finish_reason = (last.get("finish_reason")
+                             if isinstance(last, dict) else None)
+            if finish_reason:
+                details.append(f"finish={finish_reason}")
+            if details:
+                diagnostic_text = ", " + ", ".join(details)
         print(
             "[skin-vision] inference unavailable "
-            f"(category={category}{status_text}); retrying later")
+            f"(category={category}{status_text}{diagnostic_text}); "
+            "retrying later")
 
     def _consume_pending(self, now: float):
         if self._pending is None or not self._pending.done():
@@ -1990,13 +2303,19 @@ class SkinVision(DetectionModule):
                     "The arm check could not be completed because visual analysis was unavailable",
                     ttl=30.0, source="nvidia_vlm", correlation_id=correlation_id)
                 self._reset_arm_capture()
+                _exc_msg = self._safe_diagnostic_text(str(exc), 120)
+                _retryable = getattr(exc, "retryable", None)
+                _req_id = getattr(exc, "request_id", None)
                 print(
                     "[skin-vision] manual check completed "
                     f"(status=unavailable, mode={capture_mode or 'unknown'}, "
                     f"views={view_text}, images={image_count}, "
                     "visual_source=unclear, finding_present=unknown, "
                     f"category={category}"
-                    f"{f', http_status={status}' if status is not None else ''})")
+                    f"{f', http_status={status}' if status is not None else ''}"
+                    f"{f', error={_exc_msg!r}' if _exc_msg else ''}"
+                    f"{f', retryable={_retryable}' if _retryable is not None else ''}"
+                    f"{f', request_id={_req_id}' if _req_id else ''})")
                 return [result]
             return []
         if cloud_error is not None:
@@ -2008,6 +2327,9 @@ class SkinVision(DetectionModule):
                 self._failures = 0
                 self._next_allowed = now
                 self._next_allowed_monotonic = time.monotonic()
+                self._last_failure_retryable = True
+                self._last_failure_category = None
+                self._last_failure_status = None
         if stage == "closeup" and analysis is None:
             self._reset_closeup()
             local_results = self._local_only_results(purpose, correlation_id, local)
@@ -2037,18 +2359,40 @@ class SkinVision(DetectionModule):
                         "Skin close-up analysis was unavailable or inconclusive",
                         ttl=30.0, source="skin_screening",
                         correlation_id=correlation_id))
+                _ce_kind = getattr(cloud_error, "kind", None) if cloud_error is not None else None
+                _ce_msg = self._safe_diagnostic_text(str(cloud_error), 120) if cloud_error is not None else None
+                _loc_status = local.status if local is not None else "no_local"
+                _loc_abstain = local.abstain_reason if local is not None and local.abstain_reason else None
                 print(
                     "[skin-vision] manual check completed "
                     f"(status={'succeeded' if screening_succeeded else 'unavailable'}, "
                     f"mode={capture_mode or 'unknown'}, "
                     f"views={view_text}, images={image_count}, "
                     f"visual_source={'live_skin' if capture_mode in ('pose_crop', 'pose_crop_with_context') else 'unclear'}, "
-                    f"finding_present={'true' if screening_succeeded else 'unknown'})")
+                    f"finding_present={'true' if screening_succeeded else 'unknown'}"
+                    f"{f', cloud_error={_ce_kind}' if _ce_kind is not None else ''}"
+                    f"{f', cloud_error_msg={_ce_msg!r}' if _ce_msg is not None else ''}"
+                    f"{f', local_status={_loc_status}' if _loc_status else ''}"
+                    f"{f', local_abstain={_loc_abstain}' if _loc_abstain is not None else ''})")
             return local_results
         if stage == "preliminary":
             results = []
             cues = analysis.facial_cues
             positive = cues.positive() if cues is not None else {}
+            # Every validated field the model committed to, so a scan that
+            # shows nothing on a card can be told apart from a scan that was
+            # never answered. Enum values only -- never provider prose, which
+            # describes whoever is in view.
+            _observed = cues.observed() if cues is not None else {}
+            print(
+                "[skin-vision] face scan result "
+                f"(quality={analysis.image_quality}, "
+                f"facial_conf={cues.confidence if cues is not None else 0.0}, "
+                f"gated={'yes' if cues is not None and cues.gated else 'no'}, "
+                f"finding_present={str(analysis.finding_present).lower()}, "
+                f"features={list(analysis.visible_features)}, "
+                f"region={analysis.body_region!r}, "
+                f"cues={_observed or '{}'})")
             if positive:
                 labels = []
                 for key, value in positive.items():
@@ -2093,13 +2437,15 @@ class SkinVision(DetectionModule):
                     "[skin-vision] manual check completed "
                     f"(status={result.value['status']}, mode={capture_mode or 'unknown'}, "
                     f"views={view_text}, images={image_count}, "
-                    f"visual_source={analysis.visual_source}, finding_present=unknown)")
+                    f"visual_source={analysis.visual_source}, finding_present=unknown, "
+                    f"problem={problem})")
                 return [result]
             self._arm_check_state = "succeeded"
             self._arm_check_last_error = None
             self._clear_matching_arm_elicitation(correlation_id)
             region = analysis.body_region or "the visible arm"
             corroborated = self._local_corroborates(analysis, local)
+            pigment_change = self._is_pigment_change(analysis, corroborated)
             value = {
                 "status": "succeeded",
                 "source": "nvidia_vlm",
@@ -2111,7 +2457,10 @@ class SkinVision(DetectionModule):
                 "capture_mode": capture_mode,
             }
             photo_prefix = "In the photo shown on the phone, "
-            message = (photo_prefix + f"a possible visible change appears on {region}: "
+            message = (photo_prefix + f"a possible pigment change appears on {region}"
+                       if (analysis.visual_source == "displayed_photo"
+                           and analysis.finding_present and pigment_change) else
+                       photo_prefix + f"a possible visible change appears on {region}: "
                        + ", ".join(analysis.visible_features[:3])
                        if (analysis.visual_source == "displayed_photo"
                            and analysis.finding_present) else
@@ -2119,7 +2468,7 @@ class SkinVision(DetectionModule):
                        + "the NVIDIA VLM did not identify a clear visible skin change"
                        if analysis.visual_source == "displayed_photo" else
                        f"Possible pigment change on {region}"
-                       if corroborated else
+                       if pigment_change else
                        f"NVIDIA arm VLM noticed a possible visible change on {region}: "
                        + ", ".join(analysis.visible_features[:3])
                        if analysis.finding_present else
@@ -2149,6 +2498,8 @@ class SkinVision(DetectionModule):
             # _routed_cue_results) so the console labels it a VLM second opinion
             # and never as the local heuristic having fired.
             cloud_verdict = (
+                f"possible pigment change on {region}"
+                if analysis.finding_present and pigment_change else
                 "possible " + ", ".join(analysis.visible_features[:3])
                 + f" on {region}"
                 if analysis.finding_present and analysis.visible_features else
@@ -2179,13 +2530,14 @@ class SkinVision(DetectionModule):
         region = analysis.body_region or "the visible area"
         features = ", ".join(analysis.visible_features[:3])
         corroborated = self._local_corroborates(analysis, local)
+        pigment_change = self._is_pigment_change(analysis, corroborated)
         public = self.result(
             "visible_skin_change",
             {"body_region": region,
              "visible_features": list(analysis.visible_features)},
             confidence=min(analysis.confidence, 0.65),
             severity=Severity.NOTICE,
-            message=(f"Possible pigment change on {region}" if corroborated else
+            message=(f"Possible pigment change on {region}" if pigment_change else
                      f"Possible visible skin change on {region}: {features}"),
             ttl=120.0, correlation_id=correlation_id,
             persistence=PersistencePolicy.EVENT,
@@ -2357,7 +2709,7 @@ class SkinVision(DetectionModule):
             "[skin-vision] manual check completed "
             f"(status=unavailable, mode={queued.capture_mode}, "
             f"views={'+'.join(queued.view_labels)}, images=1, "
-            f"category={category})")
+            f"category={category}, message={message!r})")
         return self.result(
             "arm_check",
             {"status": "unavailable", "source": "nvidia_vlm",
@@ -2609,6 +2961,10 @@ class SkinVision(DetectionModule):
                 and now - self._preliminary_at > 60.0):
             self._reset_closeup()
 
+        # A latched console request waits out the busy gates above rather than
+        # being dropped on the frame it arrived, and skips only the two timing
+        # gates (backoff, cadence) the operator just overrode by asking.
+        manual_scan = self._manual_scan_requested
         ready_for_scan = (self.available and ctx.person_present and self._pending is None
                           and not self._awaiting_closeup
                           and not self._arm_check_sampling
@@ -2617,8 +2973,9 @@ class SkinVision(DetectionModule):
                               "sampling", "queued", "pending",
                               "reposition_required")
                           and self._preliminary is None
-                          and now >= self._next_allowed
-                          and now - self._last_scan >= float(self.scan_interval))
+                          and (manual_scan or now >= self._next_allowed)
+                          and (manual_scan
+                               or now - self._last_scan >= float(self.scan_interval)))
         if ready_for_scan:
             try:
                 frame = ctx.frame.copy()
@@ -2635,7 +2992,13 @@ class SkinVision(DetectionModule):
                         arm_label=(arm_crop_label or "arm crop").upper())
                 self._submit(frame, "preliminary", now, face_crop is not None,
                              arm_crop_label)
+                self._manual_scan_requested = False
+                if manual_scan:
+                    print("[skin-vision] face scan requested "
+                          f"(face_crop={'yes' if face_crop is not None else 'no'}, "
+                          f"arm_crop={arm_crop_label or 'none'})")
             except (ValueError, cv2.error) as exc:
+                self._manual_scan_requested = False
                 self._failure(now, exc)
         return results or None
 
