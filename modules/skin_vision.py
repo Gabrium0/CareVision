@@ -575,6 +575,43 @@ def validate_analysis(raw: Any, min_confidence: float = 0.35, *,
         visual_source=visual_source)
 
 
+def _normalize_rescued(raw: dict[str, Any], stage: str) -> dict[str, Any]:
+    """Make a prose-derived rescue object survivable without softening safety.
+
+    The rescue path re-encodes an observation the vision model already made,
+    against a contract of twenty fields for `preliminary`. `_validate_schema_shape`
+    rejects on any extra key and any missing key, so a single chatty addition or
+    one forgotten cue used to discard a legitimate screen outright.
+
+    Two bounded liberties are taken here and nowhere else:
+
+    * unknown keys are dropped -- an extra key is the model being talkative,
+      not the screen being wrong; and
+    * absent *facial cue* keys are filled with the schema's own neutral values
+      ("unclear" / 0.0).
+
+    Everything that decides whether something was seen -- `finding_present`,
+    `sufficient_skin_visible`, `visible_features`, `confidence`,
+    `image_quality`, `visual_source` -- is deliberately NOT filled. A rescue
+    that omits those still fails validation. This keeps the transform
+    one-directional: it can only ever yield a result that is less alarming than
+    the model's own words, never more. A filled cue is `unclear`, which both
+    `FacialCues.positive()` and `.observed()` already discard, so it reaches
+    neither the spoken path nor the console.
+    """
+    schema = _PRELIMINARY_SCHEMA if stage == "preliminary" else _CLOSEUP_SCHEMA
+    cleaned = {key: value for key, value in raw.items()
+               if key in schema["properties"]}
+    if stage != "preliminary":
+        return cleaned
+    for key in _FACIAL_KEYS[:-1]:
+        if key not in cleaned:
+            cleaned[key] = "unclear"
+    cleaned.setdefault("nasal_discharge_visible", "unclear")
+    cleaned.setdefault("facial_cue_confidence", 0.0)
+    return cleaned
+
+
 def _extract_json(content: Any) -> dict:
     """Salvage the JSON object from the model reply.
 
@@ -721,6 +758,16 @@ class SkinVision(DetectionModule):
     manual_retry_deadline = 60.0
     manual_max_attempts = 3
     manual_attempt_timeout = 20.0
+    # The preliminary stage asks for more than twice the fields of a close-up
+    # (`_PRELIMINARY_SCHEMA` adds eight cue enums, nasal, and a confidence), so
+    # it needs at least the manual path's attempt budget rather than the bare
+    # two-attempt/no-deadline fallback it used to inherit. A smaller token
+    # budget than the old 700 keeps generation inside one attempt timeout;
+    # `finish_reason == "length"` still escalates to 700.
+    preliminary_deadline = 75.0
+    preliminary_max_attempts = 3
+    preliminary_attempt_timeout = 25.0
+    preliminary_max_tokens = 520
     max_inline_image_bytes = 174080
     manual_retry_max_image_dim = 768
     manual_retry_jpeg_quality = 80
@@ -1197,6 +1244,20 @@ class SkinVision(DetectionModule):
                 self._diagnostic_encoded_bytes, record["encoded_bytes"])
             self._diagnostic_attempts.append(record)
 
+    def _note_rescue_outcome(self, outcome: str) -> None:
+        """Tag the most recent attempt with how its prose rescue ended."""
+        if not outcome:
+            return
+        with self._diagnostic_lock:
+            if not self._diagnostic_attempts:
+                return
+            record = self._diagnostic_attempts[-1]
+            validation = record.get("validation")
+            if not isinstance(validation, dict):
+                validation = {}
+                record["validation"] = validation
+            validation["rescue_outcome"] = _bounded_text(outcome, 40)
+
     def _update_metrics_locked(self, logical: dict[str, Any]) -> None:
         """Update bounded aggregate counters from one completed logical request."""
         purpose = str(logical.get("purpose") or "unknown")
@@ -1397,6 +1458,29 @@ class SkinVision(DetectionModule):
                     "Include both possible_conditions and follow_up_topics as "
                     "empty arrays for every manual arm check."
                 )
+            elif stage == "preliminary":
+                # The manual path earns its reliability partly from the block
+                # above: concrete, enumerated, worked instructions. Preliminary
+                # asks for twenty fields and used to ship only the bare
+                # contract, which is where the prose drift came from.
+                prompt += (
+                    "\nOutput shape: begin the reply with { and end it with }. "
+                    "Every one of the "
+                    f"{len(_PRELIMINARY_PROPERTIES)} keys below appears "
+                    "exactly once, with no extra keys and no commentary "
+                    "between them:\n"
+                    + ", ".join(_PRELIMINARY_PROPERTIES) + "\n"
+                    "Each of "
+                    + ", ".join(_FACIAL_KEYS[:-1])
+                    + " is exactly one of none, mild, marked, or unclear -- "
+                    "never a sentence, never a number. "
+                    "nasal_discharge_visible is exactly no, yes, or unclear. "
+                    "Use unclear whenever the panel does not let you judge "
+                    "that cue, and set facial_cue_confidence to how well the "
+                    "face was actually visible. Report only what is directly "
+                    "visible; do not infer tiredness, illness, or any "
+                    "diagnosis from a cue."
+                )
             return prompt + "\nVisual extraction task:\n" + task
         return (
             "Return exactly one raw JSON object matching the provider-supplied "
@@ -1419,7 +1503,8 @@ class SkinVision(DetectionModule):
                 "provider_content": shape,
                 "diagnostic_hint": _response_diagnostic_hint(raw, shape)}
 
-    def _reformat_prompt(self, stage: str, prose: str) -> str:
+    def _reformat_prompt(self, stage: str, prose: str,
+                         feedback: str = "") -> str:
         """Turn a vision reply that drifted into prose into a JSON encode task.
 
         The NVIDIA Llama-3.2 vision endpoint ignores ``response_format`` and
@@ -1440,13 +1525,17 @@ class SkinVision(DetectionModule):
             "invent findings the observation does not describe. "
             "This is not a request for medical advice.\n"
             + _schema_contract(stage)
+            + ("\n\nThe previous encode attempt was rejected: " + feedback
+               + " Return the corrected object with every required key."
+               if feedback else "")
             + "\n\nObservation to encode:\n" + prose
         )
 
     def _reformat_json(self, prose: str, stage: str, *, timeout: float,
                        purpose: str, deadline: float | None,
                        reservation_token: int | None,
-                       cancel_event: threading.Event | None) -> dict | None:
+                       cancel_event: threading.Event | None,
+                       feedback: str = "") -> dict | None:
         """Best-effort text-only rescue of a prose vision reply into JSON.
 
         Returns the parsed object, or ``None`` on any transport or parse
@@ -1458,7 +1547,7 @@ class SkinVision(DetectionModule):
             return None
         try:
             response = self._client.request(
-                self._reformat_prompt(stage, prose),
+                self._reformat_prompt(stage, prose, feedback),
                 None,
                 max_tokens=700,
                 response_format=_response_format(stage),
@@ -1530,19 +1619,48 @@ class SkinVision(DetectionModule):
                 retryable=False, kind="payload_size")
 
         manual = purpose == "manual_arm_check"
+        # Budgets used to be manual-only: every other stage fell through to a
+        # bare two-attempt/700-token branch, and only supplied its own deadline
+        # if the caller passed one (guided close-ups do; the preliminary scan
+        # did not). That left the preliminary scan asking for the largest
+        # schema with the smallest allowance and no wall clock at all, which is
+        # what made it the flaky one. Each stage now names its own budget
+        # instead of inheriting the fallback.
+        if manual:
+            attempt_budget: float | None = float(self.manual_retry_deadline)
+            max_attempts = max(1, int(self.manual_max_attempts))
+            request_timeout = float(self.manual_attempt_timeout)
+            max_tokens = int(self.manual_retry_max_tokens)
+        elif stage == "preliminary":
+            attempt_budget = float(self.preliminary_deadline)
+            max_attempts = max(1, int(self.preliminary_max_attempts))
+            request_timeout = float(self.preliminary_attempt_timeout)
+            max_tokens = int(self.preliminary_max_tokens)
+        else:
+            attempt_budget = None
+            max_attempts = 2
+            request_timeout = float(self.request_timeout)
+            max_tokens = 700
         deadline = (float(deadline_monotonic)
                     if deadline_monotonic is not None else
-                    time.monotonic() + float(self.manual_retry_deadline)
-                    if manual else None)
-        max_attempts = (max(1, int(self.manual_max_attempts))
-                        if manual else 2)
+                    time.monotonic() + attempt_budget
+                    if attempt_budget is not None else None)
+        # True once this request is answerable against a wall clock, so the
+        # "don't start a retry that cannot finish" guards apply to any bounded
+        # stage rather than only to manual checks.
+        bounded = deadline is not None
+        # A `json_parse` line could not previously distinguish "the rescue never
+        # ran" from "the rescue ran and its JSON was rejected"; both printed the
+        # same thing. Carried across attempts so the terminal diagnostic names
+        # which one actually happened.
+        rescue_outcome = ""
+        rescue_feedback = ""
         validation: dict[str, Any] | None = None
         terminal_category = "schema_validation"
         terminal_status: int | None = None
         terminal_error = "invalid structured response"
         terminal_diagnostic_error = "invalid structured response"
         terminal_retryable = False
-        max_tokens = int(self.manual_retry_max_tokens) if manual else 700
 
         with self._diagnostic_lock:
             diagnostics_active = bool(
@@ -1589,19 +1707,15 @@ class SkinVision(DetectionModule):
                     "reason": "prior structured result was invalid"}
 
             remaining = ((deadline - time.monotonic())
-                         if deadline is not None else
-                         float(self.manual_attempt_timeout
-                               if manual else self.request_timeout))
-            if remaining <= 0 or (is_retry and manual and remaining < 5.0):
+                         if deadline is not None else request_timeout)
+            if remaining <= 0 or (is_retry and bounded and remaining < 5.0):
                 terminal_category = "timeout"
-                terminal_error = "manual analysis deadline exceeded"
+                terminal_error = ("manual analysis deadline exceeded" if manual
+                                  else f"{stage} analysis deadline exceeded")
                 terminal_diagnostic_error = terminal_error
                 terminal_retryable = False
                 break
-            attempt_timeout = min(
-                float(self.manual_attempt_timeout if manual
-                      else self.request_timeout),
-                remaining)
+            attempt_timeout = min(request_timeout, remaining)
             encode_started = time.monotonic()
             encoded: bytes | None = None
             try:
@@ -1695,14 +1809,13 @@ class SkinVision(DetectionModule):
                 if may_retry:
                     remaining_after = (
                         deadline - time.monotonic()
-                        if deadline is not None else
-                        float(self.request_timeout))
+                        if deadline is not None else request_timeout)
                     if retry_after is not None:
                         delay = max(0.0, min(10.0, float(retry_after)))
                     else:
                         delay = (0.35 * (2 ** attempt_index)
                                  + random.uniform(0.0, 0.20))
-                    if manual and remaining_after - delay < 5.0:
+                    if bounded and remaining_after - delay < 5.0:
                         break
                     if delay > 0:
                         time.sleep(min(delay, max(0.0, remaining_after)))
@@ -1795,51 +1908,69 @@ class SkinVision(DetectionModule):
                     poll_count=getattr(response, "poll_count", 0),
                     queue_ms=getattr(response, "queue_ms", 0.0))
                 if category == "json_parse" and finish_reason != "length":
-                    reformat_remaining = (
-                        (deadline - time.monotonic()) if deadline is not None
-                        else float(self.request_timeout))
                     cancelled = (cancel_event is not None
                                  and cancel_event.is_set())
-                    if reformat_remaining >= 5.0 and not cancelled:
+                    rescued_analysis = None
+                    # One feedback round: a first encode that misses a key or
+                    # mislabels an enum is worth correcting, because the vision
+                    # model has already done the seeing. Bounded at two so a
+                    # rescue can never outlive the request's own deadline.
+                    for rescue_round in range(2):
+                        reformat_remaining = (
+                            (deadline - time.monotonic())
+                            if deadline is not None else request_timeout)
+                        if reformat_remaining < 5.0 or cancelled:
+                            rescue_outcome = rescue_outcome or "skipped"
+                            break
                         rescued = self._reformat_json(
                             _content_text(content), stage,
-                            timeout=min(float(self.request_timeout),
-                                        reformat_remaining),
+                            timeout=min(request_timeout, reformat_remaining),
                             purpose=purpose, deadline=deadline,
                             reservation_token=reservation_token,
-                            cancel_event=cancel_event)
-                        rescued_analysis = None
-                        if rescued is not None:
-                            try:
-                                rescued_analysis = validate_analysis(
-                                    rescued, float(self.min_confidence),
-                                    allow_facial_cues=stage == "preliminary",
-                                    min_facial_confidence=float(
-                                        self.min_facial_confidence),
-                                    face_crop_available=face_crop_available,
-                                    strict_schema=True)
-                            except (KeyError, IndexError, TypeError, ValueError,
-                                    json.JSONDecodeError):
-                                rescued_analysis = None
-                        if rescued_analysis is not None:
-                            if manual and rescued_analysis.possible_conditions:
-                                rescued_analysis = replace(
-                                    rescued_analysis, possible_conditions=())
-                            self._record_attempt_diagnostics(
-                                attempt=attempt, outcome="success",
-                                payload_mode="reformat_rescue",
-                                structured=True, max_tokens=attempt_tokens,
-                                latency_ms=response_latency_ms,
-                                encoded_bytes=encoded_bytes,
-                                http_status=response_status,
-                                finish_reason=finish_reason)
-                            self._finish_request_diagnostics(
-                                "success", stage, validation=None,
-                                repair_attempted=True)
-                            if manual:
-                                self._manual_next_allowed = -1e9
-                                self._manual_authorization_blocked = False
-                            return rescued_analysis
+                            cancel_event=cancel_event,
+                            feedback=rescue_feedback)
+                        if rescued is None:
+                            rescue_outcome = "transport_failed"
+                            break
+                        try:
+                            rescued_analysis = validate_analysis(
+                                _normalize_rescued(rescued, stage),
+                                float(self.min_confidence),
+                                allow_facial_cues=stage == "preliminary",
+                                min_facial_confidence=float(
+                                    self.min_facial_confidence),
+                                face_crop_available=face_crop_available,
+                                strict_schema=True)
+                            rescue_outcome = "ok"
+                            break
+                        except (KeyError, IndexError, TypeError, ValueError,
+                                json.JSONDecodeError) as rescue_exc:
+                            rescued_analysis = None
+                            rescue_outcome = "validation_failed"
+                            rescue_feedback = self._safe_diagnostic_text(
+                                str(rescue_exc), 120) or "invalid object"
+                            if rescue_round:
+                                break
+                    if rescued_analysis is not None:
+                        if manual and rescued_analysis.possible_conditions:
+                            rescued_analysis = replace(
+                                rescued_analysis, possible_conditions=())
+                        self._record_attempt_diagnostics(
+                            attempt=attempt, outcome="success",
+                            payload_mode="reformat_rescue",
+                            structured=True, max_tokens=attempt_tokens,
+                            latency_ms=response_latency_ms,
+                            encoded_bytes=encoded_bytes,
+                            http_status=response_status,
+                            finish_reason=finish_reason)
+                        self._finish_request_diagnostics(
+                            "success", stage, validation=None,
+                            repair_attempted=True)
+                        if manual:
+                            self._manual_next_allowed = -1e9
+                            self._manual_authorization_blocked = False
+                        return rescued_analysis
+                    self._note_rescue_outcome(rescue_outcome)
                 if finish_reason == "length":
                     max_tokens = 700
                 if (attempt < max_attempts
@@ -2221,6 +2352,9 @@ class SkinVision(DetectionModule):
             if isinstance(validation, dict) and validation.get(
                     "diagnostic_hint"):
                 details.append(f"hint={validation['diagnostic_hint']}")
+            if isinstance(validation, dict) and validation.get(
+                    "rescue_outcome"):
+                details.append(f"rescue={validation['rescue_outcome']}")
             if isinstance(shape, dict):
                 details.append(
                     "content="

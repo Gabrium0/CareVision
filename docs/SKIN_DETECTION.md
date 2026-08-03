@@ -182,12 +182,24 @@ use the skin fields below:
 | `follow_up_topics` | Approved topics that deterministic code converts into questions. |
 
 Preliminary responses additionally require `under_eye_darkness`,
-`under_eye_puffiness`, `nose_redness`, `cheek_redness`, and `lip_dryness` as
-`none`, `mild`, `marked`, or `unclear`; `nasal_discharge_visible` as `no`,
-`yes`, or `unclear`; and `facial_cue_confidence` from 0 to 1. These are visible
-appearance observations, never tiredness, cold, allergy, or dehydration labels.
-They are suppressed unless a usable face crop, fair/good image quality, and at
-least 0.45 confidence are present.
+`under_eye_puffiness`, `nose_redness`, `cheek_redness`, `lip_dryness`,
+`forehead_shine`, `eye_redness`, and `visible_skin_marking` as `none`, `mild`,
+`marked`, or `unclear`; `nasal_discharge_visible` as `no`, `yes`, or `unclear`;
+and `facial_cue_confidence` from 0 to 1. These are visible appearance
+observations, never tiredness, cold, allergy, or dehydration labels. They are
+suppressed unless a usable face crop, fair/good image quality, and at least
+0.45 confidence are present.
+
+With the nine shared skin fields above plus these eight cue enums,
+`nasal_discharge_visible`, and `facial_cue_confidence`, the preliminary schema
+has 20 required fields versus 9 for a close-up — the largest schema the model
+is asked for. Its prompt ends with an explicit "Output shape" block
+enumerating every required key and the cue enum values, mirroring the
+"Feature-label guidance" block the manual arm check prompt already had. The
+preliminary stage also gets its own request budget (`preliminary_max_attempts`,
+`preliminary_attempt_timeout`, `preliminary_deadline`,
+`preliminary_max_tokens`; see Configuration below) instead of inheriting a
+smaller shared fallback.
 
 CareVision rejects malformed or loose responses. A finding is accepted only
 when skin is sufficiently visible, quality is not poor, confidence meets the
@@ -357,6 +369,10 @@ skin_vision:
   manual_max_attempts: 3
   manual_attempt_timeout: 20.0
   manual_retry_deadline: 60.0
+  preliminary_max_attempts: 3
+  preliminary_attempt_timeout: 25.0
+  preliminary_deadline: 75.0
+  preliminary_max_tokens: 520
   manual_retry_max_image_dim: 768
   manual_retry_jpeg_quality: 80
   manual_retry_max_tokens: 450
@@ -379,6 +395,12 @@ Additional built-in retry defaults are:
 - One NVIDIA request in flight across skin and scene analysis.
 - Up to three provider attempts for a manual check inside a 60-second deadline
   that starts after capture; each attempt is capped at 20 seconds.
+- Up to three provider attempts for a preliminary passive scan inside a
+  75-second deadline; each attempt is capped at 25 seconds and requests up to
+  520 tokens, escalating to 700 if the provider reports `finish_reason ==
+  "length"`. A guided close-up keeps the older fallback instead: two attempts,
+  a 25-second per-attempt timeout, and 700 max tokens, inside the 75-second
+  deadline its caller already supplies.
 - One composite is adaptively encoded through a JPEG quality/dimension ladder
   until it is no larger than 170 KiB (`174080` bytes).
 - Provider-supplied HTTPS pending URLs may be polled for `202` responses, and a
@@ -449,6 +471,7 @@ negative/clear finding.
 | Poor image or confidence below threshold | No finding, hypothesis, or question workflow is created. |
 | Missing/small face crop | Skin screening may continue from the whole frame, but every facial cue is suppressed. |
 | Invalid structured response | The attempt is marked `invalid_response`. Localhost diagnostics report a privacy-safe content shape (`str/prose`, `str/object`, list part counts, character count, JSON-boundary booleans) and a categorical hint such as `provider_non_json_text`, `provider_partial_json`, or `provider_json_failed_schema_validation`. They never retain raw provider content. |
+| Provider answers with prose instead of JSON | A text-only follow-up re-encodes the observation into the schema (the endpoint ignores `response_format` on image calls but honors it text-only), retrying once with the prior validation error fed back as feedback. The rescued object then passes through a normalizer that drops unknown extra keys and, for the preliminary stage only, fills absent facial-cue keys with the schema's neutral values (`"unclear"`, `0.0` for `facial_cue_confidence`). It can never supply `finding_present`, `sufficient_skin_visible`, `visible_features`, `confidence`, `image_quality`, or `visual_source` — a rescue missing any of those six still fails validation — so the rescue can only produce a result less alarming than the model's own words, never more. Filled cues are `"unclear"`, which both public facial-cue paths already discard, so they reach neither speech nor the console. |
 | Invalid model JSON | The response is rejected and the module enters sanitized exponential backoff. |
 | Timeout, rate limit, or API outage | Capture continues; the worker backs off and retries later without blocking the camera. |
 | Manual arm request waits behind another request | Its best captured frame is queued with priority over guided close-ups and passive scans; queue time counts toward the 60-second deadline. |
@@ -467,8 +490,11 @@ An `inference unavailable` line with HTTP 200 means transport completed but
 local JSON/schema validation rejected the provider response; the appended
 `hint`, content shape, object-boundary status, and finish reason distinguish
 prose/refusal output, partial JSON, malformed JSON, and schema mismatches
-without printing the response. A non-200 category instead identifies the
-sanitized transport failure.
+without printing the response. The line also carries a `rescue=` field
+(`skipped`, `transport_failed`, `validation_failed`, or `ok`) that
+distinguishes a prose rescue that never ran from one that ran and had its
+output rejected. A non-200 category instead identifies the sanitized
+transport failure.
 
 MediaPipe may print `portable_clearcut_uploader` with
 `FAILED_PRECONDITION: Not valid for uploading until`. This is an internal,

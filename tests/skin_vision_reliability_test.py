@@ -15,6 +15,7 @@ from integrations.nvidia_vlm import (
     NvidiaVLMResponse,
 )
 from modules.skin_vision import (
+    _FACIAL_KEYS,
     SkinAnalysis,
     SkinVision,
     SkinVisionAPIError,
@@ -33,6 +34,19 @@ def _raw_analysis() -> dict:
         "possible_conditions": [],
         "follow_up_topics": [],
     }
+
+
+def _raw_preliminary() -> dict:
+    """A complete `preliminary` payload: `_raw_analysis()` plus every facial cue.
+
+    `facial_cue_confidence=0.8` stays above `min_facial_confidence` (0.45), so
+    the returned `FacialCues` is not `gated`.
+    """
+    raw = _raw_analysis()
+    raw.update({key: "none" for key in _FACIAL_KEYS[:-1]})
+    raw["nasal_discharge_visible"] = "no"
+    raw["facial_cue_confidence"] = 0.8
+    return raw
 
 
 def _response(content, *, finish_reason="stop", status=200,
@@ -644,5 +658,147 @@ def test_recent_logical_request_history_is_capped_at_twenty(monkeypatch):
                 np.zeros((4, 4, 3), np.uint8), "closeup", None,
                 purpose="passive_scan")
         assert len(module.diagnostics()["recent_requests"]) == 20
+    finally:
+        module.close()
+
+
+def test_preliminary_prose_reply_is_rescued_to_valid_json(monkeypatch):
+    module = _module(monkeypatch)
+    _no_retry_wait(monkeypatch)
+    calls = []
+
+    def request(_prompt, images, **kwargs):
+        calls.append((images, kwargs))
+        if len(calls) == 1:
+            return _response("I looked closely and saw no visible skin change.")
+        return _response(json.dumps(_raw_preliminary()))
+
+    monkeypatch.setattr(module._client, "encode",
+                        lambda _frame, **_kwargs: b"jpeg")
+    monkeypatch.setattr(module._client, "request", request)
+    try:
+        analysis = module._call_api(
+            np.zeros((32, 32, 3), np.uint8), "preliminary", None,
+            face_crop_available=True)
+        assert analysis.finding_present is False
+        assert len(calls) == 2
+        assert calls[0][0] is not None
+        assert calls[1][0] is None
+        attempts = module.diagnostics()["last_attempt"]["attempts"]
+        assert attempts[-1]["payload_mode"] == "reformat_rescue"
+    finally:
+        module.close()
+
+
+def test_preliminary_rescue_fills_missing_facial_cues_as_unclear(monkeypatch):
+    module = _module(monkeypatch)
+    _no_retry_wait(monkeypatch)
+    rescued_payload = _raw_preliminary()
+    del rescued_payload["lip_dryness"]
+    del rescued_payload["forehead_shine"]
+    del rescued_payload["eye_redness"]
+    del rescued_payload["facial_cue_confidence"]
+    rescued_payload["junk_extra_key"] = "ignore me"
+    calls = []
+
+    def request(_prompt, images, **kwargs):
+        calls.append(images)
+        if len(calls) == 1:
+            return _response("face partly visible, nothing concerning noted")
+        return _response(json.dumps(rescued_payload))
+
+    monkeypatch.setattr(module._client, "encode",
+                        lambda _frame, **_kwargs: b"jpeg")
+    monkeypatch.setattr(module._client, "request", request)
+    try:
+        analysis = module._call_api(
+            np.zeros((32, 32, 3), np.uint8), "preliminary", None,
+            face_crop_available=True)
+        assert len(calls) == 2
+        assert analysis.facial_cues.lip_dryness == "unclear"
+        assert analysis.facial_cues.forehead_shine == "unclear"
+        assert analysis.facial_cues.eye_redness == "unclear"
+        assert analysis.facial_cues.confidence == 0.0
+    finally:
+        module.close()
+
+
+def test_preliminary_rescue_missing_finding_present_cannot_succeed(monkeypatch):
+    module = _module(monkeypatch)
+    _no_retry_wait(monkeypatch)
+    rescued_payload = _raw_preliminary()
+    del rescued_payload["finding_present"]
+
+    def request(_prompt, images, **_kwargs):
+        if images:
+            return _response("a prose description of the frame, not JSON")
+        return _response(json.dumps(rescued_payload))
+
+    monkeypatch.setattr(module._client, "encode",
+                        lambda _frame, **_kwargs: b"jpeg")
+    monkeypatch.setattr(module._client, "request", request)
+    try:
+        with pytest.raises(SkinVisionAPIError):
+            module._call_api(
+                np.zeros((32, 32, 3), np.uint8), "preliminary", None,
+                face_crop_available=True)
+        attempts = module.diagnostics()["last_attempt"]["attempts"]
+        # Neutral-fill must never manufacture a result out of a rescue that
+        # never asserted whether anything was even seen.
+        assert all(attempt["outcome"] != "success" for attempt in attempts)
+    finally:
+        module.close()
+
+
+def test_preliminary_gets_three_attempts_at_520_tokens(monkeypatch):
+    module = _module(monkeypatch)
+    _no_retry_wait(monkeypatch)
+    image_calls = []
+
+    def request(_prompt, images, **kwargs):
+        if images:
+            image_calls.append(kwargs["max_tokens"])
+            return _response("still prose, never a JSON object")
+        raise NvidiaVLMError(
+            "reformat endpoint unavailable", 503, retryable=True, kind="server")
+
+    monkeypatch.setattr(module._client, "encode",
+                        lambda _frame, **_kwargs: b"jpeg")
+    monkeypatch.setattr(module._client, "request", request)
+    try:
+        with pytest.raises(SkinVisionAPIError):
+            module._call_api(
+                np.zeros((32, 32, 3), np.uint8), "preliminary", None,
+                face_crop_available=True)
+        assert image_calls == [520, 520, 520]
+    finally:
+        module.close()
+
+
+def test_failed_rescue_records_outcome_in_diagnostics(monkeypatch):
+    module = _module(monkeypatch)
+    _no_retry_wait(monkeypatch)
+    calls = []
+
+    def request(_prompt, images, **_kwargs):
+        calls.append(images)
+        if not images:
+            raise NvidiaVLMError(
+                "reformat endpoint unavailable", 503, retryable=True,
+                kind="server")
+        if len(calls) == 1:
+            return _response("prose only, no structured object here")
+        return _response(json.dumps(_raw_preliminary()))
+
+    monkeypatch.setattr(module._client, "encode",
+                        lambda _frame, **_kwargs: b"jpeg")
+    monkeypatch.setattr(module._client, "request", request)
+    try:
+        analysis = module._call_api(
+            np.zeros((32, 32, 3), np.uint8), "preliminary", None,
+            face_crop_available=True)
+        assert analysis.finding_present is False
+        attempts = module.diagnostics()["last_attempt"]["attempts"]
+        assert attempts[0]["validation"]["rescue_outcome"] == "transport_failed"
     finally:
         module.close()

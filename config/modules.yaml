@@ -117,6 +117,10 @@ modules:
     manual_max_attempts: 3
     manual_attempt_timeout: 20.0
     manual_retry_deadline: 60.0
+    preliminary_max_attempts: 3    # passive scan asks for the 20-field schema
+    preliminary_attempt_timeout: 25.0
+    preliminary_deadline: 75.0
+    preliminary_max_tokens: 520    # escalates to 700 on finish_reason=length
     manual_retry_max_image_dim: 768
     manual_retry_jpeg_quality: 80
     manual_retry_max_tokens: 450
