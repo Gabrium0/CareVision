@@ -6,6 +6,10 @@ mood, tiredness, discomfort, atypical vitals) it raises the highest-priority
 one that it hasn't already mentioned. Rate-limited so it doesn't chatter, and it
 remembers what it said so it won't repeat a topic until the situation changes.
 
+Observation topics live in the declarative table in `agent/topics.py`; this
+module keeps the derived candidates (greeting, mood, small talk), the
+no-repeat/cadence bookkeeping, and the hand-off to `agent/attention.py`.
+
 Safety-critical ALERTs are NOT handled here — those go through the deterministic
 AlertManager. The policy only produces friendly, conversational lines.
 """
@@ -14,11 +18,9 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 
-from core.events import Severity
 from agent.state import ObservationMemory
 from agent.attention import AttentionPlanner
-
-_ORDER = {Severity.INFO: 0, Severity.NOTICE: 1, Severity.WARNING: 2, Severity.ALERT: 3}
+from agent.topics import TOPICS, apply_config, build_intent
 
 
 @dataclass
@@ -36,6 +38,9 @@ class Intent:
     health_prompt: bool | None = None
     topic: str | None = None
     severity_score: float = 0.0
+    # NOTE: `category` must stay LAST. voice_agent.py constructs Intent
+    # positionally in ~20 places, so new fields may only be appended.
+    category: str = "general"
 
 
 _SMALL_TALK = [
@@ -48,7 +53,7 @@ _SMALL_TALK = [
 class Policy:
     """Decides when and what the voice agent says (event-driven + timed, no-repeat)."""
     def __init__(self, min_gap: float = 8.0, small_talk_interval: float = 45.0,
-                 repeat_cooldown: float = 600.0):
+                 repeat_cooldown: float = 600.0, conversation=None):
         self.min_gap = min_gap
         self.small_talk_interval = small_talk_interval
         self.repeat_cooldown = repeat_cooldown
@@ -56,17 +61,39 @@ class Policy:
         self._spoken: dict[str, float] = {}
         self._greeted_for: float | None = None
         self._small_talk_idx = 0
-        self.attention = AttentionPlanner(health_prompt_gap=60.0)
+        # The `conversation:` section of config/modules.yaml tunes numbers and
+        # enable flags only; prose (llm_intent/fallback) is never overridable,
+        # because a fallback is safety-critical speech reviewed in diffs.
+        cfg = dict(conversation or {})
+        self.topics = apply_config(cfg.get("topics"), TOPICS)
+        self.attention = AttentionPlanner(
+            health_prompt_gap=float(cfg.get("health_prompt_gap", 60.0)),
+            category_gaps=cfg.get("category_gaps"),
+            health_prompts_per_hour=int(cfg.get("health_prompts_per_hour", 6)))
 
     def _fresh(self, sig: str, now: float) -> bool:
         last = self._spoken.get(sig)
         return last is None or now - last > self.repeat_cooldown
 
-    def _candidates(self, mem: ObservationMemory, now: float) -> list[Intent]:
+    def _candidates(self, mem: ObservationMemory, now: float, *,
+                    corroboration=None) -> list[Intent]:
+        """Routine candidates for this tick: derived, then table, then filler.
+
+        `corroboration` is keyword-only and defaults to None, which means
+        "admit every spec" — callers that only want the raw table (tests, the
+        dashboard) keep the two-positional-argument call signature.
+        """
         cands: list[Intent] = []
         tod = mem.time_of_day()
 
-        # greeting on a new arrival
+        # --- Derived candidates. These are NOT (module,key)-sourced and so
+        # cannot live in agent/topics.py:
+        #   greeting  reads mem.arrived_at, and mark_spoken() parses the
+        #             "greeting:{ts}" signature back into _greeted_for below.
+        #   mood      is computed by mem.mood() across several emotion/valence
+        #             backends, not read from one result.
+        #   small_talk is a rotating filler line driven by _small_talk_idx and
+        #             the speaking cadence, with no observation behind it.
         if mem.arrived_at is not None and self._greeted_for != mem.arrived_at:
             cands.append(Intent(
                 "greeting", f"greeting:{mem.arrived_at}",
@@ -74,66 +101,18 @@ class Policy:
                 "warm small talk.", f"It is {tod}.",
                 f"Good {tod}, {mem.name}! Lovely to see you.", 100))
 
-        # clothing not right for the weather (the driving example)
-        adv = mem.get("clothing_advice", "recommendation")
-        if adv is not None and _ORDER[adv.severity] >= _ORDER[Severity.NOTICE]:
-            sig = f"clothing:{adv.value}"
-            if self._fresh(sig, now):
-                cands.append(Intent(
-                    "observation", sig,
-                    "Gently mention what you noticed about their clothing "
-                    "versus the weather and offer a suggestion.",
-                    str(adv.value), str(adv.value), 60,
-                    confidence=adv.confidence, quality=adv.quality,
-                    severity_score=float(_ORDER[adv.severity])))
-
-        vitals = mem.get("vitals_advice", "recommendation")
-        if vitals is not None and _ORDER[vitals.severity] >= _ORDER[Severity.NOTICE]:
-            sig = f"vitals:{vitals.value}"
-            if self._fresh(sig, now):
-                cands.append(Intent(
-                    "observation", sig,
-                    "Gently mention the health observation without diagnosing, "
-                    "and suggest a calm check-in or rest.",
-                    str(vitals.value), str(vitals.value), 65,
-                    confidence=vitals.confidence, quality=vitals.quality,
-                    severity_score=float(_ORDER[vitals.severity])))
-
-        # discomfort / pain
-        pain = mem.get("pain", "pain")
-        if pain is not None and pain.severity == Severity.WARNING and self._fresh("pain", now):
-            cands.append(Intent(
-                "observation", "pain",
-                "Gently ask if they are comfortable or in any discomfort.",
-                str(pain.message), "You look a little uncomfortable — are you okay?", 70,
-                confidence=pain.confidence, quality=pain.quality,
-                severity_score=float(_ORDER[pain.severity])))
-
-        # tiredness
-        per = mem.get("drowsiness", "perclos")
-        if per is not None and _ORDER[per.severity] >= _ORDER[Severity.NOTICE] and self._fresh("tired", now):
-            facial = mem.facial_cues()
-            eye_cues = [key.replace("_", " ") for key in
-                        ("under_eye_darkness", "under_eye_puffiness")
-                        if key in facial]
-            support = (" Supporting visible appearance cues: " + ", ".join(eye_cues) +
-                       ". Treat them only as corroboration, not as a cause or diagnosis."
-                       if eye_cues else "")
-            cands.append(Intent(
-                "observation", "tired",
-                "Kindly ask how they are feeling and suggest a rest if they'd like." + support,
-                str(per.message),
-                "You seem a little tired — how are you feeling? A short rest might feel good.", 50,
-                confidence=per.confidence, quality=per.quality,
-                severity_score=float(_ORDER[per.severity])))
-
-        # low mood
         if mem.mood() == "low" and self._fresh("mood", now):
             cands.append(Intent(
                 "observation", "mood",
                 "Warmly acknowledge they seem a bit down and offer company.",
                 "Apparent mood is low.",
                 f"You seem a little down, {mem.name}. I'm right here if you'd like to talk.", 55))
+
+        # --- Declarative observation topics (agent/topics.py).
+        for spec in self.topics:
+            intent = build_intent(spec, mem, now, corroboration=corroboration)
+            if intent is not None and self._fresh(intent.signature, now):
+                cands.append(intent)
 
         # idle small talk
         if now - self._last_spoken >= self.small_talk_interval:
@@ -145,12 +124,15 @@ class Policy:
 
     def next_intent(self, mem: ObservationMemory, now: float | None = None,
                     extra: list[Intent] | None = None,
-                    suppress_routine: bool = False) -> Intent | None:
+                    suppress_routine: bool = False,
+                    corroboration=None) -> Intent | None:
         """Pick the highest-priority thing to say now, or None.
 
         `extra` lets the corroboration/elicitation layers inject their own
         candidates (follow-up questions, conclusions, replies) while this
         policy stays the single place that rate-limits and de-duplicates.
+        `corroboration` is forwarded to the topic table so a signal is either
+        asked about or mentioned, never both.
         """
         now = time.time() if now is None else now
         if now - self._last_spoken < self.min_gap:
@@ -160,7 +142,8 @@ class Policy:
                      if c.kind in ("reply", "conclusion")
                      and self._fresh(c.signature, now)]
         else:
-            routine = [] if suppress_routine else self._candidates(mem, now)
+            routine = ([] if suppress_routine else
+                       self._candidates(mem, now, corroboration=corroboration))
             cands = [c for c in routine + list(extra or [])
                      if c.kind == "greeting" or self._fresh(c.signature, now)]
         if not cands:

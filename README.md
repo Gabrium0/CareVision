@@ -39,6 +39,32 @@ Set `X-Moondream-Auth` in `.env` to your Moondream Cloud API key (the convention
 `MOONDREAM_API_KEY` name is also accepted). The credential is sent only to the
 Moondream API and is never included in logs or debug diagnostics.
 
+### Connected multimodal conversation
+
+With `--listen`, the companion answers open-ended speech using a bounded view of
+the complete live agent snapshot rather than a small hand-written list of
+signals. The context broker includes current detector provenance, confidence,
+quality, visibility, active assessments, capability readiness, recent safe event
+summaries, numeric trends, and the current session's last twelve dialogue turns.
+Agent-only hypotheses stay explicitly uncertain and ephemeral; generated speech
+that asserts one as a fact is discarded in favor of reviewed fallback wording.
+
+Pass `--enable-agent-vision` to separately consent to conversational camera
+uploads. While a person is present and conversation is active, Moondream may receive one
+in-memory camera frame after a meaningful visual change, with a heartbeat of
+about 20 seconds. Frames are resized, byte-bounded, never written to storage, and
+released after the one-flight request. Its short scene summary expires from
+agent context after 45 seconds. New observations enter a ranked topic queue so
+the agent answers the current question first and only then, when natural, raises
+one fresh topic.
+
+Speech can propose an allowlisted guided assessment, arm close-up, or fresh
+visual check, but the action remains inert until the person explicitly confirms
+it. Calls for help and caregiver alerts remain deterministic and never depend on
+the conversational model. Private orchestration diagnostics are available under
+`system.conversation_agent` at `/debug/state`; they contain counts and context
+IDs, never transcripts, observation values, images, or provider responses.
+
 ### Hot reload for autonomous development
 
 Run the dependency-free development supervisor to restart the application when

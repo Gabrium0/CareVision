@@ -56,6 +56,20 @@ def _preferred_bpm(snapshot: list[Result], min_confidence: float) -> Result | No
     return canonical or _best_numeric(snapshot, "heart_rate", "bpm_", min_confidence)
 
 
+def _preferred_breaths(snapshot: list[Result], min_confidence: float) -> Result | None:
+    """Best available breathing rate, from either module that measures one.
+
+    The rPPG backends publish `heart_rate.breaths_per_min_<backend>` and
+    modules/respiration.py publishes a standalone `respiration.breaths_per_min`
+    from torso motion. Only the first was ever read here, so a rig running
+    respiration without an rPPG backend produced no breathing advice at all.
+    The rPPG-derived value keeps priority because it is measured on the same
+    waveform as the rest of this advisor's vitals.
+    """
+    return (_best_numeric(snapshot, "heart_rate", "breaths_per_min_", min_confidence)
+            or _best_numeric(snapshot, "respiration", "breaths_per_min", min_confidence))
+
+
 @dataclass
 class VitalsAdvisor:
     """Conservative cross-signal vitals advice.
@@ -72,6 +86,13 @@ class VitalsAdvisor:
     bpm_low_warning: float = 45.0
     hrv_low: float = 20.0
     resp_high: float = 24.0
+    # Camera SpO2 is a trend, not an oximeter. These are the "worth a gentle
+    # word" and "worth suggesting a check" bands, and they are only ever
+    # consulted for a reading modules/spo2.py itself raised above INFO — which
+    # that module does only once it is calibrated. Deterministic caregiver
+    # escalation stays in alerts/.
+    spo2_low: float = 92.0
+    spo2_warning: float = 88.0
     min_confidence: float = 0.35
     ttl: float = 30.0
     _last_run: float = field(default=-1e9, init=False)
@@ -110,12 +131,33 @@ class VitalsAdvisor:
             confidence = max(confidence, hrv_r.confidence)
             severity = _severity_max(severity, Severity.NOTICE)
 
-        resp_r = _best_numeric(snapshot, "heart_rate", "breaths_per_min_", self.min_confidence * 0.8)
+        resp_r = _preferred_breaths(snapshot, self.min_confidence * 0.8)
         resp = _numeric(resp_r.value) if resp_r else None
         if resp is not None and resp >= self.resp_high:
             observations.append(f"breathing rate looks elevated at about {resp:.0f} per minute")
             confidence = max(confidence, resp_r.confidence)
             severity = _severity_max(severity, Severity.NOTICE)
+
+        # Only a reading modules/spo2.py already raised above INFO: that module
+        # keeps an uncalibrated estimate at INFO deliberately, and a trend
+        # without a baseline is not something to speak to a person about.
+        spo2_r = next(
+            (r for r in snapshot
+             if r.module == "spo2" and r.key == "spo2"
+             and r.confidence >= self.min_confidence
+             and _ORDER[r.severity] >= _ORDER[Severity.NOTICE]
+             and _numeric(r.value) is not None),
+            None,
+        )
+        spo2 = _numeric(spo2_r.value) if spo2_r else None
+        if spo2 is not None and spo2 <= self.spo2_low:
+            wording = ("oxygen reading looks low" if spo2 <= self.spo2_warning
+                       else "oxygen reading is a little low")
+            observations.append(f"{wording} at about {spo2:.0f} percent")
+            confidence = max(confidence, spo2_r.confidence)
+            severity = _severity_max(
+                severity, Severity.WARNING if spo2 <= self.spo2_warning
+                else Severity.NOTICE)
 
         pain = next((r for r in snapshot if r.module == "pain" and r.key == "pain"), None)
         if pain is not None and _ORDER[pain.severity] >= _ORDER[Severity.WARNING]:

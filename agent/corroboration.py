@@ -22,34 +22,23 @@ so all rate-limiting/no-repeat behavior stays in one place.
 """
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 
+from agent.answers import interpret_answer
 from core.events import Result, Severity
 
 _ORDER = {Severity.INFO: 0, Severity.NOTICE: 1, Severity.WARNING: 2, Severity.ALERT: 3}
 
-# Words that (dis)confirm a health follow-up in casual speech. Checked
-# negations first: "no, not really" must not confirm via "really".
-_DENY = ("no", "nope", "not really", "nothing", "haven't", "hasn't", "don't",
-         "doesn't", "i'm fine", "im fine", "i am fine", "all good", "never")
-_CONFIRM = ("yes", "yeah", "yep", "a bit", "a little", "i have", "i do",
-            "actually", "lately", "sometimes", "now that you mention",
-            "i guess so", "kind of", "sort of")
-
 
 def interpret_answer_keywords(text: str) -> str:
-    """Offline yes/no/unclear classification of a spoken reply."""
-    # Strip punctuation and pad so every match is whole-word bounded
-    # ("no" must not fire inside "noticed").
-    t = " " + re.sub(r"[^a-z' ]+", " ", text.lower()) + " "
-    for w in _DENY:
-        if f" {w} " in t:
-            return "denied"
-    for w in _CONFIRM:
-        if f" {w} " in t:
-            return "confirmed"
-    return "unclear"
+    """Offline yes/no/unclear classification (confirmed vocabulary).
+
+    A thin alias over agent.answers.interpret_answer: the corroboration state
+    machine and SkinDialogue label an affirmation "confirmed", so the shared
+    classifier's "affirmed" is mapped back here.
+    """
+    verdict = interpret_answer(text)
+    return "confirmed" if verdict == "affirmed" else verdict
 
 
 # Language that must never reach the person in a check-in. An LLM-phrased line
@@ -113,8 +102,10 @@ DEFAULT_RULES = [
         "hydration", "dry_lips", "lip_dryness",
         "Have you had enough to drink today?",
         "A glass of water sounds like a good idea then."),
+    # modules/sweating.py emits key "sweat_gloss"; matching is by key prefix,
+    # so the old "sweating" key could never match and this rule never fired.
     FollowUpRule(
-        "feeling_warm", "sweating", "sweating",
+        "feeling_warm", "sweating", "sweat_gloss",
         "Are you feeling warm or a bit overheated?",
         "Maybe cool down for a moment and have some water."),
     FollowUpRule(
@@ -265,6 +256,18 @@ class CorroborationEngine:
                 return choice, self.rules[choice]
         return candidates[0]
 
+    def cache_selection(self, signature, choice: str | None) -> None:
+        """Write an asynchronously resolved steer choice into the memo cache.
+
+        The cache is keyed on the flagged-topic tuple, so a choice that arrives
+        several ticks after it was requested lands on the set it was asked
+        about; if the flagged set has moved on, the stale entry is simply never
+        read. The membership check in `next_question_steered` stays the
+        authority — a cached choice is still only honored if it is a member of
+        the set currently being offered.
+        """
+        self._steer_cache = (tuple(signature), choice)
+
     def mark_asked(self, topic: str, now: float) -> None:
         """Record that the agent just voiced this topic's question."""
         st = self.topics[topic]
@@ -282,25 +285,55 @@ class CorroborationEngine:
                 return verdict
         return interpret_answer_keywords(text)
 
-    def hear(self, text: str, now: float):
-        """Route a heard utterance to the topic awaiting an answer.
+    def pending_question(self, now: float):
+        """(topic, rule) of the question currently awaiting an answer, or None.
 
-        Returns (topic, verdict) when it answered a pending question, else
-        None (free conversation — the voice agent replies contextually).
+        Split out of `hear` so a caller that wants to defer the verdict (the
+        voice agent, while a model refines an ambiguous reply) can identify the
+        question without moving the state machine.
         """
         pending = [(t, st) for t, st in self.topics.items()
                    if st.status == "asked"
                    and now - st.asked_at <= self.answer_window]
         if not pending:
             return None
-        topic, st = max(pending, key=lambda x: x[1].asked_at)  # most recent ask
-        verdict = self._interpret(self.rules[topic], text)
+        topic, _st = max(pending, key=lambda x: x[1].asked_at)  # most recent ask
+        return topic, self.rules[topic]
+
+    def classify(self, topic: str, text: str) -> str:
+        """Interpret `text` as an answer to `topic`'s question."""
+        return self._interpret(self.rules[topic], text)
+
+    def apply_verdict(self, topic: str, verdict: str, now: float):
+        """Advance one topic's state machine by an already-decided verdict.
+
+        The single place the flagged->asked->answered transition happens, so a
+        verdict that arrives asynchronously moves the identical accounting a
+        synchronous keyword hit would have — including the one gentle re-ask an
+        `unclear` buys while `asks` is still under `max_asks`.
+        """
+        st = self.topics.get(topic)
+        if st is None:
+            return None
         if verdict == "unclear" and st.asks < self.max_asks:
             st.status = "flagged"            # allow one gentle re-ask
         else:
             st.status = verdict
             st.answered_at = now
         return topic, verdict
+
+    def hear(self, text: str, now: float):
+        """Route a heard utterance to the topic awaiting an answer.
+
+        Returns (topic, verdict) when it answered a pending question, else
+        None (free conversation — the voice agent replies contextually).
+        Synchronous and offline by construction.
+        """
+        pending = self.pending_question(now)
+        if pending is None:
+            return None
+        topic, _rule = pending
+        return self.apply_verdict(topic, self.classify(topic, text), now)
 
     # ---------------------------------------------------------- conclusions
 
@@ -323,6 +356,16 @@ class CorroborationEngine:
         """Current state of a topic (for dashboards/tests)."""
         st = self.topics.get(topic)
         return st.status if st else None
+
+    def rule_state(self, topic: str) -> tuple[FollowUpRule | None, str | None]:
+        """Return (rule, current status) for a topic id, both None-safe.
+
+        `agent/topics.py` uses this for the ask-versus-mention handshake: it
+        needs the rule's `max_confidence` threshold (below which this engine
+        owns the signal and will ASK) together with whether a question is
+        currently pending, without reaching into the engine's internals.
+        """
+        return self.rules.get(topic), self.status(topic)
 
     def funnel(self) -> dict:
         """Research telemetry: the flagged -> asked -> answered funnel.

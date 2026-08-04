@@ -208,6 +208,9 @@ def main():
                     help="Moondream model for the voice agent (key from .env)")
     ap.add_argument("--no-moondream", action="store_true",
                     help="start with Moondream API calls disabled; press M to toggle")
+    ap.add_argument("--enable-agent-vision", action="store_true",
+                    help="consent to periodic bounded camera frames being sent to "
+                         "Moondream while a person is present and conversation is active")
     ap.add_argument("--enable-cloud-skin", action="store_true",
                     help="consent to upload sampled camera stills to the configured "
                          "NVIDIA skin-screening model for this run")
@@ -313,10 +316,24 @@ def main():
         alert_mgr.case_store = event_store
     voice_agent = VoiceAgent(name=args.name, speak=not args.no_voice,
                              model=args.voice_model,
-                             moondream_enabled=not args.no_moondream)
+                             moondream_enabled=not args.no_moondream,
+                             vision_enabled=args.enable_agent_vision,
+                             conversation=config.get("conversation"))
     capabilities = CapabilityRegistry.instance()
+    voice_agent.set_context_sources(capabilities=capabilities,
+                                    history=HistoryStore.instance())
     capabilities.set("camera", "hardware", CapabilityStatus.READY,
                      "replay" if str(args.source).startswith("replay:") else "live source")
+    _moondream_ready = voice_agent.moondream_status().get("available", False)
+    capabilities.set(
+        "agent_vision", "cloud",
+        (CapabilityStatus.LOADING if args.enable_agent_vision and _moondream_ready
+         else CapabilityStatus.FAILED if args.enable_agent_vision
+         else CapabilityStatus.UNCONFIGURED),
+        ("consented; provider authorization pending" if args.enable_agent_vision
+         and _moondream_ready else
+         "Moondream credential unavailable" if args.enable_agent_vision else
+         "disabled; use --enable-agent-vision"))
     if capabilities.get("nvidia_skin") is None:
         capabilities.set("nvidia_skin", "cloud", CapabilityStatus.UNCONFIGURED,
                          "skin module is not enabled")
@@ -348,15 +365,28 @@ def main():
                 capabilities.set("microphone", "hardware", CapabilityStatus.READY,
                                  "replay")
             shared_signals.set("microphone_ready", True)
-            if voice_agent.listener is not None:
+            listener_ready = bool(voice_agent.listener is not None and
+                                  getattr(voice_agent.listener, "available", False))
+            if listener_ready:
                 print("[agent] listener attached — the agent can hear replies")
+                capabilities.set("speech_recognition", "model", CapabilityStatus.READY,
+                                 "listener ready")
+            elif args.listen:
+                capabilities.set("speech_recognition", "model", CapabilityStatus.FAILED,
+                                 "listener unavailable; install requirements-asr.txt")
             if args.detect_cough:
                 print("[audio] cough episode detection enabled")
         else:
             shared_signals.set("microphone_ready", False)
+            capabilities.set(
+                "speech_recognition", "model",
+                CapabilityStatus.FAILED if args.listen else CapabilityStatus.UNCONFIGURED,
+                "microphone or speech listener unavailable" if args.listen else "disabled")
 
     else:
         capabilities.set("microphone", "hardware", CapabilityStatus.UNCONFIGURED, "disabled")
+        capabilities.set("speech_recognition", "model", CapabilityStatus.UNCONFIGURED,
+                         "disabled")
         shared_signals.set("microphone_ready", False)
 
     # A typed listener replaces any audio one: in a noisy room whisper invents
@@ -470,7 +500,8 @@ def main():
             "capabilities": capabilities.snapshot(),
             "workflows": WorkflowEngine.instance().snapshot(),
             "consent": {"cloud_skin": args.enable_cloud_skin,
-                        "cloud_scene": args.enable_cloud_scene},
+                        "cloud_scene": args.enable_cloud_scene,
+                        "agent_vision": args.enable_agent_vision},
             "replay": pipeline.camera.replay_status(),
             "moondream": voice_agent.moondream_status(),
             "modules_enabled": sorted(m.name for m in pipeline.scheduler.modules),
@@ -505,6 +536,7 @@ def main():
             # Research telemetry: the flagged->asked->confirmed/denied funnel for
             # the visual-prior -> gentle-question corroboration loop.
             system["corroboration"] = voice_agent.corroboration.funnel()
+            system["conversation_agent"] = voice_agent.conversation_diagnostics()
             system["model_workers"] = {
                 module.name: module.diagnostics()
                 for module in pipeline.scheduler.modules
@@ -585,6 +617,7 @@ def main():
         if force_greet["v"]:
             voice_agent.policy._last_spoken = 0.0   # let 'g' force a line now
             force_greet["v"] = False
+        voice_agent.observe_frame(ctx.frame, agent_snapshot, now=ctx.timestamp)
         utterance = voice_agent.tick(agent_snapshot, now=ctx.timestamp)
         safety_results = (voice_agent.pop_safety_results()
                           + voice_agent.pop_conversation_results())

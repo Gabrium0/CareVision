@@ -17,12 +17,24 @@ from __future__ import annotations
 
 import time
 import uuid
+import re
+from dataclasses import replace
 
+from agent.answers import (
+    CLASSIFICATION_DEADLINE, PendingClassification, interpret_answer,
+)
 from agent.state import ObservationMemory
 from agent.policy import Intent, Policy
 from agent.corroboration import CorroborationEngine, safe_check_in
 from agent.moondream_client import MoondreamClient
+from agent.conversation import (
+    AgentContextBroker, AgentResponse, ConversationTurn, ProposedAction,
+    TopicCandidate, TopicQueue, VisionCadence, guard_agent_only_speech,
+)
 from agent.skin_dialogue import SkinDialogue
+from agent.topics import (
+    SUPPORT_TRAILING_CHECK_IN, covered_keys, support_clause,
+)
 from audio.tts import Speaker
 from core.elicitation import ElicitationState
 from core.workflows import WorkflowEngine, WorkflowStage
@@ -39,6 +51,13 @@ _HOLD_STILL_SECONDS = 10.0     # ~2 s to comply + 8 s of sampling
 _ARM_CHECK_SECONDS = 12.0      # ~2 s positioning + 10 s of arm sampling
 _ARM_CHECK_SESSION_TIMEOUT = _ARM_CHECK_SECONDS + 65.0
 _MISSING_ACTION = object()
+# Appearance cues that may be named alongside one corroboration check-in, in
+# the order they are listed. Only cues currently visible are mentioned.
+_CHECK_IN_CUES = {
+    "cold_symptoms": ("nose_redness", "cheek_redness", "nasal_discharge_visible"),
+    "hydration": ("lip_dryness",),
+    "tiredness_pallor": ("under_eye_darkness", "under_eye_puffiness"),
+}
 _ASSESSMENT_QUESTIONS = {
     "symptoms": "Did you notice any discomfort, weakness, dizziness, or other symptoms during that?",
     "progression": "Has this movement or task changed recently compared with what is normal for you?",
@@ -59,6 +78,10 @@ _DEMO_STEP_LABELS = {
     "arm_drift": "arm check",
     "balance": "balance check",
 }
+# Vocabulary the classify lane is allowed to return. `interpret_answer`'s
+# "affirmed" is spelled "confirmed" by the corroboration state machine and by
+# MoondreamClient.classify_answer; the action/workflow lanes map it back.
+_CLASSIFY_VERDICTS = ("confirmed", "denied", "unclear")
 _DEMO_STEP_GUIDANCE = {
     "facial_movement": "Please face the camera in even light, then we'll try again.",
     "arm_drift": "Please step back so your whole upper body and both arms are in view, "
@@ -72,6 +95,7 @@ class VoiceAgent:
     def __init__(self, name: str = "there", speak: bool = True,
                  model: str = "moondream3.1-9B-A2B", listener=None,
                  moondream_enabled: bool = True,
+                 vision_enabled: bool = False,
                  **policy_kwargs):
         self.memory = ObservationMemory(name=name)
         self.memories: dict[str, ObservationMemory] = {"primary": self.memory}
@@ -103,6 +127,32 @@ class VoiceAgent:
         self._safety_results: list[Result] = []
         self._conversation_results: list[Result] = []
         self._pending_speech: tuple[str, object, float, float, object] | None = None
+        self._pending_response: tuple[str, object, float, float, object,
+                                      TopicCandidate | None, list] | None = None
+        self._pending_vision: str | None = None
+        self.context_broker = AgentContextBroker()
+        self.topic_queue = TopicQueue()
+        self.vision = VisionCadence()
+        self.vision_enabled = bool(vision_enabled)
+        self._capability_source = None
+        self._history_source = None
+        self._pending_action: ProposedAction | None = None
+        # One bounded re-ask on the action lane, named after the equivalents
+        # already in WorkflowSession.unclear_rephrased and TopicState.asks.
+        self._pending_action_unclear_rephrased = False
+        # Exactly ONE in-flight answer classification, matching the provider's
+        # single classify-lane future so the two can never disagree.
+        self._pending_classification: PendingClassification | None = None
+        self._last_heard_at = 0.0
+        self._classification_dropped_stale = 0
+        self._classification_dropped_deadline = 0
+        self._classification_superseded = 0
+        # (request_id, flagged-topic signature) for the async steer selection.
+        self._pending_topic_selection: tuple[str, tuple[str, ...]] | None = None
+        self._last_steered_topic: TopicCandidate | None = None
+        self._action_ack: tuple[str, float] | None = None
+        self._last_conversation_latency_ms: float | None = None
+        self._last_fallback_reason: str | None = None
         self._cloud_speech_deadline = 0.75
         moondream = self.moondream.status()
         mode = ("Moondream" if moondream["active"] else
@@ -124,6 +174,50 @@ class VoiceAgent:
     def moondream_status(self) -> dict:
         """Return safe Moondream transport diagnostics."""
         return self.moondream.status()
+
+    def set_context_sources(self, *, capabilities=None, history=None) -> None:
+        """Attach public-safe runtime sources used only when composing a turn."""
+        self._capability_source = capabilities
+        self._history_source = history
+
+    def observe_frame(self, frame, snapshot: list[Result],
+                      now: float | None = None) -> None:
+        """Offer one ephemeral frame to the change-driven vision cadence."""
+        now = time.time() if now is None else now
+        if not self.vision_enabled:
+            return
+        present = any(
+            result.subject_id == "primary" and result.module == "presence"
+            and (result.key == "arrival" or bool(result.value))
+            for result in snapshot)
+        conversation_active = bool(self.listener is not None or self.last_utterance
+                                   or self.memory.dialogue)
+        self.vision.observe(frame, active=present and conversation_active, now=now)
+
+    def conversation_diagnostics(self) -> dict:
+        """Return private-safe orchestration state without text, values, or media."""
+        pending = None
+        if self._pending_action is not None:
+            pending = {"action": self._pending_action.action,
+                       "target": self._pending_action.target,
+                       "expires_at": self._pending_action.expires_at}
+        return {"context": self.context_broker.diagnostics(),
+                "topics": self.topic_queue.diagnostics(),
+                "vision": {"enabled": self.vision_enabled,
+                           **self.vision.diagnostics()},
+                "pending_action": pending,
+                # Counters and the lane name ONLY: never the question, never
+                # the transcript, never a question id (they embed free text).
+                "classification": {
+                    "pending": self._pending_classification is not None,
+                    "lane": (self._pending_classification.lane
+                             if self._pending_classification is not None else None),
+                    "dropped_stale": self._classification_dropped_stale,
+                    "dropped_deadline": self._classification_dropped_deadline,
+                    "superseded": self._classification_superseded},
+                "conversation_latency_ms": self._last_conversation_latency_ms,
+                "fallback_reason": self._last_fallback_reason,
+                "session_turns": len(self.memory.dialogue)}
 
     def request_test(self, test: str = "hold_still") -> None:
         """Queue a scripted test (the 't'/'a' hotkey path)."""
@@ -248,6 +342,101 @@ class VoiceAgent:
 
     # ---------------------------------------------------------------- ears
 
+    @staticmethod
+    def _affirmation(text: str) -> str:
+        """Classify a reply as affirmed/denied/unclear (shared classifier)."""
+        return interpret_answer(text)
+
+    def _proposed_action_for(self, text: str, now: float) -> ProposedAction | None:
+        """Map speech to an allowlisted inert proposal; never execute here."""
+        low = text.lower()
+        if any(trigger in low for trigger in _ARM_TRIGGERS):
+            return ProposedAction("arm_check", None,
+                "The person asked for a closer arm or skin check.", now, now + 30.0)
+        if any(trigger in low for trigger in _TEST_TRIGGERS):
+            return ProposedAction("assessment", "hold_still",
+                "The person asked for a hand movement check.", now, now + 30.0)
+        if any(phrase in low for phrase in ("look again", "take another look",
+                                             "refresh the camera", "check the camera")):
+            return ProposedAction("vision_refresh", None,
+                "The person requested a fresh camera observation.", now, now + 30.0)
+        for protocol in PROTOCOLS:
+            label = protocol.replace("_", " ")
+            if label in low and any(term in low for term in ("check", "test", "assess")):
+                return ProposedAction("assessment", protocol,
+                    f"The person asked about the {label} assessment.", now, now + 30.0)
+        return None
+
+    def _execute_confirmed_action(self, proposal: ProposedAction) -> None:
+        """Execute only locally allowlisted actions after explicit confirmation."""
+        if proposal.action == "arm_check":
+            self._queue_arm_check()
+        elif proposal.action == "vision_refresh":
+            self.vision.force_refresh()
+        elif proposal.action == "assessment":
+            target = proposal.target or "hold_still"
+            if target in PROTOCOLS:
+                self.workflows.start(target)
+            elif target == "hold_still":
+                self._test_requested = True
+
+    def _dialogue_turns(self) -> list[ConversationTurn]:
+        return [ConversationTurn("user" if who == "them" else "assistant",
+                                 text, ts)
+                for who, text, ts in self.memory.dialogue[-12:]]
+
+    def _turn_context(self, query: str):
+        capabilities = (self._capability_source.snapshot()
+                        if self._capability_source is not None else [])
+        try:
+            recent_events = self.events.recent(12, subject_id="primary")
+        except Exception:
+            recent_events = []
+        trends = []
+        if self._history_source is not None:
+            query_terms = set(re.findall(r"[a-z0-9_]+", query.lower()))
+            history_items = sorted(
+                self.context_broker.items(),
+                key=lambda item: len(query_terms & set(re.findall(
+                    r"[a-z0-9_]+", f"{item.module} {item.key} {item.message}".lower()))),
+                reverse=True)
+            for item in history_items:
+                if len(trends) >= 12 or not isinstance(item.value, (int, float)) \
+                        or isinstance(item.value, bool):
+                    continue
+                try:
+                    mean_day = self._history_source.mean_since(
+                        item.module, item.key, 86400, item.subject_id)
+                    mean_week = self._history_source.mean_since(
+                        item.module, item.key, 7 * 86400, item.subject_id)
+                except Exception:
+                    continue
+                if mean_day is None and mean_week is None:
+                    continue
+                trends.append({"subject_id": item.subject_id, "module": item.module,
+                               "key": item.key, "mean_24h": mean_day,
+                               "mean_7d": mean_week,
+                               "note": "Numeric observational history; not a diagnosis."})
+        return self.context_broker.build(
+            query, self._dialogue_turns(), workflows=self.workflows.snapshot(),
+            capabilities=capabilities, recent_events=recent_events,
+            history_trends=trends)
+
+    @staticmethod
+    def _turn_messages(intent: Intent, context, topic: TopicCandidate | None) -> list[dict]:
+        messages = [{"role": turn.role, "content": turn.text}
+                    for turn in context.turns]
+        instruction = intent.llm_intent
+        if intent.detail:
+            instruction += " Supporting detail: " + intent.detail
+        if topic is not None:
+            instruction += (" First answer the person's current question completely. "
+                            "Only afterward, if natural, transition with 'By the way' and "
+                            f"{topic.prompt} Context item: {topic.context_id}.")
+        messages.append({"role": "user", "content": (
+            "Conversation controller instruction (not spoken verbatim): " + instruction)})
+        return messages
+
     def _consume_heard(self, now: float) -> tuple[list, bool]:
         """Drain the listener into memory/corroboration.
 
@@ -260,37 +449,12 @@ class VoiceAgent:
         heard = self.listener.pop_utterances()
         for text, ts in heard:
             self.memory.person_said(text, ts)
-            active_workflow = self.workflows.active("primary")
-            if active_workflow is not None:
-                low_answer = text.lower().strip()
-                response = ("denied" if any(word in low_answer.split() for word in ("no", "nope", "none"))
-                            else "affirmed" if any(word in low_answer.split() for word in ("yes", "yeah", "yep"))
-                            else "unclear")
-                if (active_workflow.stage == WorkflowStage.QUESTIONS
-                        and active_workflow.current_topic is not None):
-                    answered_topic = active_workflow.current_topic
-                    action = self.workflows.answer(response, active_workflow.subject_id)
-                    handled = True
-                    if response in ("affirmed", "denied") and answered_topic:
-                        self._conversation_results.append(Result(
-                            "conversation", f"{answered_topic}_{'confirmed' if response == 'affirmed' else 'denied'}",
-                            True, 1.0, Severity.INFO,
-                            f"User {'confirmed' if response == 'affirmed' else 'denied'} {answered_topic.replace('_', ' ')}",
-                            ttl=120, subject_id=active_workflow.subject_id,
-                            source="user_answer", correlation_id=active_workflow.correlation_id,
-                            persistence=PersistencePolicy.EVENT))
-                    if action == "suppressed":
-                        self.policy.attention.deny(active_workflow.current_topic or "assessment")
-            skin_answered = self.skin_dialogue.hear(text, now)
-            answered = None if skin_answered else self.corroboration.hear(text, now)
-            if answered is not None and answered[1] in ("confirmed", "denied"):
-                topic, verdict = answered
-                self._conversation_results.append(Result(
-                    "conversation", f"{topic}_{verdict}", True, 1.0, Severity.INFO,
-                    f"User {verdict} {topic.replace('_', ' ')}", ttl=120,
-                    source="user_answer", persistence=PersistencePolicy.EVENT))
-            if skin_answered or answered is not None:
-                handled = True
+            self._last_heard_at = max(self._last_heard_at, float(ts))
+            if (self._pending_classification is not None
+                    and interpret_answer(text) != "unclear"):
+                # A clear human yes/no beats a speculative model verdict
+                # outright: deterministic wins, and the slot is freed now.
+                self._cancel_pending_classification(superseded=True)
             low = text.lower()
             if any(phrase in low for phrase in ("help me", "call for help", "call emergency")):
                 self._safety_results.append(Result(
@@ -298,11 +462,294 @@ class VoiceAgent:
                     "The person explicitly called for help", ttl=20,
                     source="speech_recognition", quality=.95,
                     persistence=PersistencePolicy.EVENT))
-            if any(t in low for t in _TEST_TRIGGERS):
-                self._test_requested = True
-            if any(t in low for t in _ARM_TRIGGERS):
-                self._queue_arm_check()
+            action_unclear = False
+            if self._pending_action is not None:
+                if now > self._pending_action.expires_at:
+                    self._pending_action = None
+                    self._pending_action_unclear_rephrased = False
+                else:
+                    answer = self._affirmation(text)
+                    if answer == "affirmed":
+                        self._confirm_pending_action(now)
+                        handled = True
+                        continue
+                    if answer == "denied":
+                        self._pending_action = None
+                        self._pending_action_unclear_rephrased = False
+                        self._action_ack = ("Okay, I won't start it.", now)
+                        handled = True
+                        continue
+                    # Neither yes nor no. Resolved below, AFTER the chance to
+                    # recognize a differently-worded new request.
+                    action_unclear = True
+            if self._last_steered_topic is not None \
+                    and now <= self._last_steered_topic.expires_at \
+                    and self._affirmation(text) == "denied":
+                self.topic_queue.suppress(self._last_steered_topic, "user_denied")
+                self._last_steered_topic = None
+                handled = True
+                continue
+            proposal = self._proposed_action_for(text, now)
+            if proposal is not None:
+                self._pending_action = proposal
+                self._pending_action_unclear_rephrased = False
+                handled = True
+                continue
+            if action_unclear:
+                if not self._submit_classification(
+                        "action", self._action_question_id(self._pending_action),
+                        self._pending_action.target or self._pending_action.action,
+                        self._action_question(self._pending_action), text, now, ts):
+                    self._action_unclear(now)
+                handled = True
+                continue
+            active_workflow = self.workflows.active("primary")
+            if active_workflow is not None:
+                response = interpret_answer(text)
+                if (active_workflow.stage == WorkflowStage.QUESTIONS
+                        and active_workflow.current_topic is not None):
+                    answered_topic = active_workflow.current_topic
+                    if response == "unclear" and self._submit_classification(
+                            "workflow",
+                            f"workflow-question:{active_workflow.correlation_id}:"
+                            f"{answered_topic}", answered_topic,
+                            _ASSESSMENT_QUESTIONS.get(
+                                answered_topic, "How did that task feel for you?"),
+                            text, now, ts):
+                        handled = True
+                    else:
+                        self._apply_workflow_answer(
+                            active_workflow, answered_topic, response)
+                        handled = True
+            skin_answered = self.skin_dialogue.hear(text, now)
+            answered = None
+            if not skin_answered:
+                pending_question = self.corroboration.pending_question(now)
+                if pending_question is not None:
+                    topic, rule = pending_question
+                    verdict = self.corroboration.classify(topic, text)
+                    asks = self.corroboration.topics[topic].asks
+                    if verdict == "unclear" and self._submit_classification(
+                            "corroboration", f"ask:{topic}:{asks}", topic,
+                            rule.question, text, now, ts):
+                        handled = True      # the state machine waits for it
+                    else:
+                        answered = self.corroboration.apply_verdict(
+                            topic, verdict, now)
+            if answered is not None and answered[1] in ("confirmed", "denied"):
+                self._record_corroboration_answer(*answered)
+            if skin_answered or answered is not None:
+                handled = True
         return heard, handled
+
+    # ------------------------------------------------ async classification
+
+    def _confirm_pending_action(self, now: float) -> None:
+        """Start the confirmed proposal (allowlist unchanged) and clear state."""
+        proposal, self._pending_action = self._pending_action, None
+        self._pending_action_unclear_rephrased = False
+        self._execute_confirmed_action(proposal)
+        if proposal.action == "vision_refresh":
+            self._action_ack = ("Okay, I'll take a fresh look.", now)
+
+    def _action_unclear(self, now: float) -> None:
+        """One bounded re-ask on the action lane, then give up.
+
+        Mirrors WorkflowSession.unclear_rephrased and TopicState.asks: exactly
+        one gentle retry, never a loop. `ProposedAction` is frozen, so the
+        confirmation window is extended by replacing the proposal — `created_at`
+        stays put, which keeps the question id (and so the async staleness
+        guard) pointing at the same question.
+        """
+        proposal = self._pending_action
+        if proposal is None:
+            return
+        if not self._pending_action_unclear_rephrased:
+            self._pending_action_unclear_rephrased = True
+            self._pending_action = replace(proposal, expires_at=now + 30.0)
+            return
+        self._pending_action = None
+        self._pending_action_unclear_rephrased = False
+        self._action_ack = ("Okay, I'll leave it for now.", now)
+
+    @staticmethod
+    def _action_question_id(proposal: ProposedAction) -> str:
+        return (f"confirm-action:{proposal.action}:{proposal.target}:"
+                f"{int(proposal.created_at)}")
+
+    @staticmethod
+    def _action_question(proposal: ProposedAction) -> str:
+        target = (proposal.target or proposal.action).replace("_", " ")
+        return f"Would you like me to start the {target} now?"
+
+    def _record_corroboration_answer(self, topic: str, verdict: str) -> None:
+        self._conversation_results.append(Result(
+            "conversation", f"{topic}_{verdict}", True, 1.0, Severity.INFO,
+            f"User {verdict} {topic.replace('_', ' ')}", ttl=120,
+            source="user_answer", persistence=PersistencePolicy.EVENT))
+
+    def _apply_workflow_answer(self, workflow, answered_topic: str,
+                               response: str) -> None:
+        """Hand one assessment answer to the workflow engine (single path)."""
+        action = self.workflows.answer(response, workflow.subject_id)
+        if response in ("affirmed", "denied") and answered_topic:
+            label = "confirmed" if response == "affirmed" else "denied"
+            self._conversation_results.append(Result(
+                "conversation", f"{answered_topic}_{label}",
+                True, 1.0, Severity.INFO,
+                f"User {label} {answered_topic.replace('_', ' ')}",
+                ttl=120, subject_id=workflow.subject_id,
+                source="user_answer", correlation_id=workflow.correlation_id,
+                persistence=PersistencePolicy.EVENT))
+        if action == "suppressed":
+            self.policy.attention.deny(workflow.current_topic or "assessment")
+
+    def _cancel_pending_classification(self, *, superseded: bool = False) -> None:
+        """Drop the pending slot, reaping the provider future rather than leaking it."""
+        pending, self._pending_classification = self._pending_classification, None
+        if pending is None:
+            return
+        poll = getattr(self.moondream, "poll_classification", None)
+        if poll is not None:
+            poll(pending.request_id)
+        if superseded:
+            self._classification_superseded += 1
+
+    def _submit_classification(self, lane: str, question_id: str, target: str,
+                               question: str, text: str, now: float,
+                               heard_at: float) -> bool:
+        """Ask the model to refine ONE ambiguous answer on a later tick.
+
+        Returns whether the request was accepted. The caller falls back to the
+        deterministic keyword verdict when it was not — closed provider,
+        disabled, unavailable, auth-failed, circuit-open, or the shared
+        classify lane already busy all read the same way here.
+
+        Only ever called for a keyword "unclear": a confident keyword match is
+        acted on immediately. That ordering is what makes denied -> affirmed
+        structurally unreachable, so a person's clear "no" can never be
+        overturned by a model, and it keeps offline behavior byte-identical.
+        """
+        submit = getattr(self.moondream, "submit_classification", None)
+        if submit is None:
+            return False
+        if (self._pending_classification is not None
+                and self._pending_classification.heard_at == float(heard_at)):
+            # An earlier lane already claimed the single slot for THIS
+            # utterance. Later lanes take their deterministic keyword verdict
+            # rather than cannibalizing it, which would lose both answers.
+            return False
+        # One slot, one future: reap the outgoing request before overwriting.
+        self._cancel_pending_classification(superseded=True)
+        request_id = submit(question, text)
+        if request_id is None:
+            return False
+        self._pending_classification = PendingClassification(
+            request_id=request_id, lane=lane, question_id=question_id,
+            target=target, question=question, text=text, submitted_at=now,
+            deadline=now + CLASSIFICATION_DEADLINE, heard_at=float(heard_at))
+        return True
+
+    def _current_question_id(self, pending: PendingClassification) -> str | None:
+        """Recompute the lane's question id from LIVE state, or None if gone.
+
+        The primary staleness guard: one comparison covers every way the
+        question can have moved on — topic re-asked, answered by keyword in the
+        meantime, cooled down, proposal expired or replaced, workflow advanced.
+        """
+        if pending.lane == "action":
+            proposal = self._pending_action
+            return None if proposal is None else self._action_question_id(proposal)
+        if pending.lane == "corroboration":
+            state = self.corroboration.topics.get(pending.target)
+            if state is None or state.status != "asked":
+                return None
+            return f"ask:{pending.target}:{state.asks}"
+        if pending.lane == "workflow":
+            workflow = self.workflows.active("primary")
+            if (workflow is None or workflow.stage != WorkflowStage.QUESTIONS
+                    or not workflow.current_topic):
+                return None
+            return (f"workflow-question:{workflow.correlation_id}:"
+                    f"{workflow.current_topic}")
+        return None
+
+    def _poll_classification(self, now: float) -> None:
+        """Apply or drop one refined answer verdict; never blocks."""
+        pending = self._pending_classification
+        if pending is None:
+            return
+        poll = getattr(self.moondream, "poll_classification", None)
+        if poll is None:
+            self._pending_classification = None
+            return
+        done, verdict = poll(pending.request_id)
+        if not done:
+            if now > pending.deadline:
+                # Give up on the slot; the provider prunes its own finished
+                # future on the next submit, so nothing accumulates.
+                self._pending_classification = None
+                self._classification_dropped_deadline += 1
+            return
+        self._pending_classification = None
+        if verdict not in _CLASSIFY_VERDICTS:                       # (1)
+            return
+        if now > pending.deadline:                                  # (2)
+            self._classification_dropped_deadline += 1
+            return
+        if self._last_heard_at > pending.heard_at:                  # (3)
+            self._classification_superseded += 1
+            return
+        if self._current_question_id(pending) != pending.question_id:   # (4)
+            self._classification_dropped_stale += 1
+            return
+        if pending.lane == "action" and (self._pending_action is None
+                                         or now > self._pending_action.expires_at):
+            self._classification_dropped_stale += 1                 # (5)
+            return
+        self._apply_classification(pending, verdict, now)
+
+    def _apply_classification(self, pending: PendingClassification,
+                              verdict: str, now: float) -> None:
+        """Route a surviving verdict through the very path a keyword hit takes."""
+        if pending.lane == "corroboration":
+            answered = self.corroboration.apply_verdict(pending.target, verdict, now)
+            if answered is not None and answered[1] in ("confirmed", "denied"):
+                self._record_corroboration_answer(*answered)
+            return
+        answer = "affirmed" if verdict == "confirmed" else verdict
+        if pending.lane == "action":
+            if answer == "affirmed":
+                self._confirm_pending_action(now)
+            elif answer == "denied":
+                self._pending_action = None
+                self._pending_action_unclear_rephrased = False
+                self._action_ack = ("Okay, I won't start it.", now)
+            else:
+                self._action_unclear(now)
+            return
+        if pending.lane == "workflow":
+            workflow = self.workflows.active("primary")
+            if workflow is not None:
+                self._apply_workflow_answer(workflow, pending.target, answer)
+
+    def _poll_topic_selection(self, now: float) -> None:
+        """Land an async steer choice in the engine's memo cache; never blocks."""
+        if self._pending_topic_selection is None:
+            return
+        poll = getattr(self.moondream, "poll_topic_selection", None)
+        if poll is None:
+            self._pending_topic_selection = None
+            return
+        request_id, signature = self._pending_topic_selection
+        done, choice = poll(request_id)
+        if not done:
+            return
+        self._pending_topic_selection = None
+        # Keyed on the flagged set it was asked about, so a late answer can
+        # only ever be read back for that same set; the engine's membership
+        # check remains the authority over whether it is honored at all.
+        self.corroboration.cache_selection(signature, choice)
 
     def pop_safety_results(self) -> list[Result]:
         """Drain deterministic non-medical safety events recognized from speech."""
@@ -321,6 +768,41 @@ class VoiceAgent:
         extra: list[Intent] = []
         self._actions.clear()
         self._expire_arm_check_session()
+
+        if self._action_ack is not None:
+            text, created = self._action_ack
+            sig = f"action-ack:{int(created * 10)}"
+            extra.append(Intent(
+                "reply", sig,
+                "Briefly acknowledge the confirmed or cancelled action.",
+                "", text, 125, health_prompt=False))
+            self._actions[sig] = lambda: setattr(self, "_action_ack", None)
+
+        if self._pending_action is not None:
+            if now > self._pending_action.expires_at:
+                self._pending_action = None
+                self._pending_action_unclear_rephrased = False
+            else:
+                action = self._pending_action
+                target = (action.target or action.action).replace("_", " ")
+                sig = self._action_question_id(action)
+                if self._pending_action_unclear_rephrased:
+                    # The single bounded retry: a distinct signature so the
+                    # no-repeat bookkeeping lets it be spoken once, one notch
+                    # below the original ask so the two can never compete.
+                    extra.append(Intent(
+                        "question", f"{sig}:rephrase",
+                        "Ask once more, plainly, for a yes or no before starting "
+                        "the proposed action.", action.reason,
+                        f"Sorry — should I start the {target}? Just yes or no.", 119,
+                        health_prompt=False, topic=action.target or action.action))
+                else:
+                    extra.append(Intent(
+                        "question", sig,
+                        "Ask for explicit confirmation before starting the proposed action.",
+                        action.reason,
+                        f"Would you like me to start the {target} now?", 120,
+                        health_prompt=False, topic=action.target or action.action))
 
         workflow = self.workflows.active("primary")
         if workflow is not None and workflow.stage == WorkflowStage.INSTRUCTION:
@@ -510,29 +992,36 @@ class VoiceAgent:
         # The LLM may steer *which* already-flagged topic to raise (offered only
         # the vetted questions, choice membership-checked in the engine); it
         # falls back to deterministic oldest-flagged when offline or unsure.
+        # The engine only calls the selector on a memo MISS, so reaching here
+        # means no choice is resolved for this flagged set yet. Returning None
+        # takes the deterministic oldest-flagged topic THIS tick — the ask is
+        # never delayed — while the request is submitted for a later tick.
+        # tick() must never block on the network: the synchronous select_topic
+        # reaches urlopen(timeout=8.0) and would stall the frame loop for every
+        # new flagged set.
         def _steer(cands):
             items = [(topic, rule.question) for topic, rule in cands]
-            return self.moondream.select_topic(items, self.memory.context_text())
+            signature = tuple(topic for topic, _rule in cands)
+            submit = getattr(self.moondream, "submit_topic_selection", None)
+            if submit is not None:
+                if self._pending_topic_selection is None:
+                    request_id = submit(items, self.memory.context_text())
+                    if request_id is not None:
+                        self._pending_topic_selection = (request_id, signature)
+                return None
+            select = getattr(self.moondream, "select_topic", None)
+            # No async lane on this provider: only a provider that offers the
+            # synchronous call at all is asked, and never one that offers both.
+            return None if select is None else select(items,
+                                                      self.memory.context_text())
         nq = (None if self.skin_dialogue.suppresses_local_skin(now)
               else self.corroboration.next_question_steered(now, _steer))
         if nq is not None:
             topic, rule = nq
             asks = self.corroboration.topics[topic].asks
             sig = f"ask:{topic}:{asks}"
-            cues = self.memory.facial_cues()
-            relevant = []
-            if topic == "cold_symptoms":
-                relevant = [key for key in ("nose_redness", "cheek_redness",
-                                             "nasal_discharge_visible") if key in cues]
-            elif topic == "hydration" and "lip_dryness" in cues:
-                relevant = ["lip_dryness"]
-            elif topic == "tiredness_pallor":
-                relevant = [key for key in ("under_eye_darkness", "under_eye_puffiness")
-                            if key in cues]
-            support = (" Supporting visible appearance cues: " +
-                       ", ".join(key.replace("_", " ") for key in relevant) +
-                       ". Use them only to phrase the check-in; do not state a cause or diagnosis."
-                       if relevant else "")
+            support = support_clause(self.memory, _CHECK_IN_CUES.get(topic, ()),
+                                     SUPPORT_TRAILING_CHECK_IN)
             extra.append(Intent(
                 "follow_up", sig,
                 "Ask this gentle check-in question, naturally and without "
@@ -559,6 +1048,14 @@ class VoiceAgent:
                 "reply", f"reply:{int(ts * 10)}",
                 "Reply briefly and warmly to what the person just said.",
                 f'They said: "{text}"', "I'm glad you told me that.", 80))
+        elif not heard and not handled and workflow is None:
+            topic = self.topic_queue.next(now)
+            if topic is not None:
+                extra.append(Intent(
+                    "observation", f"steer:{topic.id}", topic.prompt,
+                    f"Approved context item: {topic.context_id}", topic.fallback, 42,
+                    confidence=min(1.0, topic.score / 12.0),
+                    health_prompt=False, topic=topic.id))
         return extra
 
     def _begin_hold_still(self) -> None:
@@ -609,11 +1106,62 @@ class VoiceAgent:
 
     # ----------------------------------------------------------------- tick
 
+    def _poll_periodic_vision(self, now: float) -> None:
+        if self._pending_vision is None or not hasattr(self.moondream, "poll_response"):
+            return
+        done, response = self.moondream.poll_response(self._pending_vision)
+        if not done:
+            return
+        self._pending_vision = None
+        self.vision.complete(now)
+        if self._capability_source is not None and self.vision_enabled:
+            from core.capabilities import CapabilityStatus
+            self._capability_source.set(
+                "agent_vision", "cloud",
+                CapabilityStatus.READY if response is not None else CapabilityStatus.DEGRADED,
+                "periodic vision ready" if response is not None
+                else "periodic vision request failed; retry is bounded")
+        if response is not None and response.text:
+            self.context_broker.add_vision_observation(response.text, now)
+
+    def _submit_periodic_vision(self, now: float) -> bool:
+        if not self.vision_enabled or not hasattr(self.moondream, "submit_response"):
+            return False
+        status = self.moondream.status()
+        if not status.get("active"):
+            return False
+        frame = self.vision.take_due()
+        if frame is None:
+            return False
+        context = self._turn_context("What new, neutral, conversationally useful details are visible?")
+        messages = [{"role": "user", "content": (
+            "Privately summarize only new neutral visible details useful for a future "
+            "conversation. Do not diagnose, identify the person, infer sensitive traits, "
+            "or address the person directly.")}]
+        request_id = self.moondream.submit_response(messages, context.items, image=frame)
+        # The provider worker now owns the sole ephemeral copy; this scope drops it.
+        if request_id is None:
+            self.vision.complete(now)
+            return False
+        self._pending_vision = request_id
+        return True
+
     def tick(self, snapshot, now: float | None = None) -> str | None:
         """Advance one step: hear, update state, and act if warranted."""
         now = time.time() if now is None else now
+        self._poll_periodic_vision(now)
+        # Before _consume_heard: an arriving verdict must be applied to the
+        # state its question was asked against, not to state a new utterance
+        # has already mutated.
+        self._poll_classification(now)
+        self._poll_topic_selection(now)
         heard, handled = self._consume_heard(now)
         self.memory.ingest(snapshot, now)
+        self.context_broker.ingest(snapshot, now)
+        # Signals the topic table or a corroboration rule already speaks for
+        # must not also be promoted as an unauthored "By the way, ..." line.
+        self.topic_queue.observe(self.context_broker.items(), now,
+                                 excluded=covered_keys())
         grouped: dict[str, list] = {}
         for result in snapshot:
             grouped.setdefault(result.subject_id, []).append(result)
@@ -637,6 +1185,30 @@ class VoiceAgent:
                 if not (r.module == "rash" and r.key.startswith("rash"))]
         self.corroboration.observe(corroboration_snapshot, now)
         extra = self._extra_intents(now, heard, handled)
+        if self._pending_response is not None:
+            (request_id, pending_intent, requested_mono, requested_at,
+             pending_action, pending_topic, pending_items) = self._pending_response
+            done, response = self.moondream.poll_response(request_id)
+            if done or time.monotonic() - requested_mono >= 4.0:
+                self._pending_response = None
+                self._last_conversation_latency_ms = round(
+                    (time.monotonic() - requested_mono) * 1000.0, 1)
+                if response is None:
+                    self._last_fallback_reason = "provider_timeout_or_unavailable"
+                    text = pending_intent.fallback
+                else:
+                    self._last_fallback_reason = response.fallback_reason
+                    text = response.text or pending_intent.fallback
+                    text, guard_reason = guard_agent_only_speech(
+                        text, pending_items, pending_intent.fallback)
+                    if guard_reason is not None:
+                        self._last_fallback_reason = guard_reason
+                if pending_topic is not None:
+                    self.topic_queue.mark_raised(pending_topic, requested_at)
+                    self._last_steered_topic = pending_topic
+                return self._speak_intent(
+                    pending_intent, text, requested_at, action=pending_action)
+            return None
         if self._pending_speech is not None:
             (request_id, pending_intent, requested_mono, requested_at,
              pending_action) = self._pending_speech
@@ -649,9 +1221,27 @@ class VoiceAgent:
             return None
         intent = self.policy.next_intent(
             self.memory, now, extra=extra,
-            suppress_routine=self.workflows.active("primary") is not None)
+            suppress_routine=self.workflows.active("primary") is not None,
+            corroboration=self.corroboration)
         if intent is None:
+            if not heard and self._pending_vision is None:
+                self._submit_periodic_vision(now)
             return None
+        topic = self.topic_queue.next(now)
+        if not (intent.kind == "reply" or intent.signature.startswith("steer:")):
+            topic = None
+        if hasattr(self.moondream, "submit_response"):
+            query = (heard[-1][0] if heard and intent.kind == "reply"
+                     else intent.detail or intent.llm_intent)
+            context = self._turn_context(query)
+            request_id = self.moondream.submit_response(
+                self._turn_messages(intent, context, topic), context.items)
+            if request_id is not None:
+                action = self._actions.get(intent.signature)
+                self._pending_response = (
+                    request_id, intent, time.monotonic(), now, action, topic,
+                    list(context.items))
+                return None
         request_id = self.moondream.submit_generation(
             intent.llm_intent, self.memory.context_text(), intent.detail)
         if request_id is not None:
@@ -659,6 +1249,10 @@ class VoiceAgent:
             self._pending_speech = (
                 request_id, intent, time.monotonic(), now, action)
             return None
+        if topic is not None and intent.signature.startswith("steer:"):
+            self.topic_queue.mark_raised(topic, now)
+            self._last_steered_topic = topic
+        self._last_fallback_reason = "provider_unavailable"
         return self._speak_intent(intent, intent.fallback, now)
 
     def _speak_intent(self, intent, candidate: str, now: float,

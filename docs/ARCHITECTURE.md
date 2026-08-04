@@ -32,6 +32,15 @@ doc explains how the pieces fit together. To *extend* it, see
                      back into Aggregator      notifications     + TTS
 ```
 
+Before a conversational cloud request, `agent/conversation.py` turns the
+agent-only aggregator snapshot into bounded `ContextItem` records. It joins
+those records with safe event summaries, numeric history trends, workflow and
+capability state, then ranks them for the current question. `VoiceAgent` sends
+the selected records and session-only dialogue through the provider-neutral
+conversation contract. A separate topic queue ranks changed observations for
+answer-first proactive steering; allowlisted actions remain pending until a
+local deterministic confirmation gate accepts an explicit yes.
+
 Per frame (`core/pipeline.py: Pipeline.process_frame`): run each extractor,
 run due modules via the scheduler, ingest their `Result`s into the aggregator,
 then run the advisor over the snapshot and ingest its advice too. `main.py`'s
@@ -139,7 +148,7 @@ The video loop in `main.py` must never block. Heavy work runs off it:
 | `modules/` | The ~33 detectors. `modules/_util.py` = shared signal helpers (`TimedBuffer`, `bandpass`, FFT). |
 | `modules/backends/`, `modules/rppg_backends/`, `modules/emotion_backends/` | Multi-backend implementations (heuristic + tested models) shown side by side. |
 | `output/` | `aggregator` (person state), `dashboard` (window + `to_payload` for `/data`), `overlay`, legacy `greeting_engine`. |
-| `agent/` | The Moondream voice agent: `state` (memory), `policy` (what to say), `moondream_client`, `voice_agent`, `advisor_engine`, `env`. |
+| `agent/` | The companion agent: `conversation` (structured context, topics, confirmed actions, vision cadence), `state` (session memory), `policy`, provider client, `voice_agent`, and deterministic advisors. |
 | `alerts/` | Deterministic caregiver alerting: `notifier` (channels), `manager` (confirm/dedupe/escalate). |
 | `audio/` | Offline text-to-speech. |
 | `webui/` | Stdlib web server: `/` companion text + `/data` full telemetry (SSE), pages `page.html` / `data.html`. |

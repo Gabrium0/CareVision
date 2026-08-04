@@ -299,6 +299,8 @@ advice:
     bpm_low_warning: 45.0
     hrv_low: 20.0
     resp_high: 24.0
+    spo2_low: 92.0             # camera SpO2 is a trend; alerts/ owns escalation
+    spo2_warning: 88.0
     min_confidence: 0.35
   cold:                        # cold-symptom composite (sneeze + face_touch + flushing + fatigue)
     enabled: true
@@ -309,6 +311,31 @@ advice:
     enabled: true
     interval: 30.0
     summary_hour: 20
+
+# Conversation cadence and per-topic admission tuning for agent/topics.py.
+#
+# NUMBERS AND BOOLEANS ONLY. Every line the agent can speak is hand-authored in
+# agent/topics.py, because those `fallback` strings are what gets said when the
+# language provider is down and what the safety airlocks fall back TO. Deploying
+# a site may retune *how eagerly* a topic is raised; it may never retune *what
+# is said*. TopicSpec.apply_overrides enforces that by raising on any key
+# outside {enabled, priority, min_confidence, min_quality, min_severity, gate},
+# so a typo here fails at load instead of silently doing nothing.
+conversation:
+  enabled: true
+  health_prompts_per_hour: 6   # rolling cap on spoken health check-ins
+  category_gaps:               # min seconds between two lines in one category
+    vitals: 300
+    skin: 600
+    movement: 300
+    routine: 900
+    environment: 180
+    mood: 600
+    social: 45
+  topics:
+    # Only topics whose shipped defaults are being changed need a line here;
+    # anything absent keeps the values declared in agent/topics.py.
+    gait_asymmetry: {enabled: true, min_confidence: 0.45, priority: 52}
 
 sensors:
   realsense_depth_imu: {enabled: false}
