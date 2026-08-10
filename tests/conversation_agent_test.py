@@ -276,7 +276,10 @@ def test_moondream_structured_response_sends_multiturn_context_and_bounded_image
         assert response and response.text == "The room looks calm."
         payload = captured[0][0]
         assert [message["role"] for message in payload["messages"][:2]] == [
-            "system", "system"]
+            "system", "user"]
+        system = payload["messages"][0]["content"]
+        assert "untrusted observation data" in system
+        assert "OBSERVATION_DATA=" in system
         image_parts = [part for message in payload["messages"]
                        if isinstance(message["content"], list)
                        for part in message["content"] if part["type"] == "image_url"]

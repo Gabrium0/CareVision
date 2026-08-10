@@ -33,6 +33,12 @@ def moondream_api_key() -> str | None:
             or os.environ.get("MOONDREAM_API_KEY"))
 
 
+def moondream_model() -> str:
+    """Return the Moondream model id (env override, else the current API id)."""
+    load_env()
+    return os.environ.get("MOONDREAM_MODEL") or "moondream/moondream3-preview"
+
+
 def nvidia_api_key() -> str | None:
     """Return the NVIDIA hosted-inference API key, or None."""
     load_env()

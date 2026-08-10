@@ -204,8 +204,9 @@ def main():
                          "requiring speech recognition")
     ap.add_argument("--whisper-model", default="base",
                     help="faster-whisper model size for --listen (default base)")
-    ap.add_argument("--voice-model", default="moondream3.1-9B-A2B",
-                    help="Moondream model for the voice agent (key from .env)")
+    ap.add_argument("--voice-model", default="moondream/moondream3-preview",
+                    help="Moondream model for the voice agent (key from .env; "
+                         "override via MOONDREAM_MODEL env var)")
     ap.add_argument("--no-moondream", action="store_true",
                     help="start with Moondream API calls disabled; press M to toggle")
     ap.add_argument("--enable-agent-vision", action="store_true",

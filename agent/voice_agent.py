@@ -82,6 +82,13 @@ _DEMO_STEP_LABELS = {
 # "affirmed" is spelled "confirmed" by the corroboration state machine and by
 # MoondreamClient.classify_answer; the action/workflow lanes map it back.
 _CLASSIFY_VERDICTS = ("confirmed", "denied", "unclear")
+# Intent kinds whose lines are politely phrased as questions ("Could you hold a
+# hand out flat...?") but are answered by MOVING, not by speaking: the capture
+# window and the module's result close them. Waiting for a spoken reply after
+# one would suppress the corrective re-prompt the capture may need next.
+_PHYSICAL_PROMPT_KINDS = ("elicit_test", "instruction")
+_HELP_PHRASES = ("help me", "call for help", "call emergency")
+_HESITATION_WORDS = frozenset({"um", "uh", "hmm", "hm", "er", "ah", "well"})
 _DEMO_STEP_GUIDANCE = {
     "facial_movement": "Please face the camera in even light, then we'll try again.",
     "arm_drift": "Please step back so your whole upper body and both arms are in view, "
@@ -93,13 +100,25 @@ _DEMO_STEP_GUIDANCE = {
 class VoiceAgent:
     """Orchestrates memory -> policy -> Moondream -> speech (and listening)."""
     def __init__(self, name: str = "there", speak: bool = True,
-                 model: str = "moondream3.1-9B-A2B", listener=None,
+                 model: str | None = None, listener=None,
                  moondream_enabled: bool = True,
                  vision_enabled: bool = False,
                  **policy_kwargs):
         self.memory = ObservationMemory(name=name)
         self.memories: dict[str, ObservationMemory] = {"primary": self.memory}
         self.policy = Policy(**policy_kwargs)
+        # Turn-taking: how long a question the agent asked on an *untracked*
+        # lane (small talk, a topic fallback ending in "?") holds the floor.
+        # Tuned from the same `conversation:` block that configures Policy.
+        conversation_cfg = dict(policy_kwargs.get("conversation") or {})
+        self.reply_window = float(conversation_cfg.get("reply_window", 30.0))
+        self._awaiting_reply_until = 0.0
+        # Emergency episodes are intentionally separate from AlertManager.
+        # These are the two narrow cases that may speak over an answer window;
+        # all other alerting stays on its caregiver/external path.
+        self._active_emergencies: set[str] = set()
+        self._emergency_episodes: dict[str, int] = {}
+        self._pending_help_alert = False
         self.moondream = MoondreamClient(model=model, enabled=moondream_enabled)
         self.speaker = Speaker(enabled=speak)
         self.listener = listener
@@ -154,6 +173,10 @@ class VoiceAgent:
         self._last_conversation_latency_ms: float | None = None
         self._last_fallback_reason: str | None = None
         self._cloud_speech_deadline = 0.75
+        # Structured-response deadline (seconds of wall-clock before the
+        # templated fallback is spoken). Kept an instance attribute so a demo
+        # or test can give a slow provider more time to phrase a real answer.
+        self._response_deadline = 4.0
         moondream = self.moondream.status()
         mode = ("Moondream" if moondream["active"] else
                 "Moondream disabled (templated)" if moondream["available"] else "templated")
@@ -437,6 +460,100 @@ class VoiceAgent:
             "Conversation controller instruction (not spoken verbatim): " + instruction)})
         return messages
 
+    def _can_hear(self) -> bool:
+        """True when an ASR listener exists and is currently able to hear.
+
+        `available` defaults to True: TypedListener/ReplayListener do not
+        publish the attribute, and only an explicit False (audio/stt.py flips
+        it at runtime) should be read as "no ears".
+        """
+        return (self.listener is not None
+                and bool(getattr(self.listener, "available", True)))
+
+    def _awaiting_answer(self, now: float) -> bool:
+        """True while a question the agent asked is still within its answer window.
+
+        Every lane that owns an outstanding question is consulted here, so the
+        agent holds the floor for the person instead of talking over them. Each
+        lane must expire on its own — a status that never lapses (corroboration
+        keeps `status == "asked"` forever) would mute the agent permanently,
+        which is why this asks `pending_question`, not the status.
+        """
+        if not self._can_hear():
+            return False          # no ears: waiting would mute us forever
+        if self.corroboration.pending_question(now) is not None:
+            return True
+        # NOTE: `_pending_action` is deliberately NOT consulted. A proposal is
+        # created the moment the request is *heard*, one tick before the
+        # confirmation question is spoken, so waiting on it would silence that
+        # very question. The action lane is covered by the generic wait below:
+        # its confirmation line and its one bounded re-ask both end in "?".
+        if self.skin_dialogue.awaiting_answer(now):
+            return True
+        workflow = self.workflows.active("primary")
+        # `unclear_rephrased` means the agent still owes this person a plainer
+        # re-ask of the SAME question; that re-ask must not be gated, exactly as
+        # an unclear corroboration answer reverts the topic to "flagged".
+        if (workflow is not None and workflow.current_topic is not None
+                and not workflow.unclear_rephrased):
+            return True
+        return self._awaiting_reply_until > now
+
+    def _low_information_utterance(self, text: str, now: float) -> bool:
+        """Whether speech is just a thinking sound, not a conversational turn.
+
+        Clear yes/no answers, safety calls, and allowlisted requests always
+        count, even when short. Only actual filler keeps the current answer
+        window open; brevity alone never does, because "my back hurts" is three
+        words and is a turn the person is entitled to have heard.
+        """
+        low = text.lower()
+        words = re.findall(r"[a-z']+", low)
+        # "okay" may be a genuine brief confirmation, but the trailing
+        # thinking filler in "okay then" is not an answer to a health prompt.
+        if len(words) <= 3 and (all(w in _HESITATION_WORDS for w in words)
+                                or words == ["okay", "then"]):
+            return True
+        if any(phrase in low for phrase in _HELP_PHRASES):
+            return False
+        if interpret_answer(text) != "unclear":
+            return False
+        if self._proposed_action_for(text, now) is not None:
+            return False
+        # An empty transcript (words == []) satisfies this vacuously and stays
+        # low-information, which is what a dropped ASR segment should be.
+        return len(words) <= 4 and all(w in _HESITATION_WORDS for w in words)
+
+    def _emergency_intents(self, snapshot) -> list[Intent]:
+        """Return only confirmed emergency speech candidates for this tick.
+
+        A positive fall result starts one episode until the signal clears. An
+        explicit spoken help request is queued once by `_consume_heard`.
+        Generic ALERT results deliberately do not enter this path.
+        """
+        active = set()
+        candidates: list[Intent] = []
+        if any(result.subject_id == "primary" and result.module == "fall"
+               and result.key == "fall" and bool(result.value)
+               and result.severity == Severity.ALERT for result in snapshot):
+            active.add("fall")
+        if self._pending_help_alert:
+            active.add("explicit_help")
+        for name in active:
+            if name not in self._active_emergencies:
+                self._emergency_episodes[name] = self._emergency_episodes.get(name, 0) + 1
+            episode = self._emergency_episodes[name]
+            if name == "fall":
+                fallback = "I detected a fall. Please call for help now."
+            else:
+                fallback = "I heard you ask for help. Please call for help now."
+            candidates.append(Intent(
+                "urgent_alert", f"urgent:{name}:{episode}",
+                "State this confirmed emergency clearly and briefly.", "", fallback,
+                1000, health_prompt=False))
+        self._active_emergencies = active
+        return candidates
+
     def _consume_heard(self, now: float) -> tuple[list, bool]:
         """Drain the listener into memory/corroboration.
 
@@ -450,18 +567,26 @@ class VoiceAgent:
         for text, ts in heard:
             self.memory.person_said(text, ts)
             self._last_heard_at = max(self._last_heard_at, float(ts))
+            if self._low_information_utterance(text, now):
+                # Do not turn "um" into an unclear answer/re-ask. The person
+                # retains the floor and the original deadline keeps running.
+                continue
+            # A meaningful utterance, including a direct request, ends only
+            # the generic conversational wait. Tracked lanes update below.
+            self._awaiting_reply_until = 0.0
             if (self._pending_classification is not None
                     and interpret_answer(text) != "unclear"):
                 # A clear human yes/no beats a speculative model verdict
                 # outright: deterministic wins, and the slot is freed now.
                 self._cancel_pending_classification(superseded=True)
             low = text.lower()
-            if any(phrase in low for phrase in ("help me", "call for help", "call emergency")):
+            if any(phrase in low for phrase in _HELP_PHRASES):
                 self._safety_results.append(Result(
                     "explicit_help", "call_for_help", True, .95, Severity.ALERT,
                     "The person explicitly called for help", ttl=20,
                     source="speech_recognition", quality=.95,
                     persistence=PersistencePolicy.EVENT))
+                self._pending_help_alert = True
             action_unclear = False
             if self._pending_action is not None:
                 if now > self._pending_action.expires_at:
@@ -1185,11 +1310,23 @@ class VoiceAgent:
                 if not (r.module == "rash" and r.key.startswith("rash"))]
         self.corroboration.observe(corroboration_snapshot, now)
         extra = self._extra_intents(now, heard, handled)
+        emergency = self._emergency_intents(snapshot)
+        if emergency:
+            # Urgent wording is deterministic: it must not wait for a model
+            # response while a confirmed emergency is active.
+            intent = self.policy.next_intent(
+                self.memory, now, extra=emergency, suppress_routine=True,
+                awaiting_answer=True)
+            if intent is not None:
+                if intent.signature.startswith("urgent:explicit_help:"):
+                    self._pending_help_alert = False
+                    self._active_emergencies.discard("explicit_help")
+                return self._speak_intent(intent, intent.fallback, now)
         if self._pending_response is not None:
             (request_id, pending_intent, requested_mono, requested_at,
              pending_action, pending_topic, pending_items) = self._pending_response
             done, response = self.moondream.poll_response(request_id)
-            if done or time.monotonic() - requested_mono >= 4.0:
+            if done or time.monotonic() - requested_mono >= self._response_deadline:
                 self._pending_response = None
                 self._last_conversation_latency_ms = round(
                     (time.monotonic() - requested_mono) * 1000.0, 1)
@@ -1222,7 +1359,8 @@ class VoiceAgent:
         intent = self.policy.next_intent(
             self.memory, now, extra=extra,
             suppress_routine=self.workflows.active("primary") is not None,
-            corroboration=self.corroboration)
+            corroboration=self.corroboration,
+            awaiting_answer=self._awaiting_answer(now))
         if intent is None:
             if not heard and self._pending_vision is None:
                 self._submit_periodic_vision(now)
@@ -1268,6 +1406,12 @@ class VoiceAgent:
             text = safe_check_in(generated, intent.fallback)
         else:
             text = generated or intent.fallback
+        # Small talk and most topic fallbacks end in a question but belong to no
+        # lane that tracks an answer. Judge the FINAL text (after the airlocks),
+        # since a fallback substitution can turn a question into a statement.
+        if (self._can_hear() and text.rstrip().endswith("?")
+                and intent.kind not in _PHYSICAL_PROMPT_KINDS):
+            self._awaiting_reply_until = now + self.reply_window
         self.policy.mark_spoken(intent, now)
         active_workflow = self.workflows.active("primary")
         if action is _MISSING_ACTION:

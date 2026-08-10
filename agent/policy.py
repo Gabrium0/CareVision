@@ -43,6 +43,12 @@ class Intent:
     category: str = "general"
 
 
+# A confirmed emergency is the sole interruption while a person is thinking.
+# Conversation replies may still bypass the ordinary anti-chatter gap after the
+# person has taken their turn, but they must never cut into an answer window.
+_GAP_INTERJECTABLE = ("reply", "conclusion", "urgent_alert")
+_ANSWER_WINDOW_INTERJECTABLE = ("urgent_alert",)
+
 _SMALL_TALK = [
     "Make light, friendly small talk and ask how their day is going.",
     "Share a warm, general pleasantry and invite them to chat.",
@@ -125,7 +131,8 @@ class Policy:
     def next_intent(self, mem: ObservationMemory, now: float | None = None,
                     extra: list[Intent] | None = None,
                     suppress_routine: bool = False,
-                    corroboration=None) -> Intent | None:
+                    corroboration=None,
+                    awaiting_answer: bool = False) -> Intent | None:
         """Pick the highest-priority thing to say now, or None.
 
         `extra` lets the corroboration/elicitation layers inject their own
@@ -133,13 +140,22 @@ class Policy:
         policy stays the single place that rate-limits and de-duplicates.
         `corroboration` is forwarded to the topic table so a signal is either
         asked about or mentioned, never both.
+        `awaiting_answer` says a question the agent already asked is still
+        inside its answer window; it defaults to False so a caller that does
+        no turn-taking bookkeeping behaves exactly as before.
         """
         now = time.time() if now is None else now
-        if now - self._last_spoken < self.min_gap:
-            # Being spoken to beats the anti-chatter gap: replies and
-            # confirmed conclusions may interject; everything else waits.
+        if awaiting_answer:
+            # A question owns the floor until the person answers or its window
+            # lapses. Only a deterministic confirmed emergency may interrupt.
             cands = [c for c in (extra or [])
-                     if c.kind in ("reply", "conclusion")
+                     if c.kind in _ANSWER_WINDOW_INTERJECTABLE
+                     and self._fresh(c.signature, now)]
+        elif now - self._last_spoken < self.min_gap:
+            # Once the person has taken their turn, a reply/conclusion can be
+            # prompt despite the normal anti-chatter gap.
+            cands = [c for c in (extra or [])
+                     if c.kind in _GAP_INTERJECTABLE
                      and self._fresh(c.signature, now)]
         else:
             routine = ([] if suppress_routine else

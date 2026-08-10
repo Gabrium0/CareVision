@@ -161,6 +161,16 @@ class SkinDialogue:
             self.status = "request_closeup"
             self.started_at = now
 
+    def awaiting_answer(self, now: float) -> bool:
+        """Whether a spoken skin question is still inside its answer window.
+
+        Mirrors `CorroborationEngine.pending_question`: the status alone never
+        expires, so the window is what decides. Owning the check here keeps
+        `status`/`asked_at`/`answer_window` private to this class.
+        """
+        return (self.status == "awaiting_answer"
+                and now - self.asked_at <= self.answer_window)
+
     def suppresses_local_skin(self, now: float) -> bool:
         """Prevent the local rash heuristic from starting a duplicate dialogue."""
         return self.status != "idle" or now < self.cooldown_until
@@ -211,7 +221,7 @@ class SkinDialogue:
 
     def hear(self, text: str, now: float) -> bool:
         """Consume an answer to the current skin question; return if handled."""
-        if self.status != "awaiting_answer" or now - self.asked_at > self.answer_window:
+        if not self.awaiting_answer(now):
             return False
         question, tag = self.questions[self.question_index]
         verdict = None

@@ -324,6 +324,9 @@ advice:
 conversation:
   enabled: true
   health_prompts_per_hour: 6   # rolling cap on spoken health check-ins
+  reply_window: 30.0           # seconds the agent waits for an answer after it
+                               # asks something no other lane tracks (small
+                               # talk, a topic fallback ending in "?")
   category_gaps:               # min seconds between two lines in one category
     vitals: 300
     skin: 600
