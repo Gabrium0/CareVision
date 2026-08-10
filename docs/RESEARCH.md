@@ -1,5 +1,10 @@
 # Detection Research & Methods
 
+This guide records methods, feasibility, and limitations. It is not an
+authoritative catalogue of currently registered or enabled modules; use
+`core.registry` and `config/modules.yaml` for that, and
+[OPERATIONS.md](OPERATIONS.md) for current run commands.
+
 How each item from [detectionList.md](../detectionList.md) is implemented, the
 technique behind it, and an honest feasibility rating from a single RGB camera.
 

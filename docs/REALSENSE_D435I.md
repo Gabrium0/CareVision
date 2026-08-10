@@ -1,14 +1,19 @@
 # Extension: Intel RealSense D435i (Unitree G1)
 
-Status: **design only, not yet implemented.** This document describes what
-becomes possible on the target deployment platform — a **Unitree G1**
-humanoid carrying a **RealSense D435i** — and how to build it into the
+Status: **implemented, hardware verification required.** The `realsense` source
+is wired through `main.py` and `core/realsense_camera.py`; claims about physical
+stream delivery, depth alignment, or IMU behavior still require a D435i.
+Use [OPERATIONS.md](OPERATIONS.md) for general setup and current run modes;
+`main.py --help` remains authoritative for capture flags and defaults.
+
+This document describes what becomes possible on the target deployment platform — a **Unitree G1**
+humanoid carrying a **RealSense D435i** — and how it integrates with the
 existing architecture. Everything here is additive: when depth is absent
 (the current OV2735/laptop webcam paths), nothing changes.
 
 See [RESEARCH.md](RESEARCH.md) for the method/feasibility rating behind
-today's 2D modules, and [ARCHITECTURE.md](ARCHITECTURE.md) /
-[EXTENDING.md](EXTENDING.md) for the module system this extension plugs into.
+2D modules, and [ARCHITECTURE.md](ARCHITECTURE.md) /
+[EXTENDING.md](EXTENDING.md) for the module system this source uses.
 
 ## Why the D435i is a different capability class
 

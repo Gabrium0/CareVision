@@ -1,4 +1,8 @@
-# Multimodal showcase: Phases 1â€“7
+# Multimodal showcase
+
+This guide describes showcase behavior. Use [OPERATIONS.md](OPERATIONS.md) for
+environment setup and ports, `main.py --help` for current flags, and
+`config/replay_scenarios.json` for the authoritative replay catalogue.
 
 This project is a non-diagnostic demonstration. Generative models phrase
 approved questions; deterministic code selects assessments and alerts. Raw
@@ -69,9 +73,8 @@ running. The two compose: reach for `--demo` on a live camera, the replay
 reel above otherwise.
 
 `--webui` serves `/demo`: a big-screen page for a TV or projector rather
-than a caregiver. A header stat line reads `49 detectors · 46 running · one
-camera · 27 fps` — 49 is the registered-detector count; the running count is
-whatever `config/modules.yaml` enables (46 by default). Below it sits the
+than a caregiver. Its header derives registered and running module counts from
+the current runtime rather than embedding a catalogue number. Below it sits the
 full detector roster, always on
 screen: each entry shows a plain-English name and one-line description
 instead of a raw module slug, dim while it runs quietly and lit for a

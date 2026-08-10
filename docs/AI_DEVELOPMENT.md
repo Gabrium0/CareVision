@@ -1,5 +1,9 @@
 # AI development workflow
 
+For environment setup and operator-facing run modes, see
+[OPERATIONS.md](OPERATIONS.md). This document is the canonical runtime
+verification workflow for coding agents.
+
 This guide describes how to test live application behavior. For runtime, UI,
 configuration, integration, health, and performance changes, an agent should
 prefer a **bounded, self-terminating run** (see "Bounded verification" below)
@@ -17,8 +21,8 @@ pure-function work may use focused checks instead.
 Run a capped headless replay that exits on its own after the frame budget, so
 nothing can outlive the task:
 
-```bash
-python main.py --source replay:dev_hot_reload --headless --debug-endpoint --dev-mode --no-voice --no-moondream --max-frames 600
+```powershell
+.venv\Scripts\python.exe main.py --source replay:dev_hot_reload --headless --debug-endpoint --dev-mode --no-voice --no-moondream --max-frames 600
 ```
 
 `--max-frames` (wired through `main.py` to `pipeline.run`) stops the run after N
@@ -128,17 +132,17 @@ component never reached its expected lifecycle state.
 Use a second terminal for one-off tests so the application supervisor keeps its
 logs and debug endpoint available:
 
-```bash
-python -m pytest -q tests/runtime_performance_test.py
-python -m pytest -q tests/dev_reload_test.py
+```powershell
+.venv\Scripts\python.exe -m pytest -q tests/runtime_performance_test.py
+.venv\Scripts\python.exe -m pytest -q tests/dev_reload_test.py
 ```
 
 To rerun a focused test command after every watched edit instead of running the
 application, pass the command after `--`:
 
-```bash
-python dev.py -- python -m pytest -q tests/runtime_performance_test.py
-python dev.py --watch core --watch tests -- python -m pytest -q tests/pipeline_staleness_test.py
+```powershell
+.venv\Scripts\python.exe dev.py -- .venv\Scripts\python.exe -m pytest -q tests/runtime_performance_test.py
+.venv\Scripts\python.exe dev.py --watch core --watch tests -- .venv\Scripts\python.exe -m pytest -q tests/pipeline_staleness_test.py
 ```
 
 A test child that exits remains idle until a watched file changes. Test success

@@ -1,10 +1,15 @@
 # Architecture
 
 A humanoid-camera system for an elderly person living alone: it watches live
-video, runs ~33 detection modules, and turns the results into a spoken companion
+video, runs registry-discovered detection modules, and turns the results into a spoken companion
 (voice agent), caregiver alerts, an on-screen dashboard, and a web view. This
 doc explains how the pieces fit together. To *extend* it, see
 [EXTENDING.md](EXTENDING.md).
+
+For setup, flags, ports, and consent-controlled run modes, see
+[OPERATIONS.md](OPERATIONS.md). The registry and `config/modules.yaml` are the
+sources of truth for the current module set; this guide intentionally avoids a
+hard-coded count.
 
 > **Safety principle.** Health signals are *screening prompts*, never diagnoses.
 > The **caregiver-alert path is deterministic** (`alerts/`) and never depends on
@@ -51,7 +56,7 @@ flowchart LR
   cam[Camera] --> ex[Extractors: face/pose/motion + smoothing]
   ex --> ctx[FrameContext]
   ctx --> sch[Scheduler]
-  sch --> mods[DetectionModules ~33]
+  sch --> mods[Registry-discovered DetectionModules]
   mods --> agg[Aggregator]
   agg --> adv[AdvisorEngine]
   adv --> agg
@@ -145,20 +150,20 @@ The video loop in `main.py` must never block. Heavy work runs off it:
 |---|---|
 | `core/` | Camera, `FrameContext`, `Result`/`Severity`, registry, scheduler, pipeline, debug log. |
 | `extractors/` | Run once per frame: MediaPipe face + pose, motion energy, One-Euro landmark smoothing; landmark-index tables. |
-| `modules/` | The ~33 detectors. `modules/_util.py` = shared signal helpers (`TimedBuffer`, `bandpass`, FFT). |
+| `modules/` | Registry-discovered detectors. `modules/_util.py` contains shared signal helpers (`TimedBuffer`, `bandpass`, FFT). |
 | `modules/backends/`, `modules/rppg_backends/`, `modules/emotion_backends/` | Multi-backend implementations (heuristic + tested models) shown side by side. |
 | `output/` | `aggregator` (person state), `dashboard` (window + `to_payload` for `/data`), `overlay`, legacy `greeting_engine`. |
 | `agent/` | The companion agent: `conversation` (structured context, topics, confirmed actions, vision cadence), `state` (session memory), `policy`, provider client, `voice_agent`, and deterministic advisors. |
 | `alerts/` | Deterministic caregiver alerting: `notifier` (channels), `manager` (confirm/dedupe/escalate). |
 | `audio/` | Offline text-to-speech. |
-| `webui/` | Stdlib web server: `/` companion text + `/data` full telemetry (SSE), pages `page.html` / `data.html`. |
+| `webui/` | Stdlib servers and pages for companion text, `/data` telemetry, `/demo`, private diagnostics, and caregiver review. |
 | `storage/` | SQLite store for longitudinal samples/baselines. |
 | `tests/` | Camera-free smoke + focused tests. |
 
 ## Entry points & config
 
-- **Run:** `python main.py` (see README for flags: `--webui`, `--no-voice`,
-  `--source`, `--headless`, `--debug-modules`, …).
+- **Run:** `python main.py`. `main.py --help` is authoritative for flags;
+  [OPERATIONS.md](OPERATIONS.md) provides safe examples.
 - **Local hot reload (optional, manual):** `python dev.py` runs a hardware-free
   replay under a process-level hot-reload supervisor for a developer iterating
   locally. Supervisor and child stdout share one terminal; the private live
@@ -173,8 +178,8 @@ The video loop in `main.py` must never block. Heavy work runs off it:
 
 ## Verification & docs guardrail
 
-- Follow [AI_DEVELOPMENT.md](AI_DEVELOPMENT.md) for the recommended hot-reload,
-  log-observation, and `/debug/state` workflow when live behavior matters.
+- Follow [AI_DEVELOPMENT.md](AI_DEVELOPMENT.md) for bounded runtime verification,
+  log observation, and the `/debug/state` acceptance workflow.
 - `python tests/smoke_test.py` runs the whole pipeline on synthetic frames.
 - `interrogate -c pyproject.toml .` enforces docstring coverage (fail-under 95).
 - `graphify update .` refreshes the knowledge graph after code changes.

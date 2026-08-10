@@ -1,7 +1,7 @@
 ## Working in `modules/`
 
 - Query graphify first: `graphify query "<a question scoped to modules>"`.
-- This package: the ~33 detectors (vitals, face/skin, neuro/motor, fatigue, falls/safety, behavioral, demographic). Flat directory; category grouping lives in `config/modules.yaml`, not the filesystem.
+- This package: registry-discovered detectors for vitals, face/skin, neuro/motor, fatigue, falls/safety, behavioral, and demographic signals. The flat filesystem is not an authoritative catalogue; registration and `config/modules.yaml` determine the current set.
 - Contracts it depends on:
   - `DetectionModule` — `modules/base.py` (declares `interval`, `requires`, implements `process(ctx)`)
   - `Result`, `Severity` — `core/events.py`

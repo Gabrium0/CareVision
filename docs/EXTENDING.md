@@ -2,6 +2,8 @@
 
 Recipes for the common ways to grow this codebase. Each points at an existing
 file to copy. Read [ARCHITECTURE.md](ARCHITECTURE.md) first for the big picture.
+Read the nearest package-level `AGENTS.md` before editing, and use
+[OPERATIONS.md](OPERATIONS.md) for current run commands and consent boundaries.
 
 Golden rules:
 - Modules only **read** `FrameContext` and **return** `Result`s — no side effects
@@ -43,8 +45,11 @@ Then enable it in `config/modules.yaml`:
     enabled: true
     my_threshold: 0.4
 ```
-It is auto-discovered — no other file changes. Emit `Severity.ALERT` for
-anything a caregiver must know (fall, unresponsiveness); those flow to `alerts/`.
+It is auto-discovered, so the central registry needs no manual edit. A complete
+feature may still require focused tests, dashboard or agent-topic presentation,
+replay coverage, and documentation. Add only the layers the requested behavior
+actually needs. Emit `Severity.ALERT` for anything a caregiver must know (fall,
+unresponsiveness); those flow through deterministic policy in `alerts/`.
 
 ## 2. Add a backend (rPPG / emotion "show both")
 
@@ -157,8 +162,8 @@ ALERTs are **not** handled here — they go through `alerts/`.
 Exercise a new topic end to end with the `topic_coverage` fixture in
 `config/replay_scenarios.json`:
 
-```bash
-python main.py --source replay:topic_coverage --headless --dev-mode \
+```powershell
+.venv\Scripts\python.exe main.py --source replay:topic_coverage --headless --dev-mode `
   --no-voice --no-moondream --max-frames 600
 ```
 
@@ -181,12 +186,15 @@ passes matching yaml keys into `__init__` (via `DetectionModule.__init__`), so
 
 ## Before you commit — verification loop
 
-```bash
-python tests/smoke_test.py                 # whole pipeline on synthetic frames
-python tests/<your_focused_test>.py        # e.g. hr_backends_test, agent_alert_test
-interrogate -c pyproject.toml .            # docstring coverage must stay >= 95%
-graphify update .                          # refresh the knowledge graph (AST-only)
+```powershell
+.venv\Scripts\python.exe tests/smoke_test.py
+.venv\Scripts\python.exe -m pytest -q tests/<your_focused_test>.py
+interrogate -c pyproject.toml .
+graphify update .
 ```
 
 Add a one-line docstring to every new public class/function — `interrogate` will
 fail the build otherwise, which is what keeps the codebase self-documenting.
+Use portable `python`/`interrogate` commands instead when the project environment
+is already active. Runtime-facing changes also require the bounded verification
+described in [AI_DEVELOPMENT.md](AI_DEVELOPMENT.md).

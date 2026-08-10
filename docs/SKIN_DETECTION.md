@@ -1,5 +1,10 @@
 # NVIDIA-Assisted Skin Detection
 
+This guide defines the feature's privacy, consent, and result-visibility model.
+Use [OPERATIONS.md](OPERATIONS.md) for environment setup and current run modes;
+the consuming code and `.env.example` remain authoritative for flags and
+environment variable names.
+
 CareVision includes an opt-in skin-screening workflow that combines camera
 observations, a guided close-up, and the person's answers to relevant questions.
 The goal is to collect better screening context and demonstrate how a companion
