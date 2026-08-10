@@ -20,3 +20,8 @@ tests/synthetic_clip.mp4
 .pytest-tmp-*/
 Users*AppData*Temp*/
 app.log
+
+# Local capture samples used to exercise the VLM skin path. These are webcam
+# frames of a real person; the repository is public, so they stay on disk and
+# out of history. Point tools at them with an explicit path argument.
+vlmpics/
