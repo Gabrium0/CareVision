@@ -1,1 +1,0 @@
-{"version": 1, "validated": true, "model_revision": "wrong", "targets": {"vitiligo": {"temperature": 1.0, "accept_threshold": 0.7, "max_normalized_entropy": 0.9, "max_unknown_probability": 0.2}}}

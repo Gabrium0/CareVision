@@ -8,3 +8,15 @@ assets/skin_models/*.onnx
 tests/synthetic_clip.mp4
 .venv/
 .env
+
+# Agent and test scratch space. pytest --basetemp roots have repeatedly been
+# committed from here; the mangled Users*Temp* name is a stripped Windows path
+# produced when the sandbox denies the real %TEMP%\pytest-of-* root.
+.tmp/
+.pytest_cache/
+.ruff_cache/
+.codex-build/
+.codex-quality-*/
+.pytest-tmp-*/
+Users*AppData*Temp*/
+app.log
