@@ -89,6 +89,67 @@ RealSense needs `requirements-realsense.txt` and physical hardware. Use the
 [RealSense guide](REALSENSE_D435I.md) for depth/IMU expectations and the
 hardware validation checklist. Never claim that path was verified from replay.
 
+### iPad as the camera and control surface
+
+`--source ipad` takes frames from an iPad browser over WebRTC instead of a local
+device, and lets the same page drive the detector toggles. Needs
+`requirements-ipad.txt` on the laptop and the `relay/` service deployed
+somewhere with HTTPS (see `relay/README.md`).
+
+Two constraints force this shape, and neither is optional:
+
+- `getUserMedia` only exists in a **secure context**. On a plain `http://` LAN
+  address Safari leaves `navigator.mediaDevices` undefined — not
+  permission-denied, absent. That is why the page is served from an HTTPS relay
+  rather than from `webui/server.py`.
+- From that HTTPS page, `http://` and `ws://` back to the non-TLS laptop are
+  mixed-content blocked. WebRTC is exempt, because DTLS-SRTP encrypts it
+  unconditionally. So WebRTC carries both the video and the control messages,
+  and the relay only ever sees SDP/ICE.
+
+The relay can be hosted (see `relay/render.yaml`) or simply **run locally behind
+a tunnel**, which is the lower-friction option: nothing to deploy, no cold
+start, and the shared secret never leaves the machine. In two terminals:
+
+```powershell
+$env:RELAY_SECRET=(Select-String '^RELAY_SECRET=' .env).Line.Split('=',2)[1]
+.venv\Scripts\python.exe relay\server.py
+
+cloudflared tunnel --url http://localhost:10000
+```
+
+`cloudflared` prints an `https://<random>.trycloudflare.com` URL — that is the
+HTTPS origin, and the only thing the relay was ever needed for. Quick-tunnel
+URLs change on every restart, so the iPad bookmark breaks each session; a named
+Cloudflare tunnel (free, needs an account and a domain) gives a stable one.
+Media still goes peer-to-peer over WebRTC either way — the tunnel carries only
+the page load and the SDP/ICE handshake.
+
+Put `IPAD_RELAY_URL`, `IPAD_ROOM` and `RELAY_SECRET` in `.env` — never on the
+command line, where they would land in shell history and the process list. Then:
+
+```powershell
+.venv\Scripts\python.exe main.py --source ipad --webui --enable-multi-person
+```
+
+The run prints a bookmarkable URL and a fresh 6-digit pairing code. **Start the
+laptop first**: the relay's free tier can take ~60s to wake, and whoever
+connects first waits for it.
+
+Network: put both devices on a Windows Mobile Hotspot (share from Ethernet so
+the laptop keeps internet for cloud features). ICE then settles on host
+candidates on the same subnet and no TURN server is needed, which also makes
+access-point client isolation irrelevant. Add an inbound UDP firewall rule for
+the Python executable on the Private profile — without it ICE stalls at
+`checking` forever, and that is the most common first-run failure.
+
+Expect vitals to be **worse than the locked USB path**. iOS Safari exposes no
+way to lock exposure or white balance, and `core/camera.py` calls auto-exposure
+the single biggest accuracy killer for rPPG. Check `heart_rate_block_reason`
+first when heart rate never starts: `no_face` usually means the iPad is too far
+away for `showcase.min_face_px`. SpO2 on this path is uncalibrated and
+indicative only — see the comments on `modules.spo2` in `config/modules.yaml`.
+
 ## Local web surfaces
 
 The servers are independent and opt-in:
@@ -99,13 +160,41 @@ The servers are independent and opt-in:
 | Private debug dashboard/state | `--debug-endpoint` | `http://127.0.0.1:8771/debug` | loopback only |
 | Caregiver review portal | `--caregiver-portal` | `http://127.0.0.1:8772/caregiver` | loopback only |
 
-The companion server also exposes `/data` and `/demo`. The private JSON health
+The companion server also exposes `/data`, `/demo`, and `/modules` (the
+detector roster and toggle console — see below). The private JSON health
 payload is `/debug/state`. Use `--webui-port`, `--debug-port`, or
 `--caregiver-port` when the default port is occupied.
 
 Do not expose the debug or caregiver servers on a LAN. Their payloads are
 designed to omit credentials, transcripts, raw frames/audio, binary values,
 data URLs, and raw provider responses; preserve that redaction contract.
+
+## Multi-person tracking and detector toggles
+
+`--enable-multi-person` turns on short-lived anonymous tracking with a stable
+primary subject. Secondary (non-primary) tracked people get their own
+detector instances from a small, configurable set
+(`tracking.secondary_modules` in `config/modules.yaml`) so their readings
+never share state with the primary's. A secondary subject's fall or
+unresponsive result still appears in the live dashboard and camera overlay,
+but by deterministic rule in `alerts/` it never reaches a caregiver
+notification channel — only the primary subject's alerts escalate.
+
+Any currently-loaded detector can be paused or resumed at runtime from
+`/modules`, per subject scope (primary/secondary). This never loads or
+unloads a model — it only pauses a warm instance's cadence, so re-enabling a
+heavy detector is instant — and it never writes to `config/modules.yaml`; a
+restart always returns to the file's declared set. A module that
+`config/modules.yaml` disabled at startup was never instantiated and cannot
+be toggled on this way. Toggle mutations (not viewing) require a loopback
+client by default; pass `--allow-remote-toggle` to permit them from the LAN.
+
+`--start-blank` seeds the toggle state empty instead of mirroring
+`config/modules.yaml`: every loaded detector starts paused, so a fresh run
+shows only the camera feed and the person-outline boxes until you enable
+things from `/modules`. This is a demo mode, not for unattended or
+production use — no detector, and therefore no caregiver alert, runs until
+it is manually toggled on.
 
 ## Voice, typed input, microphone, and audio events
 

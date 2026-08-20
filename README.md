@@ -8,7 +8,10 @@ local dashboards.
 > [!CAUTION]
 > CareVision is not a medical device. Its health signals are screening prompts,
 > never diagnoses. Urgent caregiver alerts follow deterministic rules in
-> `alerts/`; they never depend on an LLM or VLM.
+> `alerts/`; they never depend on an LLM or VLM. With `--enable-multi-person`,
+> only the primary subject's alerts escalate — a secondary tracked person's
+> fall or unresponsive result stays visible in the dashboard but never pages
+> a caregiver, since the system makes no identity claim about a visitor.
 
 ## Quick start
 
@@ -41,7 +44,10 @@ scenario ends.
 | Video file | `python main.py --source clip.mp4` |
 | Deterministic replay | `python main.py --source replay:SCENARIO --headless` |
 | Intel RealSense | `python main.py --source realsense` |
+| iPad as camera + control surface | `python main.py --source ipad` (needs the `relay/` HTTPS service; see [operations guide](docs/OPERATIONS.md)) |
 | Companion and telemetry web UI | add `--webui` |
+| Multi-person tracking + per-detector toggles | add `--enable-multi-person` (toggle console at `/modules` with `--webui`) |
+| Live demo starting with everything paused | add `--start-blank` (camera + person outline only, until you enable detectors from `/modules`) |
 | Private localhost diagnostics | add `--debug-endpoint` |
 | Caregiver review portal | add `--caregiver-portal` |
 | Disable spoken audio | add `--no-voice` |
@@ -60,6 +66,7 @@ Install only the requirement groups needed for a run:
 | Speech recognition | `requirements-asr.txt` |
 | Audio-event detection | `requirements-audio-events.txt` |
 | Intel RealSense | `requirements-realsense.txt` |
+| iPad camera over WebRTC | `requirements-ipad.txt` (downgrades `av`; read the file first) |
 | Local skin model | `requirements-skin.txt` |
 | Clothing models | `requirements-clothing.txt` |
 | Neural rPPG | `requirements-openrppg.txt` |

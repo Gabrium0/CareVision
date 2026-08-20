@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>iPad Link</title>
+<style>
+  :root { --bg:#0b0d10; --panel:#14171b; --fg:#f2f5f7; --dim:#8a929b; --line:#262b30;
+    --accent:#7fd0ff; --good:#57d977; --bad:#ff5a5a; }
+  * { box-sizing:border-box; -webkit-text-size-adjust:100%; }
+  html, body { margin:0; padding:0; background:var(--bg); color:var(--fg); }
+  body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+    font-size:17px; padding:16px 16px 48px; }
+  h1 { font-size:22px; margin:0 0 4px; font-weight:800; }
+  h2 { font-size:18px; margin:0 0 8px; font-weight:800; }
+  .dim { color:var(--dim); }
+  .hidden { display:none !important; }
+  header { display:flex; align-items:center; justify-content:space-between; gap:10px;
+    border-bottom:1px solid var(--line); padding-bottom:12px; margin-bottom:16px; }
+  .statusdot { display:flex; align-items:center; gap:8px; font-size:14px; color:var(--dim); }
+  .dot { width:10px; height:10px; border-radius:50%; background:var(--dim); display:inline-block; }
+  .dot.live { background:var(--good); box-shadow:0 0 8px var(--good); }
+  .dot.bad { background:var(--bad); box-shadow:0 0 8px var(--bad); }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    padding:18px; margin-bottom:16px; }
+  .panel.error { border-color:var(--bad); }
+  .panel.error h2 { color:var(--bad); }
+  label { display:block; font-size:13px; color:var(--dim); text-transform:uppercase;
+    letter-spacing:.4px; margin-bottom:8px; }
+  input#codeInput { width:100%; font:inherit; font-size:28px; letter-spacing:6px;
+    text-align:center; background:#0e1114; color:var(--fg); border:1px solid var(--line);
+    border-radius:10px; padding:14px; min-height:64px; }
+  button { min-height:64px; font:inherit; cursor:pointer; border-radius:10px;
+    border:1px solid var(--accent); background:#1c2b33; color:var(--fg); }
+  button:disabled { opacity:.5; cursor:default; }
+  #connectBtn { width:100%; margin-top:12px; font-size:18px; font-weight:700; }
+  #pairMsg { margin-top:10px; font-size:14px; min-height:1.2em; }
+  video#preview { width:100%; max-width:480px; border-radius:10px; border:1px solid var(--line);
+    background:#000; display:block; margin:0 auto 14px; }
+  .statusrow { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:8px;
+    font-size:13px; margin-bottom:16px; }
+  .stat { border:1px solid var(--line); border-radius:8px; padding:8px 10px; background:#0e1114; }
+  .stat .k { color:var(--dim); text-transform:uppercase; font-size:10px; letter-spacing:.4px; }
+  .stat .v { font-size:15px; font-weight:700; margin-top:2px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
+  .mbtn2 { min-height:64px; display:flex; flex-direction:column; align-items:flex-start;
+    justify-content:center; gap:4px; padding:10px 12px; text-align:left; }
+  .mbtn2.on { border-color:var(--good); background:#12271a; }
+  .mlabel2 { font-weight:700; font-size:14px; }
+  .mstate { font-size:12px; color:var(--dim); }
+  .mbtn2.on .mstate { color:var(--good); }
+  .mres { font-size:12px; margin-top:-4px; margin-bottom:6px; }
+  .mres.ok { color:var(--good); }
+  .mres.err { color:var(--bad); }
+</style>
+</head>
+<body>
+<header>
+  <h1>iPad Link</h1>
+  <span class="statusdot"><span class="dot" id="liveDot"></span><span id="liveLabel">offline</span></span>
+</header>
+
+<div id="secureError" class="panel error hidden">
+  <h2>HTTPS required</h2>
+  <p>This page must be served over HTTPS. <code>navigator.mediaDevices</code> is
+  <code>undefined</code>, which Safari does on any page that is not a secure
+  context — the browser will not expose the camera API at all here, not even
+  to ask for permission. Reload this page using its <code>https://</code>
+  URL (an <code>http://</code> address, including a raw LAN IP, will not
+  work).</p>
+</div>
+
+<div id="pairPanel" class="panel">
+  <label for="codeInput">Pairing code (from the laptop)</label>
+  <input id="codeInput" inputmode="numeric" pattern="[0-9]*" maxlength="6"
+    autocomplete="off" placeholder="123456">
+  <button id="connectBtn" type="button">Connect</button>
+  <div id="pairMsg" class="dim"></div>
+</div>
+
+<div id="mainPanel" class="panel hidden">
+  <video id="preview" muted playsinline autoplay></video>
+  <div class="statusrow" id="statusRow">
+    <div class="stat"><div class="k">WS</div><div class="v" id="stWs">–</div></div>
+    <div class="stat"><div class="k">ICE</div><div class="v" id="stIce">–</div></div>
+    <div class="stat"><div class="k">DC</div><div class="v" id="stDc">–</div></div>
+    <div class="stat"><div class="k">FPS</div><div class="v" id="stFps">0</div></div>
+    <div class="stat"><div class="k">Clock</div><div class="v" id="stClock">–</div></div>
+    <div class="stat"><div class="k">Frames sent</div><div class="v" id="stFrames">0</div></div>
+    <div class="stat"><div class="k">Capture</div><div class="v" id="stErr">–</div></div>
+  </div>
+  <h2>Modules</h2>
+  <div class="grid" id="moduleGrid"><p class="dim">waiting for module list&hellip;</p></div>
+</div>
+
+<canvas id="cnv" width="640" height="480" class="hidden"></canvas>
+
+<script>
+(function(){
+  'use strict';
+
+  // ---- point 1: explicit secure-context check, first thing -------------
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    document.getElementById('secureError').classList.remove('hidden');
+    document.getElementById('pairPanel').classList.add('hidden');
+    return; // deliberate: nothing else on this page can work without getUserMedia
+  }
+
+  // Secret is templated in server-side from RELAY_SECRET (relay/server.py).
+  // See relay/README.md for why shipping it to the page is safe: it is
+  // useless to derive a valid sig without the human-relayed 6-digit code,
+  // which this page never learns except by the user typing it in.
+  const RELAY_SECRET = __RELAY_SECRET_JSON__;
+  // Both the laptop and this page must land on the same `exp` without
+  // talking to each other first, so exp is quantized to a fixed wall-clock
+  // window (PAIR_WINDOW_SECONDS) rather than "now plus a TTL". Anyone
+  // connecting within the same window computes the identical value.
+  const PAIR_WINDOW_SECONDS = 600;
+  // 960x720 rather than 640x480: rPPG SNR scales ~1/sqrt(skin pixels), and the
+  // chunked transport removed the 64KB-per-frame ceiling that forced the lower
+  // size. Must match the getUserMedia request below, or drawImage just upscales.
+  const CANVAS_W = 960, CANVAS_H = 720;
+  const TARGET_FPS = 20;
+  const FRAME_INTERVAL_MS = 1000 / TARGET_FPS;
+  const BUFFERED_AMOUNT_LIMIT = 1024 * 1024; // ~1MB backpressure ceiling
+  // Stay clear of aiortc's a=max-message-size:65536, leaving room for the
+  // 24-byte header. Exceeding it makes Safari throw inside send().
+  const MAX_CHUNK_BYTES = 60000;
+
+  function esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+  function getRoom(){
+    const parts = location.pathname.split('/').filter(Boolean);
+    return parts.length ? parts[parts.length - 1] : '';
+  }
+
+  async function hmacSig(secret, room, code, exp){
+    const enc = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      'raw', enc.encode(secret), {name:'HMAC', hash:'SHA-256'}, false, ['sign']);
+    const msgBuf = enc.encode(`${room}|${code}|${exp}`);
+    const sigBuf = await crypto.subtle.sign('HMAC', key, msgBuf);
+    let hex = '';
+    const bytes = new Uint8Array(sigBuf);
+    for(let i = 0; i < bytes.length; i++) hex += bytes[i].toString(16).padStart(2, '0');
+    return hex.slice(0, 32);
+  }
+
+  // ---- DOM refs -----------------------------------------------------------
+  const pairPanel = document.getElementById('pairPanel');
+  const mainPanel = document.getElementById('mainPanel');
+  const codeInput = document.getElementById('codeInput');
+  const connectBtn = document.getElementById('connectBtn');
+  const pairMsg = document.getElementById('pairMsg');
+  const previewEl = document.getElementById('preview');
+  const liveDot = document.getElementById('liveDot');
+  const liveLabel = document.getElementById('liveLabel');
+  const stWs = document.getElementById('stWs');
+  const stIce = document.getElementById('stIce');
+  const stDc = document.getElementById('stDc');
+  const stFps = document.getElementById('stFps');
+  const stClock = document.getElementById('stClock');
+  const stFrames = document.getElementById('stFrames');
+  const stErr = document.getElementById('stErr');
+  // A silent catch around the capture path hides the one thing worth knowing
+  // when "Frames sent" sticks at 0, so surface the reason on screen instead.
+  function setCapture(note){ try{ stErr.textContent = String(note).slice(0, 60); }catch(_){} }
+  const moduleGrid = document.getElementById('moduleGrid');
+  const canvas = document.getElementById('cnv');
+  const ctx = canvas.getContext('2d', {willReadFrequently:false});
+
+  // ---- state ----------------------------------------------------------
+  let ws = null, pc = null, dcFrames = null, dcControl = null, stream = null;
+  let seq = 0, framesSent = 0, framesSentAtLastTick = 0;
+  let lastFrameSentAt = 0;
+  let clockSource = null;
+  let lastState = null;               // last {type:'state', modules:[...]}
+  const moduleBusy = Object.create(null);
+  const moduleResult = Object.create(null);
+  let wakeLock = null;
+
+  function setOverallLive(on){
+    liveDot.classList.toggle('live', on);
+    liveDot.classList.toggle('bad', !on && (stWs.textContent === 'closed' || stWs.textContent === 'error'));
+    liveLabel.textContent = on ? 'live' : 'offline';
+  }
+  function setWs(state){ try{ stWs.textContent = state; setOverallLive(state === 'open'); }catch(_){} }
+  function setIce(state){ try{ stIce.textContent = state; }catch(_){} }
+  function setDc(state){ try{ stDc.textContent = state; }catch(_){} }
+  function setClock(source){ try{ clockSource = source; stClock.textContent = source; }catch(_){} }
+
+  function showMain(){ pairPanel.classList.add('hidden'); mainPanel.classList.remove('hidden'); }
+  function showPairPanel(){ mainPanel.classList.add('hidden'); pairPanel.classList.remove('hidden'); connectBtn.disabled = false; }
+
+  // ---- wake lock (point 9) ----------------------------------------------
+  async function requestWakeLock(){
+    try{
+      wakeLock = await navigator.wakeLock.request('screen');
+    }catch(_){ /* not available everywhere; not fatal */ }
+  }
+  document.addEventListener('visibilitychange', () => {
+    if(document.visibilityState === 'visible' && ws) requestWakeLock();
+  });
+
+  // ---- module control UI (point 7) ---------------------------------------
+  function renderModules(){
+    try{
+      if(!lastState || !Array.isArray(lastState.modules) || !lastState.modules.length){
+        moduleGrid.innerHTML = '<p class="dim">waiting for module list&hellip;</p>';
+        return;
+      }
+      moduleGrid.innerHTML = lastState.modules.map(m => {
+        const name = String((m && m.name) || '');
+        const enabled = !!(m && m.enabled);
+        const scope = (m && m.scope) || 'primary';
+        const busy = !!moduleBusy[name];
+        const res = moduleResult[name];
+        const resHtml = res ? `<div class="mres ${res.ok ? 'ok' : 'err'}">${esc(res.text)}</div>` : '';
+        return `<button type="button" class="mbtn2${enabled ? ' on' : ''}" data-name="${esc(name)}" ` +
+          `data-scope="${esc(scope)}" ${busy ? 'disabled' : ''}>` +
+          `<span class="mlabel2">${esc(name)}</span>` +
+          `<span class="mstate">${busy ? 'working…' : (enabled ? 'On' : 'Off')}</span>` +
+          `</button>${resHtml}`;
+      }).join('');
+    }catch(_){ /* one malformed frame must never kill the page */ }
+  }
+
+  moduleGrid.addEventListener('click', (ev) => {
+    const btn = ev.target.closest('.mbtn2');
+    if(!btn) return;
+    toggleModule(btn.getAttribute('data-name'), btn.getAttribute('data-scope') || 'primary');
+  });
+
+  function toggleModule(name, scope){
+    if(!name || moduleBusy[name]) return; // per-button busy flag: no double-fire
+    const mod = (lastState && Array.isArray(lastState.modules))
+      ? lastState.modules.find(m => m && m.name === name) : null;
+    const turningOn = !(mod && mod.enabled);
+    moduleBusy[name] = true;
+    renderModules();
+    try{
+      dcControl.send(JSON.stringify({type:'module', action: turningOn ? 'enable' : 'disable',
+        target: name, scope}));
+    }catch(_){
+      moduleBusy[name] = false;
+      moduleResult[name] = {ok:false, text:'Send failed — control channel not open.'};
+      renderModules();
+    }
+  }
+
+  function handleControlMessage(raw){
+    try{
+      const msg = JSON.parse(raw);
+      if(msg && msg.type === 'state'){
+        lastState = msg;
+        renderModules();
+      } else if(msg && msg.type === 'module_result'){
+        const name = (msg.module && msg.module.name) || (msg.target) || null;
+        if(name){
+          moduleBusy[name] = false;
+          // Error ladder mirrors webui/modules.html: show body.error when
+          // present, else a generic HTTP-style fallback (there is no HTTP
+          // status on a data channel, so the fallback names the transport).
+          moduleResult[name] = msg.ok
+            ? {ok:true, text:'Updated.'}
+            : {ok:false, text: msg.error ? String(msg.error) : 'control channel: no error detail'};
+        }
+        renderModules();
+      }
+    }catch(_){ /* malformed control message: drop, never throw */ }
+  }
+
+  // ---- capture + send loop (points 5-6) ----------------------------------
+  // Blob.prototype.arrayBuffer() is missing on some iOS WebKit builds, where it
+  // throws "blob.arrayBuffer is not a function" and silently kills every frame.
+  // FileReader has been supported since forever and reads the same bytes.
+  function blobToArrayBuffer(blob){
+    if(typeof blob.arrayBuffer === 'function') return blob.arrayBuffer();
+    return new Promise(function(resolve, reject){
+      const fr = new FileReader();
+      fr.onload = function(){ resolve(fr.result); };
+      fr.onerror = function(){ reject(fr.error || new Error('FileReader failed')); };
+      fr.readAsArrayBuffer(blob);
+    });
+  }
+
+  function sendFrame(mediaTime){
+    if(!dcFrames || dcFrames.readyState !== 'open'){ setCapture('dc not open'); return; }
+    if(dcFrames.bufferedAmount > BUFFERED_AMOUNT_LIMIT){ setCapture('backpressure'); return; }
+    const now = performance.now();
+    if(now - lastFrameSentAt < FRAME_INTERVAL_MS) return;       // throttle to ~20fps
+    lastFrameSentAt = now;
+    try{
+      ctx.drawImage(previewEl, 0, 0, CANVAS_W, CANVAS_H);
+    }catch(err){ setCapture('drawImage: ' + (err && err.name || err)); return; }
+    canvas.toBlob(async (blob) => {
+      if(!blob){ setCapture('toBlob gave null'); return; }
+      try{
+        if(!dcFrames || dcFrames.readyState !== 'open') return;
+        if(dcFrames.bufferedAmount > BUFFERED_AMOUNT_LIMIT) return;
+        const jpegBuf = await blobToArrayBuffer(blob);
+        // aiortc advertises a=max-message-size:65536, and Safari enforces it by
+        // throwing on send. A quality-0.92 frame is routinely larger, so split
+        // it rather than degrade the image to fit — the receiver reassembles by
+        // (seq, chunk_index) and discards any frame missing a chunk.
+        const total = Math.max(1, Math.ceil(jpegBuf.byteLength / MAX_CHUNK_BYTES));
+        const thisSeq = seq >>> 0;
+        seq = (seq + 1) >>> 0;
+        for(let i = 0; i < total; i++){
+          const start = i * MAX_CHUNK_BYTES;
+          const end = Math.min(start + MAX_CHUNK_BYTES, jpegBuf.byteLength);
+          // 24-byte header: magic(4s) seq(u32) mediaTime(f64) w(u16) h(u16)
+          // chunk_index(u16) chunk_count(u16).
+          // Must match struct.Struct("<4sIdHHHH") in core/ipad_camera.py exactly.
+          const header = new ArrayBuffer(24);
+          const dv = new DataView(header);
+          dv.setUint8(0, 0x49); dv.setUint8(1, 0x50); dv.setUint8(2, 0x46); dv.setUint8(3, 0x31); // "IPF1"
+          dv.setUint32(4, thisSeq, true);
+          dv.setFloat64(8, mediaTime, true);
+          dv.setUint16(16, CANVAS_W, true);
+          dv.setUint16(18, CANVAS_H, true);
+          dv.setUint16(20, i, true);
+          dv.setUint16(22, total, true);
+          const out = new Uint8Array(24 + (end - start));
+          out.set(new Uint8Array(header), 0);
+          out.set(new Uint8Array(jpegBuf, start, end - start), 24);
+          dcFrames.send(out.buffer);
+        }
+        framesSent++;
+        setCapture('ok ' + total + 'ch/' + jpegBuf.byteLength + 'B');
+      }catch(err){
+        // One bad frame must never stop the loop, but it must not vanish
+        // either — a stuck "Frames sent: 0" is otherwise undiagnosable.
+        setCapture('send: ' + (err && (err.name + ' ' + err.message) || err));
+      }
+    }, 'image/jpeg', 0.92);
+  }
+
+  function startCaptureLoop(){
+    setCapture('loop started');
+    if('requestVideoFrameCallback' in previewEl){
+      setClock('rvfc-mediaTime');
+      const onFrame = (_now, metadata) => {
+        try{ sendFrame(metadata.mediaTime); }
+        catch(err){ setCapture('loop: ' + (err && err.name || err)); }
+        if(previewEl.requestVideoFrameCallback) previewEl.requestVideoFrameCallback(onFrame);
+      };
+      previewEl.requestVideoFrameCallback(onFrame);
+    } else {
+      setClock('performance-now');
+      const tick = () => {
+        try{ sendFrame(performance.now() / 1000); }catch(_){}
+        setTimeout(tick, FRAME_INTERVAL_MS);
+      };
+      tick();
+    }
+    // Report which clock is driving capture over the control channel once it's open.
+    const reportClock = () => {
+      if(dcControl && dcControl.readyState === 'open'){
+        try{ dcControl.send(JSON.stringify({type:'clock_source', clock_source: clockSource})); }catch(_){}
+      } else {
+        setTimeout(reportClock, 250);
+      }
+    };
+    reportClock();
+  }
+
+  // ---- fps display ---------------------------------------------------
+  setInterval(() => {
+    try{
+      const delta = framesSent - framesSentAtLastTick;
+      framesSentAtLastTick = framesSent;
+      stFps.textContent = String(delta);
+      stFrames.textContent = String(framesSent);
+    }catch(_){}
+  }, 1000);
+
+  // ---- WebRTC + signaling (point 4) --------------------------------------
+  function wirePeerConnection(){
+    pc.onicecandidate = (ev) => {
+      if(ev.candidate && ws && ws.readyState === WebSocket.OPEN){
+        try{
+          ws.send(JSON.stringify({type:'candidate',
+            candidate: ev.candidate.toJSON ? ev.candidate.toJSON() : ev.candidate}));
+        }catch(_){}
+      }
+    };
+    pc.oniceconnectionstatechange = () => setIce(pc.iceConnectionState);
+  }
+
+  function wireDataChannels(){
+    dcFrames.binaryType = 'arraybuffer';
+    dcFrames.onopen = () => { setDc('open'); showMain(); startCaptureLoop(); };
+    dcFrames.onclose = () => setDc('closed');
+    dcFrames.onerror = () => setDc('error');
+
+    dcControl.onopen = () => { setDc('open'); showMain(); };
+    dcControl.onmessage = (ev) => handleControlMessage(ev.data);
+    dcControl.onclose = () => {};
+    dcControl.onerror = () => {};
+  }
+
+  function wireSocket(room, code, exp, sig){
+    ws.addEventListener('open', async () => {
+      setWs('open');
+      try{
+        ws.send(JSON.stringify({type:'hello', room, role:'ipad', exp, sig}));
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        ws.send(JSON.stringify({type:'offer', sdp: pc.localDescription.sdp}));
+        pairMsg.textContent = 'Waiting for the laptop to answer…';
+      }catch(err){
+        pairMsg.textContent = 'Could not start the connection: ' + esc(String(err && err.message || err));
+      }
+    });
+    ws.addEventListener('message', (ev) => {
+      try{
+        const msg = JSON.parse(ev.data);
+        if(!msg || typeof msg !== 'object') return;
+        if(msg.type === 'answer' && pc){
+          pc.setRemoteDescription({type:'answer', sdp: msg.sdp}).catch(() => {});
+        } else if(msg.type === 'candidate' && pc && msg.candidate){
+          pc.addIceCandidate(msg.candidate).catch(() => {});
+        }
+      }catch(_){ /* malformed signaling message: drop, never throw */ }
+    });
+    ws.addEventListener('close', (ev) => {
+      setWs('closed');
+      if(ev.code === 4401){
+        pairMsg.textContent = 'Pairing rejected — wrong code, or the codes on ' +
+          'the laptop and this page were entered in different 10-minute windows. Try again.';
+        showPairPanel();
+      } else if(ev.code === 4409){
+        pairMsg.textContent = 'An iPad is already connected to this room.';
+        showPairPanel();
+      } else if(!dcControl || dcControl.readyState !== 'open'){
+        pairMsg.textContent = 'Connection closed before pairing finished. Try again.';
+        showPairPanel();
+      }
+    });
+    ws.addEventListener('error', () => setWs('error'));
+  }
+
+  async function connect(){
+    const code = codeInput.value.trim();
+    if(!/^[0-9]{6}$/.test(code)){
+      pairMsg.textContent = 'Enter the 6-digit code shown on the laptop.';
+      return;
+    }
+    connectBtn.disabled = true;
+    pairMsg.textContent = 'Requesting camera…';
+
+    try{
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: {width:{ideal:960}, height:{ideal:720}, frameRate:{ideal:24}, facingMode:'user'},
+        audio: false,
+      });
+    }catch(err){
+      pairMsg.textContent = 'Camera permission failed: ' + esc(String(err && err.message || err));
+      connectBtn.disabled = false;
+      return;
+    }
+    previewEl.srcObject = stream;
+    requestWakeLock(); // called from a click handler, satisfying user-activation requirements
+
+    const room = getRoom();
+    const exp = Math.ceil((Date.now() / 1000 + 1) / PAIR_WINDOW_SECONDS) * PAIR_WINDOW_SECONDS;
+    let sig;
+    try{
+      sig = await hmacSig(RELAY_SECRET, room, code, exp);
+    }catch(err){
+      pairMsg.textContent = 'Could not compute the pairing signature on this browser.';
+      connectBtn.disabled = false;
+      return;
+    }
+
+    // point 4: the iPad is the offerer.
+    pc = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
+    stream.getTracks().forEach(t => pc.addTrack(t, stream));
+    // Ordered, but still unreliable. Unordered was correct when one frame was
+    // one message; now that a frame spans several chunks, interleaving between
+    // frames destroys reassembly and delivers capture timestamps out of order.
+    // maxRetransmits:0 keeps it lossy, so a dropped chunk is skipped rather
+    // than head-of-line blocking every frame behind it.
+    dcFrames = pc.createDataChannel('frames', {ordered:true, maxRetransmits:0}); // unreliable ON PURPOSE
+    dcControl = pc.createDataChannel('control'); // default reliable/ordered
+    wireDataChannels();
+    wirePeerConnection();
+
+    pairMsg.textContent = 'Connecting…';
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    ws = new WebSocket(proto + '//' + location.host + '/ws');
+    wireSocket(room, code, exp, sig);
+  }
+
+  connectBtn.addEventListener('click', () => { connect().catch(() => {}); });
+  codeInput.addEventListener('keydown', (ev) => { if(ev.key === 'Enter') connectBtn.click(); });
+})();
+</script>
+</body>
+</html>

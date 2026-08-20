@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import secrets
 import threading
 import time
 import traceback
@@ -39,10 +40,13 @@ import yaml
 
 from core.camera import Camera
 from core.camera_factory import make_camera
+from core.ipad_camera import is_ipad_source
+from core.module_gate import ModuleGate
 from core.pipeline import Pipeline
 from core.showcase import ShowcaseGate
-from core.registry import discover, build_enabled
+from core.registry import discover, build_enabled, all_registered
 from core.scheduler import Scheduler
+from core.subjects import SubjectModulePool
 from extractors.face import FaceExtractor
 from extractors.pose import PoseExtractor
 from extractors.motion import MotionExtractor
@@ -83,7 +87,8 @@ def load_alerts_config():
 def build_pipeline(source, config, camera_opts=None, max_staleness: float = 0.25,
                    analysis_width: int = 960, face_analysis_width: int = 640,
                    fast_path_mode: str = "tracked",
-                   quality_profile: str = "maximum"):
+                   quality_profile: str = "maximum",
+                   start_blank: bool = False):
     """Discover modules and assemble the full processing pipeline."""
     discover("modules")
     modules = build_enabled(config)
@@ -103,8 +108,28 @@ def build_pipeline(source, config, camera_opts=None, max_staleness: float = 0.25
             status, detail = CapabilityStatus.READY, "enabled"
         registry.set(module.name, "model", status, detail)
     print(f"[main] enabled modules: {', '.join(m.name for m in modules)}")
-    extractors = [FaceExtractor(input_width=face_analysis_width),
-                  PoseExtractor(input_width=analysis_width), MotionExtractor()]
+    tracking_cfg = config.get("tracking") or {}
+    tracking_enabled = bool(tracking_cfg.get("enabled", False))
+    max_subjects = int(tracking_cfg.get("max_subjects", 3)) if tracking_enabled else 2
+    extractors = [FaceExtractor(input_width=face_analysis_width, max_subjects=max_subjects),
+                  PoseExtractor(input_width=analysis_width, max_subjects=max_subjects),
+                  MotionExtractor()]
+    # Runtime pause/resume overlay (core/module_gate.py): by default starts
+    # mirroring what config/modules.yaml already enabled, so a fresh run
+    # behaves identically to before toggling existed -- alerts work from
+    # frame one. --start-blank seeds it empty instead (camera + person
+    # outline only, everything else off until enabled from /modules); it is
+    # a demo mode, not for unattended/production use, since no module -- and
+    # therefore no alert -- runs until manually toggled on. Either way, only
+    # the /modules console can change it from here, never the config file.
+    secondary_names = [name for name in tracking_cfg.get("secondary_modules", [])
+                       if name in all_registered()]
+    module_gate = ModuleGate(
+        primary_enabled=(set() if start_blank else {m.name for m in modules}),
+        secondary_enabled=(set() if start_blank else set(secondary_names)))
+    subject_pool = (SubjectModulePool(secondary_names, config.get("modules", {}),
+                                      gate=module_gate)
+                    if tracking_enabled and secondary_names else None)
     scheduler = Scheduler(modules)
     aggregator = Aggregator()
     advisor_engine = AdvisorEngine.from_config(config.get("advice"))
@@ -113,12 +138,15 @@ def build_pipeline(source, config, camera_opts=None, max_staleness: float = 0.25
                         max_staleness=max_staleness,
                         showcase_gate=ShowcaseGate.from_config(config),
                         camera_location=(config.get("camera") or {}).get("location"),
-                        tracking_enabled=bool((config.get("tracking") or {}).get("enabled", False)),
+                        tracking_enabled=tracking_enabled,
                         background_analysis=not str(source).startswith("replay:"),
                         fast_path_mode=fast_path_mode,
                         analysis_width=analysis_width,
                         quality_profile=quality_profile,
-                        runtime_config=config.get("runtime"))
+                        runtime_config=config.get("runtime"),
+                        module_gate=module_gate,
+                        subject_pool=subject_pool,
+                        max_subjects=max_subjects)
     return pipeline, aggregator
 
 
@@ -126,11 +154,13 @@ def main():
     """Parse CLI args and run the live detection pipeline."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--source", default="0",
-                    help="camera index, file path, URL, or 'realsense' for a "
-                         "RealSense D435i (depth + IMU; needs pyrealsense2)")
+                    help="camera index, file path, URL, 'realsense' for a "
+                         "RealSense D435i (depth + IMU; needs pyrealsense2), or "
+                         "'ipad' to take frames from an iPad browser over WebRTC "
+                         "(needs requirements-ipad.txt and a signaling relay)")
     ap.add_argument("--alt-source", default="0",
                     help="the other camera to toggle to with 'c' (default 0 = "
-                         "laptop cam; 'realsense' also works here)")
+                         "laptop cam; 'realsense' and 'ipad' also work here)")
     ap.add_argument("--list-cameras", action="store_true",
                     help="probe camera indices, print index+resolution, and exit")
     ap.add_argument("--headless", action="store_true", help="no display window")
@@ -233,6 +263,14 @@ def main():
                          "(prints the URL to open)")
     ap.add_argument("--webui-port", type=int, default=8770,
                     help="port for the companion web display (default 8770)")
+    ap.add_argument("--allow-remote-toggle", action="store_true",
+                    help="allow non-loopback clients to pause/resume detectors "
+                         "from /modules (default: loopback only)")
+    ap.add_argument("--start-blank", action="store_true",
+                    help="start with every detector paused (camera + person "
+                         "outline only); enable them from /modules as you go. "
+                         "For live demos -- NOT for unattended/production use, "
+                         "since no alert can fire until manually enabled")
     ap.add_argument("--debug-endpoint", action="store_true",
                     help="serve private raw diagnostics on localhost only")
     ap.add_argument("--debug-port", type=int, default=8771,
@@ -241,6 +279,27 @@ def main():
                     help="serve the local caregiver review portal on loopback only")
     ap.add_argument("--caregiver-port", type=int, default=8772,
                     help="localhost caregiver portal port (default 8772)")
+    ap.add_argument("--ipad-relay-url", default=None,
+                    help="https URL of the signaling relay for --source ipad "
+                         "(default: $IPAD_RELAY_URL). The relay only carries "
+                         "SDP/ICE; video goes peer-to-peer")
+    ap.add_argument("--ipad-room", default=None,
+                    help="relay room name for --source ipad (default: $IPAD_ROOM); "
+                         "stable so the iPad can keep a bookmark")
+    ap.add_argument("--ipad-fps", type=float, default=20.0,
+                    help="frame rate to request from the iPad camera (default 20; "
+                         "below ~20 the rPPG quality score is scaled down)")
+    ap.add_argument("--ipad-transport", default="datachannel",
+                    choices=("datachannel", "video"),
+                    help="datachannel = JPEG frames (no temporal compression, "
+                         "better for rPPG); video = WebRTC video track (cheaper, "
+                         "but codec noise lands in the pulse band)")
+    ap.add_argument("--ipad-stun", default="",
+                    help="comma-separated STUN URLs; unused on a laptop hotspot "
+                         "where ICE settles on host candidates")
+    ap.add_argument("--no-ipad-toggle", action="store_true",
+                    help="refuse module enable/disable from the paired iPad "
+                         "(default: allowed, since control is the point)")
     args = ap.parse_args()
     apply_loaded_limits(args.quality_profile)
     if args.list_cameras:
@@ -268,6 +327,34 @@ def main():
                    "auto_resolution": auto_resolution,
                    "min_fps": args.min_fps}
 
+    # An iPad source pairs over a signaling relay. The pairing code is generated
+    # per run and printed once; the shared secret only ever comes from .env, so
+    # it never lands in shell history or the process list.
+    ipad_source = is_ipad_source(args.source) or is_ipad_source(args.alt_source)
+    ipad_code = None
+    if ipad_source:
+        ipad_code = f"{secrets.randbelow(1_000_000):06d}"
+        ipad_relay = args.ipad_relay_url or os.environ.get("IPAD_RELAY_URL")
+        ipad_room = args.ipad_room or os.environ.get("IPAD_ROOM")
+        ipad_secret = os.environ.get("RELAY_SECRET")
+        missing = [name for name, value in (("IPAD_RELAY_URL", ipad_relay),
+                                            ("IPAD_ROOM", ipad_room),
+                                            ("RELAY_SECRET", ipad_secret))
+                   if not value]
+        if missing:
+            ap.error(f"--source ipad needs {', '.join(missing)}; set them in .env "
+                     f"(or pass --ipad-relay-url/--ipad-room)")
+        camera_opts.update({
+            "request_fps": args.ipad_fps,
+            "ipad_relay_url": ipad_relay, "ipad_room": ipad_room,
+            "ipad_secret": ipad_secret, "ipad_code": ipad_code,
+            "ipad_stun": tuple(s.strip() for s in args.ipad_stun.split(",") if s.strip()),
+            "ipad_transport": args.ipad_transport})
+        print(f"\n[ipad] open  {ipad_relay.rstrip('/')}/r/{ipad_room}"
+              f"\n[ipad] pairing code: {ipad_code}"
+              f"\n[ipad] start the laptop first — the relay's free tier can take "
+              f"~60s to wake, and whoever connects first waits for it\n")
+
     config = load_config()
     if args.dev_mode:
         modules = config.get("modules", {})
@@ -294,7 +381,8 @@ def main():
                                           analysis_width=args.analysis_width,
                                           face_analysis_width=args.face_analysis_width,
                                           fast_path_mode=args.vitals_fast_path_mode,
-                                          quality_profile=args.quality_profile)
+                                          quality_profile=args.quality_profile,
+                                          start_blank=args.start_blank)
     # Start FashionCLIP before audio/native workers compete for CPU and import
     # bandwidth. Its loader is asynchronous, so CLI and camera startup remain
     # responsive and Pipeline.run's repeated preload is idempotent.
@@ -407,7 +495,13 @@ def main():
     web = None
     web_publish_executor = None
     web_publish_state = {"future": None, "last": -1e9}
-    if args.webui:
+    ipad_executor = None
+    ipad_publish_state = {"last": -1e9}
+    # The control handlers below serve both surfaces, so they are built whenever
+    # either one is active. Keeping them in one place matters: module toggles
+    # validate against the loaded scheduler/subject-pool names, and that
+    # validation must not be duplicated per transport.
+    if args.webui or ipad_source:
         control = pipeline.camera.replay_control if is_replay else None
         primary_handler = pipeline.tracker.set_primary if args.enable_multi_person else None
 
@@ -424,14 +518,38 @@ def main():
             voice_agent.request_test(protocol)
             return {"action": "start", "protocol": protocol, "started": True}
 
-        def module_handler(action, target=None):
+        def module_handler(action, target=None, scope=None):
             """Web hook for the /modules console, mirroring the 't'/'a'/'d'
             hotkeys so a detector's on-demand action can be started from a
             phone. Raises ValueError on an unknown action or target (rendered
-            as HTTP 400); passive modules simply expose no trigger."""
+            as HTTP 400); passive modules simply expose no trigger.
+
+            'enable'/'disable' pause or resume an already-instantiated
+            module's cadence via ModuleGate -- they never load or unload a
+            model, so re-enabling a heavy detector is instant. A module
+            config/modules.yaml disabled at startup was never instantiated
+            and cannot be toggled on this way; that still needs a restart."""
             if action == "circuit":
                 return {"action": "circuit",
                         "started": bool(voice_agent.start_demo_circuit())}
+            if action in ("enable", "disable"):
+                effective_scope = scope or "primary"
+                if effective_scope not in ("primary", "secondary"):
+                    raise ValueError("unknown scope")
+                if effective_scope == "primary":
+                    loaded = {m.name for m in pipeline.scheduler.modules}
+                else:
+                    if pipeline.subject_pool is None:
+                        raise RuntimeError(
+                            "multi-person tracking has no secondary modules configured")
+                    loaded = set(pipeline.subject_pool.module_names)
+                if target not in loaded:
+                    raise ValueError(
+                        "module is not loaded for this scope; enable it in "
+                        "config/modules.yaml and restart")
+                pipeline.module_gate.set(target, action == "enable", scope=effective_scope)
+                return {"action": action, "target": target, "scope": effective_scope,
+                        "enabled": pipeline.module_gate.enabled(target, effective_scope)}
             if action == "vlm_scan":
                 screening = next((m for m in pipeline.scheduler.modules
                                   if m.name == "skin_vision"), None)
@@ -456,14 +574,58 @@ def main():
                 raise ValueError("empty reply")
             return {"text": " ".join(str(text).split())[:400]}
 
-        web = CompanionServer(port=args.webui_port, control_handler=control,
-                              primary_handler=primary_handler,
-                              assessment_handler=assessment_handler,
-                              say_handler=say_handler,
-                              module_handler=module_handler)
-        web.start()
-        web_publish_executor = ThreadPoolExecutor(
-            max_workers=1, thread_name_prefix="web-publish")
+        if args.webui:
+            web = CompanionServer(port=args.webui_port, control_handler=control,
+                                  primary_handler=primary_handler,
+                                  assessment_handler=assessment_handler,
+                                  say_handler=say_handler,
+                                  module_handler=module_handler,
+                                  allow_remote_module_toggle=args.allow_remote_toggle)
+            web.start()
+            web_publish_executor = ThreadPoolExecutor(
+                max_workers=1, thread_name_prefix="web-publish")
+
+        if ipad_source:
+            ipad_executor = ThreadPoolExecutor(
+                max_workers=1, thread_name_prefix="ipad-control")
+
+            def ipad_control(payload, reply):
+                """Service a control message from the paired iPad.
+
+                Returns immediately: the work runs on a worker thread because
+                this is called from the link's asyncio loop, and blocking there
+                would stall frame receive for every module toggle.
+                """
+                action = str(payload.get("action", ""))
+                target = payload.get("target")
+                scope = payload.get("scope")
+
+                def run():
+                    # `target` is echoed at the top level of both replies: the
+                    # page keys its per-button busy flag off msg.target, so an
+                    # error without it would leave that button stuck spinning.
+                    try:
+                        if payload.get("type") != "module":
+                            raise ValueError("unsupported control message")
+                        if action in ("enable", "disable") and args.no_ipad_toggle:
+                            raise RuntimeError("module toggles from the iPad are "
+                                               "disabled (--no-ipad-toggle)")
+                        result = module_handler(
+                            action, str(target) if target is not None else None,
+                            str(scope) if scope is not None else None)
+                        reply({"type": "module_result", "ok": True,
+                               "target": target, "module": result})
+                    except (ValueError, TypeError, RuntimeError) as exc:
+                        # Same shape webui/server.py returns, so the page's error
+                        # ladder works unchanged across both transports.
+                        reply({"type": "module_result", "ok": False,
+                               "target": target, "error": str(exc)})
+                ipad_executor.submit(run)
+
+            pipeline.camera.set_ipad_control_handler(ipad_control)
+            if not args.no_ipad_toggle:
+                print("[ipad] module toggles from the paired iPad are ENABLED "
+                      "(--no-ipad-toggle to refuse them)")
 
     caregiver_server = None
     if args.caregiver_portal:
@@ -505,7 +667,20 @@ def main():
                         "agent_vision": args.enable_agent_vision},
             "replay": pipeline.camera.replay_status(),
             "moondream": voice_agent.moondream_status(),
-            "modules_enabled": sorted(m.name for m in pipeline.scheduler.modules),
+            "modules_enabled": sorted(
+                m.name for m in pipeline.scheduler.modules
+                if pipeline.module_gate is None
+                or pipeline.module_gate.enabled(m.name, "primary")),
+            # Unlike modules_enabled above (which reflects live gate state --
+            # empty under --start-blank), this reflects what was actually
+            # instantiated at startup and never changes with the gate. /modules
+            # needs this to know a paused module can still be toggled back on,
+            # instead of wrongly claiming it needs a restart.
+            "modules_loaded": sorted(m.name for m in pipeline.scheduler.modules),
+            "module_gate": (pipeline.module_gate.snapshot()
+                           if pipeline.module_gate is not None else None),
+            "secondary_modules": (sorted(pipeline.subject_pool.module_names)
+                                  if pipeline.subject_pool is not None else []),
         }
         # Bounded provider health for every consumer, not just the private
         # debug port: without it a cloud outage is indistinguishable from a
@@ -663,6 +838,21 @@ def main():
                     publish_data_snapshot)
                 web_publish_state["last"] = ctx.timestamp
 
+        # mirror module state to the paired iPad so its toggle grid stays honest.
+        # send_control hands off to the link's loop and returns, so this stays a
+        # cheap call on the heavy loop.
+        if ipad_source and ctx.timestamp - ipad_publish_state["last"] >= 0.5:
+            ipad_publish_state["last"] = ctx.timestamp
+            gate = getattr(pipeline, "module_gate", None)
+            modules_state = [
+                {"name": m.name, "scope": "primary",
+                 "enabled": bool(gate.enabled(m.name, "primary")) if gate else True}
+                for m in pipeline.scheduler.modules]
+            pipeline.camera.ipad_control({
+                "type": "state", "modules": modules_state,
+                "fps": round(ctx.fps, 1),
+                "capture": pipeline.camera.diagnostics()})
+
         print_vitals(snapshot)
 
         with analysis_state_lock:
@@ -813,6 +1003,8 @@ def main():
             if pending is not None:
                 pending.cancel()
             web_publish_executor.shutdown(wait=False, cancel_futures=True)
+        if ipad_executor is not None:
+            ipad_executor.shutdown(wait=False, cancel_futures=True)
         voice_agent.close()
         sensor_manager.close()
         if sound_detector is not None:

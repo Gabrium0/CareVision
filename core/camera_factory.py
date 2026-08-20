@@ -20,18 +20,43 @@ from typing import Callable, Iterator, Optional
 
 from .camera import Camera
 from .context import FrameContext
+from .ipad_camera import IPadCamera, is_ipad_source
 from .realsense_camera import RealSenseCamera, is_realsense_source
 from .replay import ReplayCamera
 
 
 def make_backend(source, opts: dict | None = None):
-    """Build the raw backend for a source: RealSense or UVC/file Camera."""
+    """Build the raw backend for a source: replay, RealSense, iPad, or UVC/file."""
     opts = opts or {}
     if isinstance(source, str) and source.startswith("replay:"):
         return ReplayCamera(source=source, **opts)
     if is_realsense_source(source):
         return RealSenseCamera(source=source, **opts)
+    if is_ipad_source(source):
+        return IPadCamera(source=source, **opts)
     return Camera(source=source, **opts)
+
+
+def _kind(source) -> str:
+    """Classify a source string by the backend that will serve it."""
+    if isinstance(source, str) and source.startswith("replay:"):
+        return "replay"
+    if is_realsense_source(source):
+        return "realsense"
+    if is_ipad_source(source):
+        return "ipad"
+    return "uvc"
+
+
+def _kind_of(backend) -> str:
+    """Classify a live backend the same way `_kind` classifies a source."""
+    if isinstance(backend, ReplayCamera):
+        return "replay"
+    if isinstance(backend, RealSenseCamera):
+        return "realsense"
+    if isinstance(backend, IPadCamera):
+        return "ipad"
+    return "uvc"
 
 
 def make_camera(source, opts: dict | None = None) -> "SwitchableCamera":
@@ -45,6 +70,7 @@ class SwitchableCamera:
     def __init__(self, source, opts: dict | None = None):
         self.inner = make_backend(source, opts)
         self._hooks: list[Callable] = []
+        self._ipad_control_handler: Optional[Callable] = None
         self._cross_pending: Optional[tuple] = None
         self._switch_lock = threading.Lock()
 
@@ -74,11 +100,11 @@ class SwitchableCamera:
     def switch_to(self, source, opts: dict | None = None) -> None:
         """Same-type switches ride the backend's own path; cross-type ones
         are queued for the frames loop (never swapped from a UI thread)."""
-        target_replay = isinstance(source, str) and source.startswith("replay:")
-        if target_replay or isinstance(self.inner, ReplayCamera):
-            with self._switch_lock:
-                self._cross_pending = (source, opts or {})
-        elif is_realsense_source(source) == isinstance(self.inner, RealSenseCamera):
+        target, current = _kind(source), _kind_of(self.inner)
+        # Only UVC and RealSense backends can retarget in place. Replay has no
+        # switch_to at all, and re-pairing an iPad means a fresh peer connection
+        # and pairing code, so both kinds always take the rebuild path.
+        if target == current and target in ("uvc", "realsense"):
             self.inner.switch_to(source, opts)
         else:
             with self._switch_lock:
@@ -114,6 +140,8 @@ class SwitchableCamera:
             return
         for hook in self._hooks:
             new.register_fast_hook(hook)
+        if self._ipad_control_handler is not None and isinstance(new, IPadCamera):
+            new.set_control_handler(self._ipad_control_handler)
         with self._switch_lock:
             self.inner = new
 
@@ -146,3 +174,22 @@ class SwitchableCamera:
     def replay_status(self) -> dict | None:
         """Return active replay state or None for live sources."""
         return self.inner.status() if isinstance(self.inner, ReplayCamera) else None
+
+    def ipad_control(self, payload: dict) -> None:
+        """Push a state update to the paired iPad; no-op for other sources."""
+        if isinstance(self.inner, IPadCamera):
+            self.inner.send_control(payload)
+
+    def ipad_status(self) -> dict | None:
+        """Return active iPad link state or None for other sources."""
+        return self.inner.status() if isinstance(self.inner, IPadCamera) else None
+
+    def set_ipad_control_handler(self, handler) -> None:
+        """Attach the iPad's control callback, surviving backend rebuilds.
+
+        Held on the facade like the fast hooks are, so switching to an iPad via
+        the 'c' hotkey (which rebuilds the backend) still gets a live handler.
+        """
+        self._ipad_control_handler = handler
+        if isinstance(self.inner, IPadCamera):
+            self.inner.set_control_handler(handler)

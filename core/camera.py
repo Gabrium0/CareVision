@@ -49,7 +49,9 @@ class Camera:
                  request_fps: float = 30.0, request_size: tuple = (1280, 720),
                  settle_seconds: float = 1.5, target_brightness: float = 90.0,
                  allow_gain_boost: bool = True, auto_resolution: bool = False,
-                 min_fps: float = 25.0):
+                 min_fps: float = 25.0, **_unused):
+        # **_unused swallows options meant for other backends (the ipad_* keys)
+        # so main.py can pass one opts dict to whichever backend gets built.
         self.source = source
         self.target_width = target_width
         self.lock = lock                     # lock exposure/WB/gain (webcam only)
@@ -355,11 +357,23 @@ class Camera:
             bright = self._measure_brightness()
 
     def open(self) -> None:
-        """Open the underlying capture source."""
+        """Open the underlying capture source. DSHOW is preferred for webcams
+        (it exposes the exposure/gain controls `_tune_exposure_and_gain` and
+        `_autoprobe_resolution` need), but some devices/indices report
+        isOpened() under one backend while never actually delivering a frame
+        (observed on real hardware: a dead/non-UVC entry at index 0 that
+        MSMF happily "opens" but can't grab from) -- so fall back across
+        backends on a failed *read*, not just a failed open."""
         if isinstance(self.source, str) and self.source.isdigit():
             self.source = int(self.source)
-        backend = cv2.CAP_DSHOW if self._is_webcam() else cv2.CAP_ANY
-        self.cap = cv2.VideoCapture(self.source, backend)
+        if self._is_webcam():
+            for backend in (cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_ANY):
+                self.cap = cv2.VideoCapture(self.source, backend)
+                if self.cap.isOpened() and self.cap.read()[0]:
+                    break
+                self.cap.release()
+        else:
+            self.cap = cv2.VideoCapture(self.source, cv2.CAP_ANY)
         if not self.cap.isOpened():
             raise RuntimeError(f"Cannot open video source: {self.source!r}")
         if self._is_webcam() and self.auto_resolution:

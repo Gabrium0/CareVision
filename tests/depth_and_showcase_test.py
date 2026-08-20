@@ -315,12 +315,30 @@ def test_context_text_omits_low_confidence_signals():
 def test_factory_selects_backend_and_routes_switches():
     from core.camera import Camera
     from core.camera_factory import SwitchableCamera, make_backend
+    from core.ipad_camera import IPadCamera
     from core.realsense_camera import RealSenseCamera
     assert isinstance(make_backend("realsense"), RealSenseCamera)
     assert isinstance(make_backend("0"), Camera)
+    # aiortc is NOT installed in this environment -- this must still succeed,
+    # which is exactly what enforces core.ipad_camera's lazy-import split
+    # (the WebRTC stack is only imported inside IPadCamera.open()/_build_link).
+    assert isinstance(make_backend("ipad"), IPadCamera)
     cam = SwitchableCamera("0")
     cam.switch_to("1")                          # same type: delegates to inner
     assert cam.inner._pending is not None and cam._cross_pending is None
     cam.inner._pending = None
     cam.switch_to("realsense")                  # cross type: queued on facade
     assert cam._cross_pending is not None and cam.inner._pending is None
+
+    # switching TO an iPad source is always a cross-type (rebuild) switch,
+    # never delegated to an inner backend's own switch_to (see IPadCamera's
+    # switch_to, which raises: re-pairing needs a fresh peer connection).
+    cam2 = SwitchableCamera("0")
+    cam2.switch_to("ipad")
+    assert cam2._cross_pending is not None and cam2.inner._pending is None
+
+    # constructing an iPad-sourced SwitchableCamera must not open any socket
+    # (no aiortc installed, no relay reachable) -- open() is deferred until
+    # the frames loop actually starts consuming.
+    cam3 = SwitchableCamera("ipad")
+    assert isinstance(cam3.inner, IPadCamera)

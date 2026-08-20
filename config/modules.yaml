@@ -16,6 +16,18 @@ runtime:
 
 tracking:
   enabled: false              # opt in with --enable-multi-person
+  max_subjects: 3             # primary + up to this many secondary tracks
+  secondary_modules:          # detectors that run per-secondary-subject; kept
+                               # small and safety-leaning since cost scales
+                               # per person. Fall/unresponsive still show in
+                               # the live dashboard for a secondary subject
+                               # but never escalate to the caregiver -- see
+                               # alerts/manager.py's primary-only filter.
+    - presence
+    - fall
+    - near_fall
+    - unresponsive
+    - wandering
 
 modules:
   # --- Vitals ---
@@ -48,11 +60,25 @@ modules:
   respiration:
     enabled: true
     window_seconds: 25
-  spo2:                        # contactless rPPG pulse oximetry (RealSense only)
-    enabled: true              # requires=("face","depth"); scheduler skips it on RGB-only sources
+  spo2:                        # contactless rPPG pulse oximetry
+    enabled: true
     window_seconds: 20
     ac_band: [0.7, 3.0]        # cardiac band for the pulsatile AC component
-    channels: [red, blue]      # ratio-of-ratios numerator/denominator (blue SNR is weak; green is the alt)
+    channels: [red, blue]      # uncompressed-source (RealSense) ratio pair
+    compressed_channels: [red, green]  # compressed-source (webcam) ratio pair; green
+                                # rides full-resolution luma under 4:2:0 subsampling.
+                                # An iPad source reports its actual chroma sampling as
+                                # `jpeg_subsampling` in camera diagnostics -- if that
+                                # says 4:4:4, the physiologically correct [red, blue]
+                                # pair becomes defensible here.
+    enabled_on_compressed: true   # INDICATIVE ONLY, NOT A MEASUREMENT. Any non-depth
+                                # source (webcam, iPad) lands on the "compressed" path,
+                                # and assets/spo2_calibration.json ships calibrated_rg:
+                                # false with placeholder A=100/B=5 -- so this produces a
+                                # plausible-looking number with near-zero confidence and
+                                # no alerts. Label it as unvalidated wherever it is shown.
+                                # Note Spo2._sample flushes the whole buffer when the
+                                # mode flips, so don't hot-swap iPad<->RealSense mid-read.
     calibration_file: assets/spo2_calibration.json
     min_pulse_prominence: 0.15 # require a clean concurrent pulse before reporting
     display_min: 70
@@ -282,7 +308,11 @@ showcase:
   conversation_max_m: 1.5
   movement_min_m: 2.5
   movement_max_m: 3.2
-  min_face_px: 110
+  min_face_px: 110            # measured in DELIVERED-frame pixels, so an iPad
+                              # propped across a room fails this and heart rate
+                              # never starts (heart_rate_block_reason: no_face).
+                              # Move the iPad closer rather than lowering this --
+                              # rPPG SNR falls as ~1/sqrt(skin pixels).
   min_brightness: 45.0
   max_brightness: 220.0
   max_motion: 12.0

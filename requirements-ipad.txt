@@ -1,0 +1,26 @@
+# Optional extra: iPad-as-camera backend (--source ipad), which receives JPEG
+# frames from an iPad browser over a WebRTC data channel.
+# Install alongside requirements.txt:  pip install -r requirements-ipad.txt
+#
+# Verified 2026-08-19 on system Python 3.12: aiortc 1.15.0 installs cleanly and
+# does NOT touch `av` (PyAV stayed at 16.1.0). It adds aioice, pylibsrtp,
+# pyopenssl, google-crc32c, ifaddr and dnspython. cv2, mediapipe, torch and
+# numpy all still import afterwards.
+#
+# Older aiortc releases pinned `av` low enough to force a downgrade, so if you
+# ever install a different version, re-check before trusting it:
+#
+#   python -c "import av, cv2, mediapipe, torch, aiortc, aiohttp; print('ok')"
+#
+# Note also that this machine has two interpreters with different contents. The
+# app runs on the system Python 3.12 (av 16.1.0, websockets 13.1, numpy 2.4.6,
+# torch 2.13.0+cpu); the .venv is a stale, unused environment (av 18.0.0, no
+# websockets, numpy 1.26.4, torch 2.6.0+cu124). Install into whichever one you
+# actually launch main.py with.
+#
+# The relay half of this feature (relay/) deploys separately and has its own
+# requirements.txt -- it is NOT installed here and never sees video.
+aiortc>=1.9
+# aiohttp serves as the relay WebSocket client rather than the `websockets`
+# package, because aiohttp is already present in both environments.
+aiohttp>=3.9
