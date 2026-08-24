@@ -12,6 +12,15 @@ Covers:
 - ratio_to_spo2: the linear map is decreasing in R.
 - SpO2 module: gating below the sample/second floor, uncalibrated confidence
   suppression + label, display clamp, and a calibrated low-reading WARNING.
+  (These original tests bypass _sample()/fast_update() and feed the buffer
+  directly, so they never see a real FrameContext.depth -- the module's
+  _source_mode default of "uncompressed" keeps them on the original
+  red/blue + A/B path unchanged; test_realsense_mode_matches_original_path
+  below confirms that explicitly against a real ctx.)
+- Dual-mode selection: compressed (no-depth) source picks red/green and its
+  own A_rg/B_rg coefficients, never the uncompressed ones; is a silent no-op
+  unless enabled_on_compressed; and a mid-run source switch flushes the
+  buffer instead of blending two channel/coefficient bases.
 """
 import json
 import sys
@@ -21,6 +30,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from core.context import FrameContext
 from modules.spo2 import SpO2, channel_ac_dc, ratio_of_ratios, ratio_to_spo2
 
 _AC_BAND = (0.7, 3.0)
@@ -92,7 +102,7 @@ def test_module_gates_below_sample_floor():
 def test_uncalibrated_is_low_confidence_and_labelled():
     """The shipped uncalibrated default emits a trend-only, near-zero-confidence read."""
     module = SpO2(window_seconds=10)
-    assert module._calibrated is False
+    assert module._calibration["uncompressed"][2] is False
     rgb, t = _pulsatile_rgb(seconds=10.0)
     _load_module_buffer(module, rgb, t)
     results = module.process(None)
@@ -122,7 +132,7 @@ def test_calibrated_low_reading_warns():
         cal.write_text(json.dumps({"calibrated": True, "A": a_coeff, "B": b_coeff,
                                    "channels": ["red", "blue"]}), encoding="utf-8")
         module = SpO2(window_seconds=10, calibration_file=str(cal))
-        assert module._calibrated is True
+        assert module._calibration["uncompressed"][2] is True
         _load_module_buffer(module, rgb, t, brightness=120.0)
         results = module.process(None)
     assert results is not None
@@ -147,6 +157,127 @@ def test_debug_ratio_emitted_when_enabled():
     print("[spo2-test] debug_ratio emission OK")
 
 
+def test_depth_present_selects_uncompressed_mode():
+    """A real ctx with depth set (RealSense) selects 'uncompressed' -- the
+    exact branch the module used before dual-mode support existed."""
+    module = SpO2()
+    assert module._source_mode == "uncompressed"    # default, before any sample
+    ctx = FrameContext(frame=np.zeros((4, 4, 3), np.uint8), timestamp=1.0,
+                       frame_index=0, fps=30.0, depth=np.zeros((4, 4), np.uint16))
+    module._sample(ctx)                              # ctx.face is None -> no pixels,
+    assert module._source_mode == "uncompressed"     # but mode detection still runs first
+    module.close()
+    print("[spo2-test] depth-present -> uncompressed mode OK")
+
+
+def test_depth_absent_selects_compressed_mode():
+    """A real ctx with no depth (plain webcam) selects 'compressed'."""
+    module = SpO2()
+    ctx = FrameContext(frame=np.zeros((4, 4, 3), np.uint8), timestamp=1.0,
+                       frame_index=0, fps=30.0, depth=None)
+    module._sample(ctx)
+    assert module._source_mode == "compressed"
+    module.close()
+    print("[spo2-test] depth-absent -> compressed mode OK")
+
+
+def test_compressed_mode_is_silent_no_op_by_default():
+    """enabled_on_compressed defaults False: a good compressed-mode buffer
+    still yields no result until explicitly opted in."""
+    module = SpO2(window_seconds=10)
+    assert module.enabled_on_compressed is False
+    module._source_mode, module._mode_seen = "compressed", True
+    rgb, t = _pulsatile_rgb(seconds=10.0)
+    _load_module_buffer(module, rgb, t)
+    assert module.process(None) is None
+    module.close()
+    print("[spo2-test] compressed mode opt-in gate OK")
+
+
+def test_compressed_mode_uses_green_not_blue_and_its_own_calibration():
+    """Opted-in compressed mode reads red/green (not red/blue) and A_rg/B_rg
+    (never the uncompressed A/B) -- the two modes must never share coefficients."""
+    import tempfile
+
+    fs = 30.0
+    # Distinct AC amplitudes per channel so red/blue and red/green ratios differ.
+    rgb, t = _pulsatile_rgb(fs=fs, seconds=10.0, amp=(0.06, 0.03, 0.02))
+    ratio_rg = ratio_of_ratios(rgb, fs, 0, 1, _AC_BAND)   # red/green
+    ratio_rb = ratio_of_ratios(rgb, fs, 0, 2, _AC_BAND)   # red/blue
+    assert ratio_rg is not None and ratio_rb is not None
+    assert abs(ratio_rg - ratio_rb) > 0.05          # the two pairs really differ
+
+    with tempfile.TemporaryDirectory() as d:
+        cal = Path(d) / "cal.json"
+        cal.write_text(json.dumps({
+            "calibrated": True, "A": 999.0, "B": 999.0,        # uncompressed: must be ignored
+            "calibrated_rg": True, "A_rg": 100.0, "B_rg": 5.0,  # compressed: must be used
+        }), encoding="utf-8")
+        module = SpO2(window_seconds=10, calibration_file=str(cal),
+                     enabled_on_compressed=True)
+        assert module._calibration["uncompressed"] == (999.0, 999.0, True)
+        assert module._calibration["compressed"] == (100.0, 5.0, True)
+        module._source_mode, module._mode_seen = "compressed", True
+        _load_module_buffer(module, rgb, t)
+        results = module.process(None)
+    assert results is not None
+    spo2 = next(r for r in results if r.key == "spo2")
+    expected = ratio_to_spo2(ratio_rg, 100.0, 5.0)
+    wrong = ratio_to_spo2(ratio_rb, 999.0, 999.0)
+    assert abs(spo2.value - max(module.display_min, min(module.display_max, expected))) < 0.5
+    assert abs(spo2.value - wrong) > 1.0             # nowhere near the uncompressed answer
+    assert "compressed color" in spo2.message
+    module.close()
+    print("[spo2-test] compressed mode channel/calibration isolation OK")
+
+
+def test_source_switch_flushes_buffer_not_blended():
+    """A mid-run source change (RealSense <-> webcam) discards the buffer
+    instead of averaging samples drawn under two different channel/coefficient
+    bases into one window."""
+    module = SpO2(window_seconds=10)
+    rgb, t = _pulsatile_rgb(seconds=10.0)
+    module._source_mode, module._mode_seen = "uncompressed", True
+    _load_module_buffer(module, rgb, t)
+    assert len(module.buf) > 0
+    ctx = FrameContext(frame=np.zeros((4, 4, 3), np.uint8), timestamp=t[-1] + 1.0,
+                       frame_index=1, fps=30.0, depth=None)   # switched to webcam
+    module._sample(ctx)
+    assert module._source_mode == "compressed"
+    assert len(module.buf) == 0                      # flushed, not blended
+    module.close()
+    print("[spo2-test] mode-switch buffer flush OK")
+
+
+def test_realsense_path_unchanged_by_dual_mode_addition():
+    """End-to-end: with the module's own default (uncompressed) mode, the
+    calibrated-WARNING scenario from test_calibrated_low_reading_warns
+    reproduces identically -- dual-mode support changes nothing about the
+    RealSense/uncompressed path's channels, coefficients, or thresholds."""
+    fs = 30.0
+    rgb, t = _pulsatile_rgb(fs=fs, seconds=10.0, amp=(0.06, 0.04, 0.02))
+    ratio = ratio_of_ratios(rgb, fs, 0, 2, _AC_BAND)
+    assert ratio is not None
+    b_coeff = 5.0
+    a_coeff = 88.0 + b_coeff * ratio
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        cal = Path(d) / "cal.json"
+        cal.write_text(json.dumps({"calibrated": True, "A": a_coeff, "B": b_coeff}),
+                       encoding="utf-8")
+        module = SpO2(window_seconds=10, calibration_file=str(cal))
+        assert module._source_mode == "uncompressed"     # untouched default
+        _load_module_buffer(module, rgb, t, brightness=120.0)
+        results = module.process(None)
+    assert results is not None
+    spo2 = next(r for r in results if r.key == "spo2")
+    assert 87.0 <= spo2.value <= 89.0
+    assert spo2.severity.value == "warning"
+    assert "compressed" not in spo2.message           # no mode note on the original path
+    module.close()
+    print("[spo2-test] RealSense/uncompressed path unchanged OK")
+
+
 if __name__ == "__main__":
     test_ratio_of_ratios_direction()
     test_ratio_none_guards()
@@ -154,4 +285,10 @@ if __name__ == "__main__":
     test_uncalibrated_is_low_confidence_and_labelled()
     test_calibrated_low_reading_warns()
     test_debug_ratio_emitted_when_enabled()
+    test_depth_present_selects_uncompressed_mode()
+    test_depth_absent_selects_compressed_mode()
+    test_compressed_mode_is_silent_no_op_by_default()
+    test_compressed_mode_uses_green_not_blue_and_its_own_calibration()
+    test_source_switch_flushes_buffer_not_blended()
+    test_realsense_path_unchanged_by_dual_mode_addition()
     print("[spo2-test] all tests passed")

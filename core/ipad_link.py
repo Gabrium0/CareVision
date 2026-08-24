@@ -422,6 +422,13 @@ class IPadLink:
             # is attributable rather than mysterious.
             self._set(clock_source=payload.get("clock_source"))
             return
+        if payload.get("type") == "camera_tuning":
+            # Whether the iPad managed to lock exposure/white balance. Surfaced
+            # so we know if the biggest rPPG error source is actually pinned or
+            # (as is usual on iOS Safari) still free-running.
+            self._set(camera_tuning=payload.get("locked"),
+                      camera_caps=payload.get("capabilities"))
+            return
         if self._on_control is not None:
             # The callback is expected to hand work to an executor and return
             # immediately — blocking here would stall the whole event loop.

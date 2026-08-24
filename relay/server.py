@@ -89,7 +89,10 @@ async def serve_ipad_page(request: web.Request) -> web.Response:
         return web.Response(status=400, text="invalid room id")
     html = IPAD_HTML_PATH.read_text(encoding="utf-8")
     html = html.replace(SECRET_PLACEHOLDER, json.dumps(RELAY_SECRET))
-    return web.Response(text=html, content_type="text/html")
+    # no-store so iOS Safari cannot serve a stale capture page after the page
+    # is updated; without it a reload silently keeps the old resolution/logic.
+    return web.Response(text=html, content_type="text/html",
+                        headers={"Cache-Control": "no-store, must-revalidate"})
 
 
 def _parse_hello(raw: str) -> dict | None:
@@ -159,13 +162,18 @@ async def ws_handler(request: web.Request) -> web.WebSocketResponse:
                 await ws.close(code=HELLO_CLOSE_CODE)
                 return ws
 
-        if role in room_obj.members:
-            # A second socket claiming an occupied role is rejected outright;
-            # the first holder of that role keeps its connection. Documented
-            # in relay/README.md.
-            log.info("room=%s role=%s rejected: role already connected", room_id, role)
-            await ws.close(code=ROLE_TAKEN_CLOSE_CODE)
-            return ws
+        prior = room_obj.members.get(role)
+        if prior is not None and prior is not ws:
+            # Last connection wins: a reconnecting peer would otherwise race its
+            # own not-yet-cleaned-up socket and be rejected as a duplicate. Evict
+            # the stale one instead. The evicted socket's finally-block checks
+            # `members.get(role) is ws` before deleting, so replacing the entry
+            # here means it will not remove this new connection.
+            log.info("room=%s role=%s replacing stale connection", room_id, role)
+            try:
+                await prior.close(code=ROLE_TAKEN_CLOSE_CODE)
+            except Exception:  # noqa: BLE001 - a dead socket must not block the new one
+                pass
 
         room_obj.members[role] = ws
         log.info("room=%s role=%s connected", room_id, role)

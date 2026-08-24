@@ -99,14 +99,21 @@ with the D435i: SpO₂/cyanosis as a measurement, true fever (no thermal).
 
 ## Items intentionally deferred (need extra hardware / sensors)
 These appear in detectionList.md's notes but are out of scope for pure RGB:
-- **SpO₂** — now implemented as a RealSense-only, trend-only module
-  (`modules/spo2.py`, `requires=("face","depth")`, so the scheduler skips it on the
-  OV2735 whose MJPEG 4:2:0 color can't support it). It reuses the classical rPPG
-  skin signal and reads the ratio-of-ratios `R=(AC_red/DC_red)/(AC_blue/DC_blue)`,
-  mapped `SpO₂=A−B·R`. Ships **uncalibrated** (`assets/spo2_calibration.json`,
-  `calibrated=false`) → near-zero confidence + a "(uncalibrated, trend only)" label,
-  and never escalates past WARNING. Real A/B must be fitted against a reference
-  oximeter (the `sensors.pulse_oximeter` BLE path is the intended ground truth).
+- **SpO₂** — implemented as a trend-only module (`modules/spo2.py`) with two
+  acquisition modes selected per-frame from `ctx.depth`, each with its own
+  ratio-of-ratios channel pair and calibration coefficients (never mixed):
+  **uncompressed** (RealSense) reads `R=(AC_red/DC_red)/(AC_blue/DC_blue)`, as
+  originally designed; **compressed** (the OV2735 or any non-depth source)
+  reads red/green instead, since green rides full-resolution luma under
+  MJPEG 4:2:0 chroma subsampling. Both map `SpO₂=A−B·R`. The compressed mode
+  is **opt-in** (`enabled_on_compressed: false` by default in
+  `config/modules.yaml`) because it has not been validated against a
+  reference oximeter. Both modes ship **uncalibrated**
+  (`assets/spo2_calibration.json`: `calibrated`/`calibrated_rg` false) →
+  near-zero confidence + an "(uncalibrated, trend only)" label, and never
+  escalate past WARNING. Real coefficients must be fitted per mode against a
+  reference oximeter (the `sensors.pulse_oximeter` BLE path is the intended
+  ground truth).
 - **Blood pressure** — RGB-only estimates are not trustworthy; would need
   calibrated multi-wavelength or a contact sensor.
 - **Skin temperature / fever confirmation** — needs a thermal/IR camera.

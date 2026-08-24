@@ -5,5 +5,10 @@
   "channels": ["red", "blue"],
   "device": "uncalibrated-default",
   "fitted_at": null,
-  "note": "Placeholder coefficients, NOT a fitted curve. While calibrated=false the spo2 module reports a trend only and forces confidence to near zero. Fit real A/B against a reference pulse oximeter with tools/spo2_calibrate.py, which rewrites this file with calibrated=true, the fitted A/B, the device id, and an ISO-8601 fitted_at."
+  "calibrated_rg": false,
+  "A_rg": 100.0,
+  "B_rg": 5.0,
+  "compressed_channels": ["red", "green"],
+  "fitted_at_rg": null,
+  "note": "Placeholder coefficients, NOT a fitted curve. While calibrated=false (uncompressed/RealSense) or calibrated_rg=false (compressed/webcam) the spo2 module reports a trend only for that mode and forces confidence to near zero. Fit real coefficients against a reference pulse oximeter with tools/spo2_calibrate.py, which rewrites this file with the fitted A/B (or A_rg/B_rg), the device id, and an ISO-8601 fitted_at."
 }

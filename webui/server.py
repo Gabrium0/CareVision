@@ -87,9 +87,19 @@ class UtteranceBus:
             return [it for it in self._items if it["seq"] > last_seq]
 
 
+_LOOPBACK_ADDRESSES = ("127.0.0.1", "::1")
+
+
+def _is_loopback(ip: str) -> bool:
+    """Pure predicate so the remote-toggle gate is unit-testable without a
+    real non-loopback socket connection (loopback::mapped IPv6 included)."""
+    return ip in _LOOPBACK_ADDRESSES or ip.startswith("::ffff:127.")
+
+
 def _make_handler(bus: UtteranceBus, data_bus: DataBus, control_handler=None,
                   primary_handler=None, assessment_handler=None,
-                  say_handler=None, module_handler=None):
+                  say_handler=None, module_handler=None,
+                  allow_remote_module_toggle: bool = False):
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
 
@@ -178,10 +188,28 @@ def _make_handler(bus: UtteranceBus, data_bus: DataBus, control_handler=None,
                 if path == "/module-control":
                     if module_handler is None:
                         raise RuntimeError("module triggers are not available")
+                    action = str(request.get("action", ""))
+                    # Pausing/resuming a detector is a mutating control action;
+                    # every other action on this route (test/circuit/vlm_scan)
+                    # stays LAN-reachable exactly as before -- only enable/disable
+                    # are gated to loopback unless explicitly opted in.
+                    if (action in ("enable", "disable")
+                            and not allow_remote_module_toggle
+                            and not _is_loopback(self.client_address[0])):
+                        self._send(code=403, ctype="application/json",
+                                   body=json.dumps({
+                                       "ok": False,
+                                       "error": ("module toggles are only permitted "
+                                                "from this machine (loopback); pass "
+                                                "--allow-remote-toggle to allow LAN "
+                                                "toggling"),
+                                   }).encode())
+                        return
                     target = request.get("target")
+                    scope = request.get("scope")
                     result = module_handler(
-                        str(request.get("action", "")),
-                        str(target) if target is not None else None)
+                        action, str(target) if target is not None else None,
+                        str(scope) if scope is not None else None)
                     self._send(ctype="application/json",
                                body=json.dumps({"ok": True, "module": result}).encode())
                     return
@@ -288,7 +316,8 @@ class CompanionServer:
     def __init__(self, port: int = 8770, host: str = "0.0.0.0",
                  data_hz: float = 2.0, control_handler=None,
                  primary_handler=None, assessment_handler=None,
-                 say_handler=None, module_handler=None):
+                 say_handler=None, module_handler=None,
+                 allow_remote_module_toggle: bool = False):
         self.port = port
         self.host = host
         self.bus = UtteranceBus()
@@ -302,6 +331,7 @@ class CompanionServer:
         self.assessment_handler = assessment_handler
         self.say_handler = say_handler
         self.module_handler = module_handler
+        self.allow_remote_module_toggle = allow_remote_module_toggle
 
     def start(self) -> None:
         """Start the HTTP server on a background daemon thread."""
@@ -311,7 +341,8 @@ class CompanionServer:
                                                              self.primary_handler,
                                                              self.assessment_handler,
                                                              self.say_handler,
-                                                             self.module_handler))
+                                                             self.module_handler,
+                                                             self.allow_remote_module_toggle))
         self._httpd.daemon_threads = True
         self._thread = threading.Thread(target=self._httpd.serve_forever,
                                         daemon=True)

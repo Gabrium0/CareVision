@@ -13,11 +13,24 @@ Why this is deliberately conservative:
   real oximeter uses, so R is only *weakly* tied to true SpO₂. The A/B coefficients
   are device- and subject-specific and MUST be fitted against a reference oximeter
   (see tools/spo2_calibrate.py); shipped uncalibrated, this reports a trend only.
-- It needs uncompressed color. On the OV2735 USB2 webcam, MJPEG 4:2:0 chroma
-  subsampling destroys the signal, so this module declares `requires=("face",
-  "depth")` and the scheduler simply never runs it on an RGB-only source — it is
-  RealSense-only by construction (same graceful-degrade contract as
-  modules/height_distance.py).
+
+Two acquisition modes, selected per-frame from `ctx.depth`, each with its own
+channel pair and calibration coefficients (never mixed):
+- **uncompressed** (RealSense, `ctx.depth is not None`): red/blue ratio, as
+  designed originally. Behavior here is unchanged by the addition of the
+  second mode below.
+- **compressed** (any other source, e.g. the OV2735 USB2 webcam): red/green
+  ratio. On MJPEG 4:2:0, luma (Y, carrying green's dominant contribution) is
+  full-resolution while only chroma is subsampled, so red/green survives
+  compression better than red/blue. This mode is opt-in
+  (`enabled_on_compressed`, default off) because it has not been validated
+  against a reference oximeter — DCT quantization noise in the chroma planes
+  may still swamp the pulsatile amplitude even with the better channel pick.
+  Ships uncalibrated by default like the RealSense path.
+
+Switching sources mid-run (the 'c' hotkey, or RealSense hardware unplugged)
+flushes the buffer so a single window never blends samples from the two
+channel/coefficient bases.
 
 Reliability: LOW / trend-only. Uncalibrated runs force near-zero confidence and a
 "(uncalibrated, trend only)" label, and camera-only readings never escalate past a
@@ -98,12 +111,15 @@ def ratio_to_spo2(ratio: float, a_coeff: float, b_coeff: float) -> float:
 
 @register("spo2")
 class SpO2(DetectionModule):
-    """Contactless rPPG blood-oxygen saturation (RealSense-only, trend-only)."""
+    """Contactless rPPG blood-oxygen saturation (trend-only; RealSense mode
+    calibrated identically to before, plain-webcam mode opt-in)."""
     interval = 0.5
-    requires = ("face", "depth")
+    requires = ("face",)
     window_seconds = 20.0
     ac_band = (0.7, 3.0)             # cardiac band for the pulsatile AC component
-    channels = ("red", "blue")       # ratio-of-ratios numerator / denominator
+    channels = ("red", "blue")       # uncompressed-source (RealSense) ratio pair
+    compressed_channels = ("red", "green")  # compressed-source (webcam) ratio pair
+    enabled_on_compressed = False    # opt-in: unvalidated against a reference oximeter
     calibration_file = "assets/spo2_calibration.json"
     min_pulse_prominence = 0.15      # require a clean concurrent pulse before reporting
     display_min = 70.0
@@ -126,16 +142,29 @@ class SpO2(DetectionModule):
         self._fast_fed = False
         self._last_mar: float | None = None
         self._quality_events: deque[tuple[float, bool]] = deque()
-        self._num_idx = _CHANNEL_INDEX.get(str(self.channels[0]).lower(), 0)
-        self._den_idx = _CHANNEL_INDEX.get(str(self.channels[1]).lower(), 2)
-        self._a_coeff, self._b_coeff, self._calibrated = self._load_calibration()
+        # Defaults to "uncompressed" until a real ctx is sampled (_sample()), so a
+        # unit test that feeds the buffer directly and never calls _sample/fast_update
+        # keeps exercising the original red/blue + A/B path unchanged.
+        self._source_mode = "uncompressed"
+        self._mode_seen = False
+        self._channel_idx = {
+            "uncompressed": (_CHANNEL_INDEX.get(str(self.channels[0]).lower(), 0),
+                             _CHANNEL_INDEX.get(str(self.channels[1]).lower(), 2)),
+            "compressed": (_CHANNEL_INDEX.get(str(self.compressed_channels[0]).lower(), 0),
+                          _CHANNEL_INDEX.get(str(self.compressed_channels[1]).lower(), 1)),
+        }
+        self._calibration = self._load_calibration()
 
-    def _load_calibration(self) -> tuple[float, float, bool]:
-        """Load A/B from the calibration JSON, degrading to an uncalibrated default.
+    def _load_calibration(self) -> dict[str, tuple[float, float, bool]]:
+        """Load per-mode A/B from the calibration JSON, degrading to an
+        uncalibrated default per mode independently.
 
         The default (A=100, B=5, calibrated=false) is a literature-ish placeholder,
-        not a fitted curve: it lets the module run and self-label while forcing
-        confidence to near zero until tools/spo2_calibrate.py fits real coefficients.
+        not a fitted curve: it lets a mode run and self-label while forcing
+        confidence to near zero until tools/spo2_calibrate.py fits real coefficients
+        for that mode. The two modes use different channel pairs, so their
+        coefficients are never interchangeable -- each is read from its own keys
+        (A/B/calibrated for uncompressed, A_rg/B_rg/calibrated_rg for compressed).
         """
         default = (100.0, 5.0, False)
         path = Path(self.calibration_file)
@@ -144,16 +173,35 @@ class SpO2(DetectionModule):
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
-            return default
-        try:
-            a_coeff = float(data.get("A", default[0]))
-            b_coeff = float(data.get("B", default[1]))
-        except (TypeError, ValueError):
-            return default
-        return a_coeff, b_coeff, bool(data.get("calibrated", False))
+            data = {}
+
+        def _coeffs(a_key: str, b_key: str, cal_key: str) -> tuple[float, float, bool]:
+            try:
+                a_coeff = float(data.get(a_key, default[0]))
+                b_coeff = float(data.get(b_key, default[1]))
+            except (TypeError, ValueError):
+                return default
+            return a_coeff, b_coeff, bool(data.get(cal_key, False))
+
+        return {
+            "uncompressed": _coeffs("A", "B", "calibrated"),
+            "compressed": _coeffs("A_rg", "B_rg", "calibrated_rg"),
+        }
 
     def _sample(self, ctx: FrameContext) -> None:
         """Sample the skin ROIs once and push their (R,G,B) mean into the buffer."""
+        mode = "uncompressed" if ctx.depth is not None else "compressed"
+        if self._mode_seen and mode != self._source_mode:
+            # Source changed mid-run ('c' hotkey, RealSense unplugged): a window
+            # spanning two different channel pairs / coefficient bases would
+            # silently blend incompatible SpO2 estimates.
+            with self._lock:
+                self.buf.t.clear()
+                self.buf.v.clear()
+                self._quality_events.clear()
+                self._last_mar = None
+        self._source_mode = mode
+        self._mode_seen = True
         roi_landmarks = _ROI_LANDMARKS
         mar = mouth_aspect_ratio(ctx)
         if mar is not None:
@@ -229,6 +277,13 @@ class SpO2(DetectionModule):
         if not self._fast_fed:
             # No dedicated fast sampler feeding us (e.g. replay/tests): sample here.
             self._sample(ctx)
+        mode = self._source_mode
+        if mode == "compressed" and not self.enabled_on_compressed:
+            # Unvalidated against a reference oximeter -- silent no-op unless
+            # explicitly opted in (config/modules.yaml: enabled_on_compressed).
+            return None
+        num_idx, den_idx = self._channel_idx[mode]
+        a_coeff, b_coeff, calibrated = self._calibration[mode]
         snap = self._snapshot()
         if snap is None:
             return None
@@ -252,10 +307,10 @@ class SpO2(DetectionModule):
         if prominence < self.min_pulse_prominence:
             return None
 
-        ratio = ratio_of_ratios(rgb, fs, self._num_idx, self._den_idx, self.ac_band)
+        ratio = ratio_of_ratios(rgb, fs, num_idx, den_idx, self.ac_band)
         if ratio is None:
             return None
-        raw = ratio_to_spo2(ratio, self._a_coeff, self._b_coeff)
+        raw = ratio_to_spo2(ratio, a_coeff, b_coeff)
         if not np.isfinite(raw):
             return None
         display = float(np.clip(raw, self.display_min, self.display_max))
@@ -272,20 +327,21 @@ class SpO2(DetectionModule):
         pulse_q = min(1.0, prominence * 3.0)
         fill = min(1.0, span / self.window_seconds)
         conf = quality * pulse_q * fill * low_light_factor(brightness)
-        if not self._calibrated:
+        if not calibrated:
             conf = min(conf, 0.1)          # placeholder coefficients -> never trusted
         conf = round(max(0.0, min(1.0, conf)), 2)
 
         results = []
         sev = Severity.INFO
+        mode_note = ", compressed color" if mode == "compressed" else ""
         msg = f"SpO₂ ~{display:.0f}%"
-        if not self._calibrated:
-            msg += " (uncalibrated, trend only)"
+        if not calibrated:
+            msg += f" (uncalibrated{mode_note}, trend only)"
         elif display < self.warn_below:
             # Even calibrated, a low-confidence dip is NOTICE, not WARNING.
             sev = (Severity.WARNING if conf >= self.warn_min_confidence
                    else Severity.NOTICE)
-            msg = f"SpO₂ ~{display:.0f}% (low — check on person)"
+            msg = f"SpO₂ ~{display:.0f}% (low — check on person{mode_note})"
         results.append(self.result(
             "spo2", round(display, 1), conf, sev, msg, ttl=8.0,
             quality=round(quality, 2)))

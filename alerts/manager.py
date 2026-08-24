@@ -113,6 +113,13 @@ class AlertManager:
                     or r.key in self.quiet_suppress) and self._in_quiet_hours(now):
                 continue                                  # held during quiet hrs
 
+            # Every subject's alert still opens/tracks a case above (so a
+            # secondary visitor's fall stays reviewable in the caregiver
+            # portal), but only the primary subject's alert ever reaches a
+            # notification channel -- this process makes no identity claim
+            # about a visitor and must not page anyone over them.
+            if r.subject_id != "primary":
+                continue
             subject = str(r.message).split(" — ")[0][:80] or f"{r.module} alert"
             when = time.strftime("%H:%M:%S", time.localtime(now))
             if st.first_notified is None:

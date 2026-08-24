@@ -29,7 +29,7 @@ L_ANKLE, R_ANKLE = 27, 28
 
 class PoseExtractor:
     """MediaPipe PoseLandmarker extractor; fills ctx.pose once per frame."""
-    def __init__(self, input_width: int = 960):
+    def __init__(self, input_width: int = 960, max_subjects: int = 2):
         self.input_width = max(320, int(input_width))
         if not _MODEL.exists():
             raise FileNotFoundError(
@@ -39,7 +39,7 @@ class PoseExtractor:
         opts = vision.PoseLandmarkerOptions(
             base_options=mp_python.BaseOptions(model_asset_path=str(_MODEL)),
             running_mode=vision.RunningMode.VIDEO,
-            num_poses=2,
+            num_poses=max(1, int(max_subjects)),
             min_pose_detection_confidence=0.5,
             min_tracking_confidence=0.5,
         )

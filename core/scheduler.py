@@ -20,12 +20,17 @@ from .events import Result
 
 class Scheduler:
     """Runs each module at its declared cadence when its required inputs are present."""
-    def __init__(self, modules: list):
+    def __init__(self, modules: list, gate=None, scope: str = "primary"):
         self.modules = modules
         self._last_run: dict[str, float] = {}
         self._load_factor = 1.0
         self._throttled = 0
         self._budget_cursor = 0
+        # Optional runtime pause/resume overlay (core/module_gate.py). `gate`
+        # is None for call sites that predate toggling -- every module then
+        # runs exactly as before (gate-less scheduling is unaffected).
+        self.gate = gate
+        self.scope = scope
 
     _NEVER_THROTTLE = {"heart_rate", "respiration", "fall", "unresponsive",
                        "near_fall", "guided_assessments"}
@@ -85,6 +90,8 @@ class Scheduler:
         for module in modules:
             if should_stop is not None and should_stop():
                 break
+            if self.gate is not None and not self.gate.enabled(module.name, self.scope):
+                continue
             interval = self._effective_interval(module, ctx)
             last = self._last_run.get(module.name, -1e9)
             if ctx.timestamp - last < interval:

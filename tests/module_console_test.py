@@ -111,6 +111,67 @@ def test_passive_modules_expose_no_trigger():
             assert entry["trigger"] is None
 
 
+# ------------------------------------------------------------ enable/toggle
+
+def test_toggle_fields_are_well_formed_and_never_overclaim():
+    # Same anti-drift spirit as the roster/trigger tests above: the console's
+    # pause/resume switches must never claim a capability the module_handler
+    # contract (main.py) would actually reject.
+    registry.discover()
+    all_slugs = sorted(registry.all_registered())
+    secondary = sorted(all_slugs[::2])   # exercise both eligible/ineligible
+    system = {"modules_enabled": all_slugs,
+             "module_gate": {"primary": all_slugs, "secondary": secondary},
+             "secondary_modules": secondary}
+    roster = _modules(system=system)
+    for slug, entry in roster.items():
+        assert set(entry["enabled"]) == {"primary", "secondary"}
+        assert isinstance(entry["enabled"]["primary"], bool)
+        assert entry["enabled"]["secondary"] in (True, False, None)
+        assert set(entry["toggleable"]) == {"primary", "secondary"}
+        assert isinstance(entry["toggleable"]["primary"], bool)
+        assert isinstance(entry["toggleable"]["secondary"], bool)
+        assert set(entry["toggle_reason"]) == {"primary", "secondary"}
+        # toggleable.primary tracks the same fact the scheduler enforces:
+        # whether the module was actually instantiated at startup.
+        assert entry["toggleable"]["primary"] == entry["running"]
+        if slug in secondary:
+            assert entry["toggleable"]["secondary"] is True
+            assert entry["enabled"]["secondary"] is True
+            assert entry["toggle_reason"]["secondary"] is None
+        else:
+            assert entry["toggleable"]["secondary"] is False
+            assert entry["enabled"]["secondary"] is None
+            assert entry["toggle_reason"]["secondary"], (
+                f"{slug}: secondary is not toggleable but gives no reason")
+        if entry["toggleable"]["primary"]:
+            assert entry["toggle_reason"]["primary"] is None
+        else:
+            assert entry["toggle_reason"]["primary"], (
+                f"{slug}: primary is not toggleable but gives no reason")
+
+
+def test_toggleable_secondary_never_true_without_secondary_eligibility():
+    # The console must never offer a secondary switch a click can't honor --
+    # main.py's module_handler raises ValueError for any target outside
+    # pipeline.subject_pool.module_names.
+    registry.discover()
+    roster = _modules(system={"secondary_modules": []})
+    for entry in roster.values():
+        assert entry["toggleable"]["secondary"] is False
+        assert entry["enabled"]["secondary"] is None
+
+
+def test_enabled_primary_falls_back_to_running_without_a_gate():
+    # A caller/test that predates ModuleGate omits "module_gate" entirely;
+    # the roster must still render using the existing modules_enabled set.
+    registry.discover()
+    all_slugs = sorted(registry.all_registered())
+    roster = _modules(system={"modules_enabled": all_slugs})
+    for entry in roster.values():
+        assert entry["enabled"]["primary"] == entry["running"]
+
+
 # ------------------------------------------------------- feature availability
 
 def test_frame_features_reach_the_payload():
@@ -155,11 +216,14 @@ def _post(port: int, body: dict, path: str = "/module-control"):
 
 @pytest.fixture
 def served():
-    """Server with a handler mirroring main.py's module_handler contract."""
+    """Server with a handler mirroring main.py's module_handler contract.
+
+    Accepts the same (action, target, scope) shape main.py's module_handler
+    does -- server.py now always forwards scope as a third positional arg."""
     calls = []
 
-    def handler(action, target=None):
-        calls.append((action, target))
+    def handler(action, target=None, scope=None):
+        calls.append((action, target, scope))
         if action == "circuit":
             return {"action": "circuit", "started": True}
         if action != "test":
@@ -181,14 +245,14 @@ def test_test_action_forwards_target(served):
     status, body = _post(port, {"action": "test", "target": "arm_check"})
     assert status == 200
     assert body["ok"] is True and body["module"]["target"] == "arm_check"
-    assert calls == [("test", "arm_check")]
+    assert calls == [("test", "arm_check", None)]
 
 
 def test_circuit_action_needs_no_target(served):
     _server, port, calls = served
     status, body = _post(port, {"action": "circuit"})
     assert status == 200 and body["module"]["started"] is True
-    assert calls == [("circuit", None)]
+    assert calls == [("circuit", None, None)]
 
 
 def test_unknown_action_and_target_are_rejected(served):

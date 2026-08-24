@@ -70,6 +70,11 @@
   .trigresult.ok { color:var(--good); }
   .trigresult.err { color:var(--bad); }
   .passive-note { color:var(--dim); font-size:14px; font-style:italic; }
+  .togglerow { display:flex; align-items:center; gap:10px; }
+  .toggle-state { font-size:13px; font-weight:700; letter-spacing:.3px; text-transform:uppercase;
+    color:var(--dim); min-width:44px; }
+  .toggle-state.on { color:var(--good); }
+  .togglebtn { padding:8px 16px; font-size:14px; }
 
   /* live signal list */
   .siglist .sig { display:flex; gap:10px; align-items:center; padding:8px 0;
@@ -140,6 +145,11 @@
   // can't be double-fired and so the button re-enables correctly.
   let triggerBusy = null;
   let lastTriggerResult = null; // {module, ok, text}
+  // Same in-flight/last-result guards for the primary/secondary pause-resume
+  // switches, keyed by "<module>:<scope>" so the two scopes never block or
+  // overwrite each other's feedback.
+  let toggleBusy = null;
+  let lastToggleResult = null; // {module, scope, ok, text}
 
   // Last-seen full payload, re-rendered whenever selection changes.
   let lastPayload = null;
@@ -223,7 +233,28 @@
       internal: !!m.internal,
       reliability: (m.reliability && typeof m.reliability === 'object') ? m.reliability : null,
       trigger: (m.trigger && typeof m.trigger === 'object') ? m.trigger : null,
+      enabled: (m.enabled && typeof m.enabled === 'object') ? {
+        primary: !!m.enabled.primary,
+        secondary: (m.enabled.secondary === null || m.enabled.secondary === undefined)
+          ? null : !!m.enabled.secondary,
+      } : { primary: m.running !== false, secondary: null },
+      toggleable: (m.toggleable && typeof m.toggleable === 'object') ? {
+        primary: !!m.toggleable.primary,
+        secondary: !!m.toggleable.secondary,
+      } : { primary: false, secondary: false },
+      toggle_reason: (m.toggle_reason && typeof m.toggle_reason === 'object') ? {
+        primary: m.toggle_reason.primary || null,
+        secondary: m.toggle_reason.secondary || null,
+      } : { primary: null, secondary: null },
     }));
+  }
+
+  // Multi-person tracking must be active in this run before a secondary
+  // switch means anything at all -- otherwise every module would show a
+  // permanently-disabled control for a feature that does not exist here.
+  function trackingActive(d){
+    const names = d && d.system && d.system.secondary_modules;
+    return Array.isArray(names) && names.length > 0;
   }
 
   let activeReadingIds = new Set();
@@ -440,6 +471,34 @@
       providerNote(mod.provider);
   }
 
+  // One pause/resume switch for one scope ('primary' or 'secondary'). Always
+  // rendered even when it cannot be toggled -- per this file's "never render
+  // a blank panel" rule the disabled state carries its own explanation
+  // (toggle_reason) as both the visible note and the button's title/tooltip,
+  // so the console never implies a click could grant what a restart or a
+  // config/modules.yaml change is actually required for.
+  function renderToggle(mod, scope){
+    const on = mod.enabled ? mod.enabled[scope] : null;
+    const canToggle = !!(mod.toggleable && mod.toggleable[scope]);
+    const reason = (mod.toggle_reason && mod.toggle_reason[scope]) || '';
+    const key = mod.module + ':' + scope;
+    const busy = toggleBusy === key;
+    const isOn = on === true;
+    const title = canToggle ? '' : (reason || 'This scope cannot be toggled.');
+    let resultHtml = '';
+    if(lastToggleResult && lastToggleResult.module === mod.module && lastToggleResult.scope === scope){
+      resultHtml = `<div class="trigresult ${lastToggleResult.ok ? 'ok' : 'err'}">${esc(lastToggleResult.text)}</div>`;
+    }
+    const stateLabel = on == null ? 'Unknown' : (isOn ? 'On' : 'Off');
+    const btnLabel = busy ? 'Working…' : (isOn ? 'Turn off' : 'Turn on');
+    return `<div class="togglerow">` +
+      `<span class="toggle-state${isOn ? ' on' : ''}">${esc(stateLabel)}</span>` +
+      `<button type="button" class="trigbtn togglebtn" data-scope="${esc(scope)}" ` +
+      `${(!canToggle || busy) ? 'disabled' : ''} title="${esc(title)}">${esc(btnLabel)}</button>` +
+      `</div>${resultHtml}` +
+      (!canToggle && reason ? `<div class="passive-note">${esc(reason)}</div>` : '');
+  }
+
   // Renders nothing while the cloud is healthy — the button already says it.
   function providerNote(p){
     if(!p) return '';
@@ -550,6 +609,8 @@
     const topNote = (readings.length && stateMsg)
       ? `<div class="state-msg" style="margin-bottom:8px;">${stateMsg}</div>` : '';
 
+    const showSecondaryToggle = trackingActive(d);
+
     detailEl.innerHTML =
       `<div class="dhead"><h2>${esc(mod.label)}</h2>${mod.internal ? '<span class="chip">internal / plumbing</span>' : ''}</div>` +
       `<div class="dblurb">${esc(mod.blurb || 'No description provided.')}</div>` +
@@ -557,6 +618,10 @@
       `<div class="drow"><div class="dlabel">Requires</div><div class="chips">${reqChips}</div></div>` +
       `<div class="drow"><div class="dlabel">Cadence</div><span class="reliability-note">${esc(cadenceText(mod.interval))}</span></div>` +
       (consentHtml ? `<div class="drow">${consentHtml}</div>` : '') +
+      `<div class="drow"><div class="dlabel">Primary subject control</div>${renderToggle(mod, 'primary')}</div>` +
+      (showSecondaryToggle
+        ? `<div class="drow"><div class="dlabel">Secondary subjects control</div>${renderToggle(mod, 'secondary')}</div>`
+        : '') +
       `<div class="drow"><div class="dlabel">Trigger</div>${renderTriggerArea(mod)}</div>` +
       `<div class="drow"><div class="dlabel">Readings</div>${topNote}${readingsHtml}</div>`;
 
@@ -564,6 +629,9 @@
       const btn = document.getElementById('trigBtn');
       if(btn) btn.addEventListener('click', () => fireTrigger(mod));
     }
+    detailEl.querySelectorAll('.togglebtn').forEach(btn => {
+      btn.addEventListener('click', () => fireToggle(mod, btn.getAttribute('data-scope')));
+    });
   }
 
   async function fireTrigger(mod){
@@ -587,6 +655,41 @@
       lastTriggerResult = { module: mod.module, ok: false, text: 'Request failed — is the server running?' };
     }
     triggerBusy = null;
+    renderDetail(lastPayload);
+  }
+
+  async function fireToggle(mod, scope){
+    const key = mod.module + ':' + scope;
+    if(toggleBusy) return;
+    const turningOn = !(mod.enabled && mod.enabled[scope] === true);
+    toggleBusy = key;
+    renderDetail(lastPayload);
+    try{
+      const resp = await fetch('/module-control', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ action: turningOn ? 'enable' : 'disable',
+                               target: mod.module, scope }),
+      });
+      let body = null;
+      try{ body = await resp.json(); }catch(_){}
+      if(resp.status === 403){
+        // Distinct from a generic failure: the toggle was understood and
+        // structurally valid, just refused for where the request came from.
+        lastToggleResult = { module: mod.module, scope, ok: false,
+          text: 'Toggling is only available from the machine running this process.' };
+      } else if(resp.ok && body && body.ok){
+        const nowOn = body.module && body.module.enabled;
+        lastToggleResult = { module: mod.module, scope, ok: true,
+          text: nowOn ? 'Turned on.' : 'Turned off.' };
+      } else {
+        const errText = (body && body.error) ? body.error : ('HTTP ' + resp.status);
+        lastToggleResult = { module: mod.module, scope, ok: false, text: errText };
+      }
+    }catch(err){
+      lastToggleResult = { module: mod.module, scope, ok: false,
+        text: 'Request failed — is the server running?' };
+    }
+    toggleBusy = null;
     renderDetail(lastPayload);
   }
 

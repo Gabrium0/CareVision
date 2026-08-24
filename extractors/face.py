@@ -24,7 +24,7 @@ _MODEL = Path(__file__).resolve().parent.parent / "models" / "face_landmarker.ta
 
 class FaceExtractor:
     """MediaPipe FaceLandmarker extractor; fills ctx.face once per frame."""
-    def __init__(self, smooth: bool = True, input_width: int = 960):
+    def __init__(self, smooth: bool = True, input_width: int = 960, max_subjects: int = 2):
         # One-Euro de-jitter on face landmarks steadies emotion/asymmetry/EAR;
         # face motion is low-frequency so this does not blur any measured signal.
         self._smooth_enabled = bool(smooth)
@@ -39,7 +39,7 @@ class FaceExtractor:
         opts = vision.FaceLandmarkerOptions(
             base_options=mp_python.BaseOptions(model_asset_path=str(_MODEL)),
             running_mode=vision.RunningMode.VIDEO,
-            num_faces=2,
+            num_faces=max(1, int(max_subjects)),
             min_face_detection_confidence=0.5,
             min_tracking_confidence=0.5,
         )

@@ -28,6 +28,23 @@ class PoseData:
 
 
 @dataclass
+class SubjectView:
+    """Per-frame geometry and tracking state for one anonymously-tracked
+    person. `ctx.face`/`ctx.pose` remain the primary subject's geometry for
+    every existing single-subject consumer; `ctx.subjects` additionally
+    carries every tracked person (primary included) for detectors that run
+    per-subject via SubjectModulePool (see core/subjects.py)."""
+    subject_id: str                # "primary" or "track-<n>"
+    track_id: str
+    face: Optional["FaceData"] = None
+    pose: Optional["PoseData"] = None
+    bbox: tuple = ()
+    primary: bool = False
+    ambiguous: bool = False
+    stable_frames: int = 0
+
+
+@dataclass
 class Intrinsics:
     """Pinhole camera intrinsics for metric depth math.
 
@@ -54,6 +71,7 @@ class FrameContext:
     motion_energy: float = 0.0     # mean abs frame diff, 0..255 scale
     person_present: bool = False
     extras: dict = field(default_factory=dict)  # scratch space for extractors
+    subjects: list = field(default_factory=list)  # list[SubjectView]; primary + secondary
     # Depth-capable sources (RealSense D435i) fill these; RGB-only sources
     # leave the defaults, and depth-dependent modules are skipped via the
     # scheduler's "depth" requires-token when `depth` is None.

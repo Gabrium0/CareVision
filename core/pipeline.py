@@ -47,13 +47,14 @@ import cv2
 import numpy as np
 
 from .camera import Camera
-from .context import FaceData, FrameContext, Intrinsics, PoseData
+from .context import FaceData, FrameContext, Intrinsics, PoseData, SubjectView
 from .debug import enabled as debug_enabled, log as debug_log
 from .events import Result
 from .fast_face_tracker import FastFaceTracker
 from .runtime_metrics import RuntimeMetrics
 from .scheduler import Scheduler
 from .showcase import ShowcaseGate
+from .subjects import SubjectModulePool, build_subject_views
 from .tracking import AnonymousTracker
 from storage.event_store import EventStore
 from storage.history_store import HistoryStore
@@ -73,10 +74,15 @@ class Pipeline:
                   tracker_max_anchor_age: float = 1.5,
                   analysis_width: int = 960,
                   quality_profile: str = "maximum",
-                  runtime_config: dict | None = None):
+                  runtime_config: dict | None = None,
+                  module_gate=None,
+                  subject_pool: SubjectModulePool | None = None,
+                  max_subjects: int = 3):
         self.camera = camera
         self.extractors = extractors
         self.scheduler = scheduler
+        self.scheduler.gate = module_gate
+        self.scheduler.scope = "primary"
         self.aggregator = aggregator
         self.advisor_engine = advisor_engine
         self.max_staleness = max_staleness   # seconds; see module docstring
@@ -85,6 +91,13 @@ class Pipeline:
         self.tracker = AnonymousTracker()
         self.camera_location = camera_location
         self.tracking_enabled = tracking_enabled
+        self.module_gate = module_gate
+        # Secondary (non-primary) subjects get their own detector instances so
+        # their rolling state (rPPG buffers, baselines) never blends with the
+        # primary's -- see core/subjects.py. None disables multi-person ticking
+        # entirely (--enable-multi-person off), matching today's behavior.
+        self.subject_pool = subject_pool
+        self.max_subjects = max(1, int(max_subjects))
         self.runtime_metrics = runtime_metrics or RuntimeMetrics()
         self.background_analysis = bool(background_analysis)
         self.analysis_width = max(160, int(analysis_width))
@@ -146,9 +159,10 @@ class Pipeline:
         self._diag_heavy_publishes = 0
         self._diag_window_start = 0.0
         fast_modules = [m for m in scheduler.modules if hasattr(m, "fast_update")]
-        self._critical_scheduler = Scheduler(fast_modules)
+        self._critical_scheduler = Scheduler(fast_modules, gate=module_gate, scope="primary")
         self._background_scheduler = Scheduler(
-            [m for m in scheduler.modules if m not in fast_modules])
+            [m for m in scheduler.modules if m not in fast_modules],
+            gate=module_gate, scope="primary")
         self._critical_extractors = [
             ex for ex in extractors
             if ex.__class__.__name__ in ("FaceExtractor", "MotionExtractor")]
@@ -465,6 +479,8 @@ class Pipeline:
                 budget_ms=self._background_budget_ms)
             if self._background_stop:
                 return
+            results.extend(self._tick_secondary_subjects(
+                ctx, budget_ms=self._background_budget_ms))
             if self.showcase_gate is not None:
                 results = [r for r in results
                            if self.showcase_gate.allow(r.module, ctx, r.source)]
@@ -523,7 +539,50 @@ class Pipeline:
         for key in tuple(cloned.extras):
             if key.startswith("_arm_skin_cache") or key.startswith("_frame_color_cache"):
                 cloned.extras.pop(key, None)
+        if ctx.subjects:
+            rescaled = []
+            for subject in ctx.subjects:
+                sub_face = None
+                if subject.face is not None:
+                    bbox = scaled_box(subject.face.bbox)
+                    x1, y1, x2, y2 = bbox
+                    sub_face = FaceData(np.array(subject.face.landmarks, copy=True), bbox,
+                                        cloned.frame[y1:y2, x1:x2], subject.face.has_iris)
+                sub_pose = None
+                if subject.pose is not None:
+                    sub_pose = PoseData(np.array(subject.pose.landmarks, copy=True),
+                                        scaled_box(subject.pose.bbox))
+                rescaled.append(SubjectView(
+                    subject_id=subject.subject_id, track_id=subject.track_id,
+                    face=sub_face, pose=sub_pose, bbox=scaled_box(subject.bbox),
+                    primary=subject.primary, ambiguous=subject.ambiguous,
+                    stable_frames=subject.stable_frames))
+            cloned.subjects = rescaled
         return cloned
+
+    def _tick_secondary_subjects(self, ctx: FrameContext,
+                                 budget_ms: float | None = None) -> list[Result]:
+        """Run each non-primary tracked person's gated modules against their
+        own warm instances (core/subjects.py), capped at max_subjects total
+        people. Never touches the fast/vitals path or the showcase gate --
+        both are scoped to the single primary subject."""
+        if self.subject_pool is None or not ctx.subjects:
+            return []
+        now = ctx.timestamp
+        secondary = [s for s in ctx.subjects if not s.primary][:self.max_subjects - 1]
+        results: list[Result] = []
+        for subject in secondary:
+            scheduler = self.subject_pool.get(subject.track_id, now)
+            subject_ctx = copy.copy(ctx)
+            subject_ctx.extras = dict(ctx.extras)
+            subject_ctx.face = subject.face
+            subject_ctx.pose = subject.pose
+            subject_ctx.person_present = subject.face is not None or subject.pose is not None
+            for result in scheduler.tick(subject_ctx, budget_ms=budget_ms):
+                result.subject_id = subject.subject_id
+                results.append(result)
+        self.subject_pool.evict_stale(now)
+        return results
 
     def _set_adaptive_level(self, overloaded: bool) -> None:
         if overloaded:
@@ -944,6 +1003,7 @@ class Pipeline:
             boxes = [f["bbox"] for f in ctx.extras.get("faces", [])]
         ctx.extras["tracks"] = self.tracker.update(boxes, ctx.w, ctx.h, ctx.timestamp)
         if self.tracking_enabled and ctx.extras["tracks"]:
+            ctx.subjects = build_subject_views(ctx, ctx.extras["tracks"])
             primary = next((t for t in ctx.extras["tracks"] if t["primary"]), None)
             if primary is None:
                 # Do not let an anonymous visitor contaminate primary state while
@@ -1008,6 +1068,7 @@ class Pipeline:
             if self.showcase_gate is not None:
                 results = [r for r in results
                            if self.showcase_gate.allow(r.module, ctx, r.source)]
+            results.extend(self._tick_secondary_subjects(ctx))
         results = showcase_results + results
         routing_started = time.perf_counter()
         if self.camera_location:
@@ -1092,6 +1153,8 @@ class Pipeline:
                 close = getattr(module, "close", None)
                 if close:
                     close()
+            if self.subject_pool is not None:
+                self.subject_pool.close()
 
     def request_stop(self) -> None:
         """Ask an asynchronously running pipeline loop to stop cleanly."""
