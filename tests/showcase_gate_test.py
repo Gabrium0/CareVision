@@ -96,11 +96,50 @@ def test_heart_rate_does_not_require_depth_or_conversation_distance():
     ctx.depth = None
     ctx.intrinsics = None
     gate.assess(ctx)
-    assert ctx.extras["showcase"]["zone"] == "outside"
-    assert ctx.extras["showcase"]["stable"] is False
     assert ctx.extras["showcase"]["heart_rate_ready"] is True
     assert gate.allow("heart_rate", ctx)
-    assert not gate.allow("facial_asymmetry", ctx)
+
+
+def test_depth_free_source_gates_close_range_modules_by_framing_proxy():
+    """RGB-only sources cannot measure the marker distance.
+
+    Without depth, the old rule kept `stable` false forever, so respiration
+    and other conversation modules could never publish a reading on an iPad
+    or webcam session.  The zone now falls back to the framing proxy heart
+    rate already uses; distance-dependent zones stay depth-exclusive.
+    """
+    gate = ShowcaseGate()
+    ctx = _ctx(1.2)
+    ctx.depth = None
+    ctx.intrinsics = None
+    results = gate.assess(ctx)
+    state = ctx.extras["showcase"]
+    assert state["zone"] == "conversation"
+    assert state["stable"] is True
+    assert state["block_reason"] is None
+    assert state["heart_rate_ready"] is True
+    assert gate.allow("respiration", ctx)
+    assert gate.allow("facial_asymmetry", ctx)
+    # Whole-body demos still need real depth-measured distance.
+    assert not gate.allow("gait", ctx)
+    capture = [r for r in results if r.key == "capture_ready"][0]
+    assert capture.value is True
+
+
+def test_depth_free_source_reports_framing_problem_not_missing_depth():
+    gate = ShowcaseGate()
+    ctx = _ctx(1.2, face=True)
+    ctx.face = FaceData(ctx.face.landmarks,
+                        (70, 60, 100, 90),          # 30 px: under min_face_px
+                        ctx.frame[60:90, 70:100])
+    ctx.depth = None
+    ctx.intrinsics = None
+    gate.assess(ctx)
+    state = ctx.extras["showcase"]
+    assert state["zone"] == "outside"
+    assert state["stable"] is False
+    assert state["block_reason"] == "no_face"
+    assert "face" in state["guidance"].lower()
 
 
 def test_dashboard_payload_exposes_reasoning_card():

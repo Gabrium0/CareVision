@@ -3,7 +3,10 @@
 This is deliberately a presentation/measurement gate, not a diagnostic
 classifier.  It writes a small, UI-safe state into ``FrameContext.extras``
 and prevents modules from publishing measurements outside the framing in
-which they are meaningful.
+which they are meaningful.  Depth-free sources (webcam, iPad link) cannot
+measure the marker distance: for them the conversation zone degrades to a
+framing proxy (one person, face large enough, light and still enough) so
+close-range modules degrade instead of dead-blocking.
 """
 from __future__ import annotations
 
@@ -78,18 +81,28 @@ class ShowcaseGate:
             zone = "conversation"
         elif distance is not None and self.movement_min_m <= distance <= self.movement_max_m:
             zone = "movement"
-        stable = (zone == "conversation" and not multiple and ctx.face is not None
+        framed = (not multiple and ctx.face is not None
                   and face_px >= self.min_face_px
                   and self.min_brightness <= brightness <= self.max_brightness
                   and ctx.motion_energy <= self.max_motion)
+        if distance is not None:
+            zone = "conversation"
+            if not (self.conversation_min_m <= distance <= self.conversation_max_m):
+                zone = "movement" if (self.movement_min_m <= distance
+                                      <= self.movement_max_m) else "outside"
+            stable = zone == "conversation" and framed
+        else:
+            # RGB-only sources (e.g. the iPad link) can never measure the
+            # marker distance, so the conversation zone falls back to the
+            # framing proxy above; gating it on depth would dead-block every
+            # close-range module for the whole session.
+            zone = "conversation" if framed else "outside"
+            stable = framed
         # Camera rPPG needs a clear, stable face, not a particular metric
         # distance.  Keep distance zones for presentation/whole-body modules,
         # but do not block pulse sampling merely because depth is absent or the
         # person is outside the conversation marker.
-        heart_rate_ready = (not multiple and ctx.face is not None
-                            and face_px >= self.min_face_px
-                            and self.min_brightness <= brightness <= self.max_brightness
-                            and ctx.motion_energy <= self.max_motion)
+        heart_rate_ready = framed
         if multiple:
             hr_reason, hr_guidance = "multiple", "Please remain in view one at a time."
         elif ctx.face is None or face_px < self.min_face_px:
@@ -103,19 +116,16 @@ class ShowcaseGate:
         if multiple:
             block_reason = "multiple"
             guidance = "Please step forward one at a time."
-        elif distance is None:
-            block_reason = "no_depth"
-            guidance = "Depth is unavailable; please remain in front of me."
-        elif distance < self.conversation_min_m:
+        elif distance is not None and distance < self.conversation_min_m:
             block_reason = "outside_zone"
             guidance = "Please move back slightly to the conversation marker."
-        elif zone == "outside":
+        elif distance is not None and zone == "outside":
             block_reason = "outside_zone"
             guidance = "Please step onto the conversation marker about 1.2 m away."
         elif zone == "movement":
             block_reason = "outside_zone"
             guidance = "Movement zone ready for a walking or balance demonstration."
-        elif face_px < self.min_face_px:
+        elif ctx.face is None or face_px < self.min_face_px:
             block_reason = "no_face"
             guidance = "Please face me so I can see you clearly."
         elif not self.min_brightness <= brightness <= self.max_brightness:
@@ -126,7 +136,8 @@ class ShowcaseGate:
             guidance = "Please hold still for a moment."
         else:
             block_reason = None
-            guidance = "Conversation zone ready."
+            guidance = ("Conversation zone ready." if distance is not None
+                        else "Position ready.")
         ctx.extras["showcase"] = {"zone": zone, "stable": stable, "distance_m": distance,
                                    "brightness": brightness, "multiple": multiple,
                                    "guidance": guidance, "block_reason": block_reason,
