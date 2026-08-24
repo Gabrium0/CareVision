@@ -34,6 +34,8 @@ def _busy_snapshot() -> list[Result]:
                "Respiration ~15 breaths/min", ttl=10.0, timestamp=now),
         Result("spo2", "spo2", 97.0, 0.5, Severity.INFO,
                "SpO₂ ~97% (uncalibrated, trend only)", ttl=8.0, timestamp=now),
+        Result("drowsiness", "blink_rate", 17.0, 0.6, Severity.INFO,
+               "", ttl=10.0, timestamp=now),
         Result("emotion", "emotion_hsemotion", "Content", 0.6, Severity.INFO,
                "Mood: content", ttl=6.0, timestamp=now),
     ]
@@ -75,6 +77,7 @@ def test_every_vital_tile_is_present_in_order():
     assert by_id["hr"]["present"] and by_id["hr"]["value"] == "72"
     assert by_id["resp"]["present"] and by_id["resp"]["value"] == "15"
     assert by_id["spo2"]["present"] and by_id["spo2"]["value"] == "97"
+    assert by_id["blink"]["present"] and by_id["blink"]["value"] == "17"
     # Emotion has no canonical key; the best backend label wins.
     assert by_id["mood"]["present"] and by_id["mood"]["value"] == "Content"
 

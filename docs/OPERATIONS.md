@@ -256,6 +256,14 @@ Templated companion behavior works without a language-provider key. Relevant
 run controls are:
 
 - `--no-voice` disables spoken audio while retaining printed lines.
+- `--tts {auto,piper,pyttsx3}` picks the spoken voice. `piper` is the local
+  neural voice (offline; fetch a model once with
+  `python -m audio.tts_piper --download`, stored in `assets/tts/`). `auto`
+  prefers piper and falls back to the pyttsx3 system voice, then to printed
+  lines, so a demo never depends on the venue network.
+- `--showcase` starts the narrated tour on launch: a spoken introduction, the
+  guided demo circuit (facial movement, arm drift, balance), and a closing
+  wrap-up. Press `s` during a run instead.
 - `--no-moondream` starts with Moondream calls disabled.
 - `--type-input` accepts answers from the companion page without loading a
   microphone or speech-recognition model.

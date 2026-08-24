@@ -781,14 +781,16 @@ _IPAD_MAX_SIGNALS = 18
 
 # Vitals promoted to the iPad's "live vitals" tiles -- the showcase's visual
 # star. Each names the canonical Result its module emits (heart_rate->"bpm",
-# respiration->"breaths_per_min", spo2->"spo2"); emotion has no canonical key,
-# so the best-confidence "emotion_<backend>" wins.
+# respiration->"breaths_per_min", spo2->"spo2", drowsiness->"blink_rate");
+# emotion has no canonical key, so the best-confidence "emotion_<backend>"
+# wins.
 # (id, label, unit, module, metric, kind)
 _IPAD_VITALS = [
-    ("hr",   "Heart rate", "bpm",  "heart_rate",  "bpm",             "number"),
-    ("resp", "Breathing",  "/min", "respiration", "breaths_per_min", "number"),
-    ("spo2", "SpO₂",  "%",    "spo2",        "spo2",            "number"),
-    ("mood", "Mood",       "",     "emotion",     "emotion",         "label"),
+    ("hr",    "Heart rate", "bpm",  "heart_rate",  "bpm",             "number"),
+    ("resp",  "Breathing",  "/min", "respiration", "breaths_per_min", "number"),
+    ("spo2",  "SpO₂",       "%",    "spo2",        "spo2",            "number"),
+    ("blink", "Blinks",     "/min", "drowsiness",  "blink_rate",      "number"),
+    ("mood",  "Mood",       "",     "emotion",     "emotion",         "label"),
 ]
 
 

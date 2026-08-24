@@ -5,6 +5,10 @@ models/*.task
 models/*.onnx
 runtime-models/
 assets/skin_models/*.onnx
+
+# Piper voice models are fetched on demand, never committed:
+#   python -m audio.tts_piper --download
+assets/tts/
 tests/synthetic_clip.mp4
 .venv/
 .env

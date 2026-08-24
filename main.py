@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import os
 import secrets
+import sys
 import threading
 import time
 import traceback
@@ -41,7 +42,7 @@ import yaml
 from core.camera import Camera
 from core.camera_factory import make_camera
 from core.ipad_camera import is_ipad_source
-from core.module_gate import ModuleGate
+from core.module_gate import ModuleGate, seed_start_paused
 from core.pipeline import Pipeline
 from core.showcase import ShowcaseGate
 from core.registry import discover, build_enabled, all_registered
@@ -120,13 +121,24 @@ def build_pipeline(source, config, camera_opts=None, max_staleness: float = 0.25
     # frame one. --start-blank seeds it empty instead (camera + person
     # outline only, everything else off until enabled from /modules); it is
     # a demo mode, not for unattended/production use, since no module -- and
-    # therefore no alert -- runs until manually toggled on. Either way, only
-    # the /modules console can change it from here, never the config file.
+    # therefore no alert -- runs until manually toggled on.
+    # `runtime.start_paused` picks the middle ground: listed modules boot
+    # warm but gated off (heavy detectors stay loaded yet never run) so a
+    # showcase starts lean without losing one-command recovery from the
+    # /modules console. The config file only chooses the starting point --
+    # from here on, toggle state belongs to the running process alone.
     secondary_names = [name for name in tracking_cfg.get("secondary_modules", [])
                        if name in all_registered()]
+    enabled_names = {m.name for m in modules}
     module_gate = ModuleGate(
-        primary_enabled=(set() if start_blank else {m.name for m in modules}),
+        primary_enabled=(set() if start_blank else set(enabled_names)),
         secondary_enabled=(set() if start_blank else set(secondary_names)))
+    paused_cfg = (config.get("runtime") or {}).get("start_paused") or []
+    applied, unknown = seed_start_paused(module_gate, paused_cfg, enabled_names)
+    if unknown:
+        print(f"[main] ignoring unknown start_paused names: {', '.join(unknown)}")
+    if applied:
+        print(f"[main] start-paused (toggle back via /modules): {', '.join(applied)}")
     subject_pool = (SubjectModulePool(secondary_names, config.get("modules", {}),
                                       gate=module_gate)
                     if tracking_enabled and secondary_names else None)
@@ -152,6 +164,15 @@ def build_pipeline(source, config, camera_opts=None, max_staleness: float = 0.25
 
 def main():
     """Parse CLI args and run the live detection pipeline."""
+    # A redirected or piped stdout on Windows is a cp1252 stream, and one
+    # emoji in any printed line (agent speech does this) would raise
+    # UnicodeEncodeError and kill the process mid-run. Reconfigure first so
+    # logging can never be fatal; replace, don't fail, on stray characters.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, OSError):
+            pass
     ap = argparse.ArgumentParser()
     ap.add_argument("--source", default="0",
                     help="camera index, file path, URL, 'realsense' for a "
@@ -222,6 +243,11 @@ def main():
                     help="comma-separated debug logs: openrppg,clothing,deepface,drowsiness,weather or all")
     ap.add_argument("--no-voice", action="store_true",
                     help="disable the spoken voice agent (still prints its lines)")
+    ap.add_argument("--tts", choices=("auto", "piper", "pyttsx3"), default="auto",
+                    help="spoken-voice engine: piper is the local neural voice "
+                         "(python -m audio.tts_piper --download), pyttsx3 is the "
+                         "system voice, auto prefers piper and falls back "
+                         "(default auto)")
     ap.add_argument("--listen", action="store_true",
                     help="enable the microphone listener (speech-to-text via "
                          "faster-whisper; pip install -r requirements-asr.txt)")
@@ -256,6 +282,10 @@ def main():
                          "arm drift, balance) shortly after launch — press 'd' "
                          "to trigger it instead any time; good for a quick "
                          "live tour with a guest or client")
+    ap.add_argument("--showcase", action="store_true",
+                    help="start the full narrated tour: a spoken introduction, "
+                         "the guided demo circuit, and a closing wrap-up "
+                         "(press 's' to trigger instead)")
     ap.add_argument("--enable-multi-person", action="store_true",
                     help="enable short-lived anonymous tracks with a stable primary subject")
     ap.add_argument("--webui", action="store_true",
@@ -417,10 +447,19 @@ def main():
                              model=args.voice_model,
                              moondream_enabled=not args.no_moondream,
                              vision_enabled=args.enable_agent_vision,
+                             tts_engine=args.tts,
                              conversation=config.get("conversation"))
     capabilities = CapabilityRegistry.instance()
     voice_agent.set_context_sources(capabilities=capabilities,
                                     history=HistoryStore.instance())
+    tts_state = voice_agent.speaker.status()
+    capabilities.set(
+        "speech_output", "voice",
+        CapabilityStatus.UNCONFIGURED if args.no_voice else
+        CapabilityStatus.READY if tts_state["engine"] != "print"
+        else CapabilityStatus.DEGRADED,
+        "--no-voice" if args.no_voice else
+        f"{tts_state['engine']}: {tts_state['model'] or tts_state['error']}")
     capabilities.set("camera", "hardware", CapabilityStatus.READY,
                      "replay" if str(args.source).startswith("replay:") else "live source")
     _moondream_ready = voice_agent.moondream_status().get("available", False)
@@ -499,6 +538,8 @@ def main():
 
     if args.assessment:
         WorkflowEngine.instance().start(args.assessment)
+    elif args.showcase:
+        voice_agent.start_showcase()
     elif args.demo:
         voice_agent.start_demo_circuit()
 
@@ -684,7 +725,9 @@ def main():
                         "agent_vision": args.enable_agent_vision},
             "replay": pipeline.camera.replay_status(),
             "moondream": voice_agent.moondream_status(),
-            "modules_enabled": sorted(
+            # Live spoken-voice engine state (may downgrade after async load,
+            # e.g. piper model missing -> pyttsx3 -> print).
+            "tts": voice_agent.speaker.status(),            "modules_enabled": sorted(
                 m.name for m in pipeline.scheduler.modules
                 if pipeline.module_gate is None
                 or pipeline.module_gate.enabled(m.name, "primary")),
@@ -868,7 +911,10 @@ def main():
             pipeline.camera.ipad_control({
                 "type": "state", "modules": modules_state,
                 "fps": round(ctx.fps, 1),
-                "capture": pipeline.camera.diagnostics()})
+                "capture": pipeline.camera.diagnostics(),
+                # The agent's own last line for a caption bar (never a
+                # transcript of the person).
+                "agent": voice_agent.public_line()})
 
         # push the live dashboard to the paired iPad over that same control
         # channel -- its only feed, since the hotspot AP isolates it from the
@@ -942,6 +988,9 @@ def main():
             if key == ord("d"):
                 if voice_agent.start_demo_circuit():
                     print("[main] guest/client demo circuit requested ('d')")
+            if key == ord("s"):
+                if voice_agent.start_showcase():
+                    print("[main] narrated showcase tour requested ('s')")
             if key == ord("c") and primary_source != alt_source:
                 nxt = alt_source if cam_state["current"] == primary_source else primary_source
                 print(f"[camera] switching -> {nxt}")
@@ -952,8 +1001,8 @@ def main():
 
     print("[main] starting; press 'q' to quit, 'g' to greet, 'm' to toggle "
           "Moondream, 't' for a tremor test, 'a' for an arm skin check, "
-          "'d' for a guest/client demo circuit, 'c' to switch camera "
-          "(Ctrl+C in headless).")
+          "'d' for a guest/client demo circuit, 's' for the narrated showcase, "
+          "'c' to switch camera (Ctrl+C in headless).")
     worker = None
     interrupted = False
     try:
@@ -1028,6 +1077,9 @@ def main():
                 if key == ord("d"):
                     if voice_agent.start_demo_circuit():
                         print("[main] guest/client demo circuit requested ('d')")
+                if key == ord("s"):
+                    if voice_agent.start_showcase():
+                        print("[main] narrated showcase tour requested ('s')")
                 if key == ord("c") and primary_source != alt_source:
                     nxt = alt_source if cam_state["current"] == primary_source else primary_source
                     print(f"[camera] switching -> {nxt}")

@@ -46,3 +46,18 @@ class ModuleGate:
     def snapshot(self) -> dict:
         """Public state for the /modules console; never exposes the lock."""
         return {"primary": sorted(self._primary), "secondary": sorted(self._secondary)}
+
+
+def seed_start_paused(gate: ModuleGate, names, loaded) -> tuple[list[str], list[str]]:
+    """Config-declared boot state: listed modules start gated off in both
+    scopes while staying warm (their instances exist; the scheduler just
+    skips them). Unknown or not-loaded names are returned rather than
+    applied, so a stale config entry can never silently disable anything.
+    Returns (applied, ignored); from here on only the /modules console owns
+    toggle state."""
+    wanted = [str(n) for n in (names or [])]
+    applied = [name for name in wanted if name in loaded]
+    for name in applied:
+        gate.set(name, False, "primary")
+        gate.set(name, False, "secondary")
+    return applied, [name for name in wanted if name not in applied]

@@ -3,6 +3,8 @@
 # The agent falls back to templated speech if the Moondream key is absent, and
 # alert channels self-disable if their environment credentials are missing.
 python-dotenv>=1.0       # load .env
-pyttsx3>=2.90            # offline text-to-speech
+pyttsx3>=2.90            # offline text-to-speech fallback voice
+piper-tts>=1.7           # offline neural TTS voice (model: python -m audio.tts_piper --download)
+sounddevice>=0.5         # audio playback for the piper neural voice
 twilio>=8.0              # optional: SMS alert channel
 requests>=2.31           # optional: webhook alert channel

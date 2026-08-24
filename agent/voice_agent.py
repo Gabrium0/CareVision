@@ -103,6 +103,7 @@ class VoiceAgent:
                  model: str | None = None, listener=None,
                  moondream_enabled: bool = True,
                  vision_enabled: bool = False,
+                 tts_engine: str = "auto",
                  **policy_kwargs):
         self.memory = ObservationMemory(name=name)
         self.memories: dict[str, ObservationMemory] = {"primary": self.memory}
@@ -120,7 +121,7 @@ class VoiceAgent:
         self._emergency_episodes: dict[str, int] = {}
         self._pending_help_alert = False
         self.moondream = MoondreamClient(model=model, enabled=moondream_enabled)
-        self.speaker = Speaker(enabled=speak)
+        self.speaker = Speaker(enabled=speak, engine=tts_engine)
         self.listener = listener
         # Answer interpretation runs synchronously inside tick(), so keep it
         # deterministic/local; only natural-language generation uses cloud.
@@ -142,6 +143,7 @@ class VoiceAgent:
         self._demo_active_cid: str | None = None    # correlation id of the running step
         self._demo_active_protocol: str | None = None
         self._demo_retries: dict[str, int] = {}     # per-protocol circuit-level retries used
+        self._showcase_pending_close = False        # narrated tour awaiting wrap-up
         self._actions: dict = {}       # intent signature -> post-speech callback
         self._safety_results: list[Result] = []
         self._conversation_results: list[Result] = []
@@ -216,6 +218,16 @@ class VoiceAgent:
         conversation_active = bool(self.listener is not None or self.last_utterance
                                    or self.memory.dialogue)
         self.vision.observe(frame, active=present and conversation_active, now=now)
+
+    def public_line(self) -> dict:
+        """The agent's own last spoken line for demo captions.
+
+        Agent-authored text only — never a heard transcript, question id, or
+        private value — so it is safe on every public surface.
+        """
+        return {"text": self.last_utterance,
+                "speaking": bool(self.speaker.speaking),
+                "listening": self._can_hear()}
 
     def conversation_diagnostics(self) -> dict:
         """Return private-safe orchestration state without text, values, or media."""
@@ -301,7 +313,23 @@ class VoiceAgent:
         self._demo_active_cid = None
         self._demo_active_protocol = None
         self._demo_retries = {}
+        self._showcase_pending_close = False
         self._advance_demo_circuit()
+        return True
+
+    def start_showcase(self, subject_id: str = "primary") -> bool:
+        """Start the narrated showcase tour (the 's' hotkey / --showcase path).
+
+        A spoken introduction, then the guided demo circuit, then a closing
+        wrap-up once the last step has ended. Returns False if a circuit is
+        already running or an assessment is active for that subject.
+        """
+        if not self.start_demo_circuit(subject_id):
+            return False
+        self._say_demo(
+            "Hi there! Let me show you what I can help with around here. "
+            "We'll try three quick checks together: face, arms, and balance.")
+        self._showcase_pending_close = True
         return True
 
     def _say_demo(self, text: str) -> None:
@@ -357,6 +385,15 @@ class VoiceAgent:
                 self._say_demo(f"Skipping the {label} — I couldn't capture it this time.")
                 return
         if not self._demo_queue:
+            if (self._showcase_pending_close
+                    and self.workflows.active(self._demo_subject) is None):
+                # Tour finished (any mix of captured and honestly-skipped
+                # steps): close it warmly, exactly once.
+                self._showcase_pending_close = False
+                self._say_demo(
+                    "And that's the little tour! I'll keep watching quietly "
+                    "and check in now and then. Thank you for trying these "
+                    "with me.")
             return
         protocol = self._demo_queue.pop(0)
         remaining = len(self._demo_queue)
@@ -712,6 +749,10 @@ class VoiceAgent:
             "conversation", f"{topic}_{verdict}", True, 1.0, Severity.INFO,
             f"User {verdict} {topic.replace('_', ' ')}", ttl=120,
             source="user_answer", persistence=PersistencePolicy.EVENT))
+        # Deliberately NO spoken acknowledgment here, even for a "no": the very
+        # next tick may owe this person a new tailored check-in, and any
+        # interjected pleasantry would steal its turn (the adaptive-question
+        # contract pins each cue's FIRST spoken line to its question).
 
     def _apply_workflow_answer(self, workflow, answered_topic: str,
                                response: str) -> None:

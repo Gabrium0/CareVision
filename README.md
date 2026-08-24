@@ -51,6 +51,8 @@ scenario ends.
 | Private localhost diagnostics | add `--debug-endpoint` |
 | Caregiver review portal | add `--caregiver-portal` |
 | Disable spoken audio | add `--no-voice` |
+| Natural neural voice (offline) | add `--tts piper` (fetch once: `python -m audio.tts_piper --download`) |
+| Narrated showcase tour | add `--showcase` (or press `s`; guided face/arm/balance checks with intro and wrap-up) |
 | Disable Moondream calls | add `--no-moondream` |
 
 Cloud camera uploads and microphone processing are separately opt-in. See the

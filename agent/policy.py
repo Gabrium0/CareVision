@@ -49,10 +49,45 @@ class Intent:
 _GAP_INTERJECTABLE = ("reply", "conclusion", "urgent_alert")
 _ANSWER_WINDOW_INTERJECTABLE = ("urgent_alert",)
 
+# Hand-written rotation so repeat visits don't hear an identical opening line.
+# The first entry of each row is the original greeting; the variant is picked
+# deterministically from the arrival timestamp (varies across visits, stable
+# within one, trivially testable). Same warmth rules as every other line:
+# warm, brief, no assertions about the person beyond seeing them.
+_GREETINGS = {
+    "morning": (
+        "Good morning, {name}! Lovely to see you.",
+        "Morning, {name}! Good to see you up and about.",
+        "Hello {name}, and a very good morning to you."),
+    "afternoon": (
+        "Good afternoon, {name}! Lovely to see you.",
+        "Afternoon, {name}! It's nice to see you.",
+        "Hello {name}, I hope your day is going well."),
+    "evening": (
+        "Good evening, {name}! Lovely to see you.",
+        "Evening, {name}! A pleasure to see you.",
+        "Hello {name}, I hope you've had a pleasant day."),
+}
+
+_MOOD_LINES = (
+    "You seem a little down, {name}. I'm right here if you'd like to talk.",
+    "If today feels heavy, {name}, I'm happy just to keep you company.",
+    "You sound a bit low, {name}. Would it help to talk for a bit?",
+)
+
+# (LLM instruction, spoken fallback) pairs rotated by _small_talk_idx. The
+# first fallback is load-bearing: tests pin "How has your day been so far?".
 _SMALL_TALK = [
-    "Make light, friendly small talk and ask how their day is going.",
-    "Share a warm, general pleasantry and invite them to chat.",
-    "Gently check in and let them know you're here if they need anything.",
+    ("Make light, friendly small talk and ask how their day is going.",
+     "How has your day been so far?"),
+    ("Share a warm, general pleasantry and invite them to chat.",
+     "It's nice to have some company — anything pleasant on your agenda today?"),
+    ("Gently check in and let them know you're here if they need anything.",
+     "How are you keeping today?"),
+    ("Invite a small memory or story; listen warmly.",
+     "Seen anything interesting lately, or anyone stop by?"),
+    ("Ask after a simple daily pleasure and offer shared enthusiasm.",
+     "Have you had a nice cup of tea or coffee yet today?"),
 ]
 
 
@@ -101,18 +136,21 @@ class Policy:
         #   small_talk is a rotating filler line driven by _small_talk_idx and
         #             the speaking cadence, with no observation behind it.
         if mem.arrived_at is not None and self._greeted_for != mem.arrived_at:
+            variants = _GREETINGS.get(tod, _GREETINGS["morning"])
+            greeting = variants[int(mem.arrived_at) % len(variants)]
             cands.append(Intent(
                 "greeting", f"greeting:{mem.arrived_at}",
                 "Greet the person by name for the time of day and make brief, "
                 "warm small talk.", f"It is {tod}.",
-                f"Good {tod}, {mem.name}! Lovely to see you.", 100))
+                greeting.format(name=mem.name), 100))
 
         if mem.mood() == "low" and self._fresh("mood", now):
+            mood_line = _MOOD_LINES[int(now) % len(_MOOD_LINES)]
             cands.append(Intent(
                 "observation", "mood",
                 "Warmly acknowledge they seem a bit down and offer company.",
                 "Apparent mood is low.",
-                f"You seem a little down, {mem.name}. I'm right here if you'd like to talk.", 55))
+                mood_line.format(name=mem.name), 55))
 
         # --- Declarative observation topics (agent/topics.py).
         for spec in self.topics:
@@ -122,10 +160,11 @@ class Policy:
 
         # idle small talk
         if now - self._last_spoken >= self.small_talk_interval:
+            instruction, fallback = _SMALL_TALK[
+                self._small_talk_idx % len(_SMALL_TALK)]
             cands.append(Intent(
                 "small_talk", f"smalltalk:{int(now // self.small_talk_interval)}",
-                _SMALL_TALK[self._small_talk_idx % len(_SMALL_TALK)], "",
-                "How has your day been so far?", 10))
+                instruction, "", fallback, 10))
         return cands
 
     def next_intent(self, mem: ObservationMemory, now: float | None = None,

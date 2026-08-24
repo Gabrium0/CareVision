@@ -70,8 +70,8 @@
     "semantic_hash": ""
   },
   "main.py": {
-    "mtime": 1787547657.283909,
-    "ast_hash": "f3fe3a539654d3d3a542b9735ba38069",
+    "mtime": 1787559146.8166661,
+    "ast_hash": "3318e12fd3971e057c4e2447ced05ccf",
     "semantic_hash": ""
   },
   "modules/__init__.py": {
@@ -285,8 +285,8 @@
     "semantic_hash": ""
   },
   "config/modules.yaml": {
-    "mtime": 1787115472.4484594,
-    "ast_hash": "259f1e27ddc433f2772f2f68b610104c",
+    "mtime": 1787556896.2924497,
+    "ast_hash": "29053fda1672908f291bfeeb442a5790",
     "semantic_hash": ""
   },
   "docs/RESEARCH.md": {
@@ -300,8 +300,8 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1787115595.2255657,
-    "ast_hash": "92c338436f6671e3e22ad407d991a20e",
+    "mtime": 1787560480.738677,
+    "ast_hash": "11740c0736ad6469e100651e6f6ab93f",
     "semantic_hash": ""
   },
   "detectionList.md": {
@@ -340,8 +340,8 @@
     "semantic_hash": ""
   },
   "output/dashboard.py": {
-    "mtime": 1787547465.2581377,
-    "ast_hash": "64665da1f5cc67f78e8343fbfc55f3e8",
+    "mtime": 1787557444.314495,
+    "ast_hash": "28f867ce698ad4ed29f52de0422da964",
     "semantic_hash": ""
   },
   "tests/hr_backends_test.py": {
@@ -500,8 +500,8 @@
     "semantic_hash": ""
   },
   "agent/policy.py": {
-    "mtime": 1785907929.2276306,
-    "ast_hash": "d6f652ce8c4b9e360da098ac88abdf85",
+    "mtime": 1787560003.7859123,
+    "ast_hash": "6cdcd0cbec284305f351bd689ced9834",
     "semantic_hash": ""
   },
   "agent/state.py": {
@@ -510,8 +510,8 @@
     "semantic_hash": ""
   },
   "agent/voice_agent.py": {
-    "mtime": 1786339355.6443138,
-    "ast_hash": "04805746dc3966cc3a971638062430e4",
+    "mtime": 1787560256.0554543,
+    "ast_hash": "1b7e0beb251f7970d8cf6a6749ea1a64",
     "semantic_hash": ""
   },
   "alerts/__init__.py": {
@@ -535,8 +535,8 @@
     "semantic_hash": ""
   },
   "audio/tts.py": {
-    "mtime": 1783657568.5239196,
-    "ast_hash": "9c817096ed839c46dd8890fc9e1a713f",
+    "mtime": 1787560003.7874792,
+    "ast_hash": "32c8c8b21befb403fdcbd6a257425aa6",
     "semantic_hash": ""
   },
   "tests/agent_alert_test.py": {
@@ -550,8 +550,8 @@
     "semantic_hash": ""
   },
   "requirements-agent.txt": {
-    "mtime": 1784284285.9447858,
-    "ast_hash": "19035b6a1db2b637d0bdd8bf6b8bc5ff",
+    "mtime": 1787558700.487915,
+    "ast_hash": "f695be168a77732550ffbc3e40de9918",
     "semantic_hash": ""
   },
   "webui/__init__.py": {
@@ -1685,8 +1685,8 @@
     "semantic_hash": ""
   },
   "core/module_gate.py": {
-    "mtime": 1786508920.9342122,
-    "ast_hash": "d320b19c051d178c191af0521e7a7097",
+    "mtime": 1787555905.1895595,
+    "ast_hash": "8d6d0b37146b01e13cf8784fb97cd6a8",
     "semantic_hash": ""
   },
   "core/subjects.py": {
@@ -1700,8 +1700,8 @@
     "semantic_hash": ""
   },
   "tests/module_toggle_test.py": {
-    "mtime": 1786509994.7494571,
-    "ast_hash": "3f11d538a87438f2a9f5b1ad46a2ff31",
+    "mtime": 1787556244.2800584,
+    "ast_hash": "cdf9e650f2feb798a83ca6eb7b14b571",
     "semantic_hash": ""
   },
   "tests/multi_person_detection_test.py": {
@@ -1710,8 +1710,8 @@
     "semantic_hash": ""
   },
   "docs/OPERATIONS.md": {
-    "mtime": 1787552317.2555528,
-    "ast_hash": "cf93f2075495b69443ae7f007510fd3d",
+    "mtime": 1787560451.709907,
+    "ast_hash": "4dffdca3dbd0b2745ab7262d91df37ae",
     "semantic_hash": ""
   },
   "docs/README.md": {
@@ -1820,8 +1820,8 @@
     "semantic_hash": ""
   },
   "tests/ipad_payload_test.py": {
-    "mtime": 1787547525.966332,
-    "ast_hash": "8fdfa348b6adbc1f04142d8d8d9f3263",
+    "mtime": 1787557464.6259832,
+    "ast_hash": "fcfc62d4a079ffe62bf08b282c438b55",
     "semantic_hash": ""
   },
   "tests/ipad_protocol_test.py": {
@@ -1845,13 +1845,28 @@
     "semantic_hash": ""
   },
   "relay/static/ipad.html": {
-    "mtime": 1787548568.8211904,
-    "ast_hash": "29a84c55b6d269096209a49489041fc1",
+    "mtime": 1787559282.499578,
+    "ast_hash": "76b16a98c4465f49db4ea2997defa5f9",
     "semantic_hash": ""
   },
   "requirements-ipad.txt": {
     "mtime": 1787551752.0901713,
     "ast_hash": "bfd0720e73dc85c14ddb803514a27781",
+    "semantic_hash": ""
+  },
+  "assets/tts/en_US-amy-medium.onnx.json": {
+    "mtime": 1787558714.2809174,
+    "ast_hash": "7f37dadb26340c90ebc8088e0b252310",
+    "semantic_hash": ""
+  },
+  "audio/tts_piper.py": {
+    "mtime": 1787558412.354746,
+    "ast_hash": "3e99e2567420a4bea07908653db6c65d",
+    "semantic_hash": ""
+  },
+  "tests/tts_and_showcase_test.py": {
+    "mtime": 1787560299.7448466,
+    "ast_hash": "01af372ebc49f544b3f6e1a347eefcd8",
     "semantic_hash": ""
   }
 }

@@ -15,8 +15,8 @@
     "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
   },
   "core/camera.py": {
-    "mtime": 1786525366.4136796,
-    "ast_hash": "d0e94840389117057ab38ba202e5f94c",
+    "mtime": 1787114967.4931886,
+    "ast_hash": "6846b4abc78473a0b8ca89697ef6cb80",
     "semantic_hash": ""
   },
   "core/context.py": {
@@ -70,8 +70,8 @@
     "semantic_hash": ""
   },
   "main.py": {
-    "mtime": 1787033424.230484,
-    "ast_hash": "a1e73a39fc0efa413a64e12ac7492d09",
+    "mtime": 1787556250.635598,
+    "ast_hash": "3736ed66bf916a17128e0f8102c40157",
     "semantic_hash": ""
   },
   "modules/__init__.py": {
@@ -285,8 +285,8 @@
     "semantic_hash": ""
   },
   "config/modules.yaml": {
-    "mtime": 1786511513.890643,
-    "ast_hash": "e3df3cfefcef66b5477644357d9d0fa9",
+    "mtime": 1787556896.2924497,
+    "ast_hash": "29053fda1672908f291bfeeb442a5790",
     "semantic_hash": ""
   },
   "docs/RESEARCH.md": {
@@ -300,8 +300,8 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1786698043.1294935,
-    "ast_hash": "1dd6f238b061219b6c00800df6cdbfc7",
+    "mtime": 1787115595.2255657,
+    "ast_hash": "92c338436f6671e3e22ad407d991a20e",
     "semantic_hash": ""
   },
   "detectionList.md": {
@@ -340,8 +340,8 @@
     "semantic_hash": ""
   },
   "output/dashboard.py": {
-    "mtime": 1787033467.866112,
-    "ast_hash": "232324b26de318644bea6336cf07e03b",
+    "mtime": 1787547465.2581377,
+    "ast_hash": "64665da1f5cc67f78e8343fbfc55f3e8",
     "semantic_hash": ""
   },
   "tests/hr_backends_test.py": {
@@ -735,8 +735,8 @@
     "semantic_hash": ""
   },
   "core/camera_factory.py": {
-    "mtime": 1784106783.607754,
-    "ast_hash": "9a9ec7f83ffd09389e87ab1655804702",
+    "mtime": 1787115707.7896354,
+    "ast_hash": "5362fd2a11770f722dc40a455a517f89",
     "semantic_hash": ""
   },
   "core/realsense_camera.py": {
@@ -770,8 +770,8 @@
     "semantic_hash": ""
   },
   "tests/depth_and_showcase_test.py": {
-    "mtime": 1783658293.772188,
-    "ast_hash": "0d50520a17ff8de1d30cc5638220a0c1",
+    "mtime": 1787115739.8233368,
+    "ast_hash": "25d7b2b7eb4e2468cd1c45fcfc26911c",
     "semantic_hash": ""
   },
   "requirements-realsense.txt": {
@@ -820,8 +820,8 @@
     "semantic_hash": ""
   },
   "core/showcase.py": {
-    "mtime": 1785219695.6434436,
-    "ast_hash": "f3a1f8cc55506f949240036104095ed3",
+    "mtime": 1787553959.8922935,
+    "ast_hash": "2fd98d71586b7139c3414aca71f5b384",
     "semantic_hash": ""
   },
   "modules/skin_vision.py": {
@@ -830,8 +830,8 @@
     "semantic_hash": ""
   },
   "tests/showcase_gate_test.py": {
-    "mtime": 1785219890.2281208,
-    "ast_hash": "a600c0531d6c3559b04c875eca09b1b9",
+    "mtime": 1787554012.3623297,
+    "ast_hash": "85c9fc53debb3c6741e05d234ca3655a",
     "semantic_hash": ""
   },
   "tests/skin_vision_test.py": {
@@ -1685,8 +1685,8 @@
     "semantic_hash": ""
   },
   "core/module_gate.py": {
-    "mtime": 1786508920.9342122,
-    "ast_hash": "d320b19c051d178c191af0521e7a7097",
+    "mtime": 1787555905.1895595,
+    "ast_hash": "8d6d0b37146b01e13cf8784fb97cd6a8",
     "semantic_hash": ""
   },
   "core/subjects.py": {
@@ -1700,8 +1700,8 @@
     "semantic_hash": ""
   },
   "tests/module_toggle_test.py": {
-    "mtime": 1786509994.7494571,
-    "ast_hash": "3f11d538a87438f2a9f5b1ad46a2ff31",
+    "mtime": 1787556244.2800584,
+    "ast_hash": "cdf9e650f2feb798a83ca6eb7b14b571",
     "semantic_hash": ""
   },
   "tests/multi_person_detection_test.py": {
@@ -1710,8 +1710,8 @@
     "semantic_hash": ""
   },
   "docs/OPERATIONS.md": {
-    "mtime": 1786698060.8895025,
-    "ast_hash": "b80ed1a7a4f7d04b091a94f04d869506",
+    "mtime": 1787552317.2555528,
+    "ast_hash": "cf93f2075495b69443ae7f007510fd3d",
     "semantic_hash": ""
   },
   "docs/README.md": {
@@ -1777,6 +1777,81 @@
   "tests/overlay_subjects_test.py": {
     "mtime": 1786515247.848004,
     "ast_hash": "be27bd4e34596452ee2fa189f1086f5a",
+    "semantic_hash": ""
+  },
+  "core/ipad_camera.py": {
+    "mtime": 1787127382.031216,
+    "ast_hash": "52daaaf40e6039e01899cb02f4ca9e81",
+    "semantic_hash": ""
+  },
+  "core/ipad_link.py": {
+    "mtime": 1787225384.9569862,
+    "ast_hash": "06375020746224b12f49995e33536f6a",
+    "semantic_hash": ""
+  },
+  "relay/server.py": {
+    "mtime": 1787224496.9039009,
+    "ast_hash": "5a6aa02108bc45d62a1ce126c293cb78",
+    "semantic_hash": ""
+  },
+  "scripts/show_qr.py": {
+    "mtime": 1787552242.0175364,
+    "ast_hash": "9f3fc63878b9f9a875fff7af4f90e1fc",
+    "semantic_hash": ""
+  },
+  "scripts/start-showcase.ps1": {
+    "mtime": 1787552511.1402674,
+    "ast_hash": "7880167158da010d13ec3746c9c642e3",
+    "semantic_hash": ""
+  },
+  "tests/ipad_camera_test.py": {
+    "mtime": 1787115828.6054215,
+    "ast_hash": "d43bbdb0cd6c03cc80769885f8e85aec",
+    "semantic_hash": ""
+  },
+  "tests/ipad_clock_test.py": {
+    "mtime": 1787115778.8440242,
+    "ast_hash": "4e189cbd00aa0ce968b28a657716b520",
+    "semantic_hash": ""
+  },
+  "tests/ipad_control_test.py": {
+    "mtime": 1787115730.0680916,
+    "ast_hash": "1709c7ef9367bc4f5d051de8a2e22d22",
+    "semantic_hash": ""
+  },
+  "tests/ipad_payload_test.py": {
+    "mtime": 1787547525.966332,
+    "ast_hash": "8fdfa348b6adbc1f04142d8d8d9f3263",
+    "semantic_hash": ""
+  },
+  "tests/ipad_protocol_test.py": {
+    "mtime": 1787115709.3678236,
+    "ast_hash": "02cbf0d869af3d7ffd80cab4d46e2a30",
+    "semantic_hash": ""
+  },
+  "relay/README.md": {
+    "mtime": 1787114992.1798813,
+    "ast_hash": "9ed2162abb947180504562c25175ef7d",
+    "semantic_hash": ""
+  },
+  "relay/render.yaml": {
+    "mtime": 1787118947.3108144,
+    "ast_hash": "78c6273417f3e06a462b159ed6c39b8b",
+    "semantic_hash": ""
+  },
+  "relay/requirements.txt": {
+    "mtime": 1787114963.0133245,
+    "ast_hash": "c0aaa5290b942eeed9d99aaa49270491",
+    "semantic_hash": ""
+  },
+  "relay/static/ipad.html": {
+    "mtime": 1787554943.3834507,
+    "ast_hash": "164e9adf5732edaf1233f744d439f6ca",
+    "semantic_hash": ""
+  },
+  "requirements-ipad.txt": {
+    "mtime": 1787551752.0901713,
+    "ast_hash": "bfd0720e73dc85c14ddb803514a27781",
     "semantic_hash": ""
   }
 }

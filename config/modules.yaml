@@ -13,6 +13,12 @@ runtime:
   native_thread_budget: auto
   detail_roi_caps: {maximum: 640, balanced: 480, realtime: 320}
   background_budgets_ms: {maximum: 350, balanced: 225, realtime: 150}
+  # Modules that boot warm but toggled off (the scheduler skips them; the
+  # /modules console re-enables them instantly, no restart). Heavy,
+  # non-vital detectors live here so a live showcase stays smooth; remove
+  # or comment entries to start with the full suite running.
+  start_paused: [clothing, grooming, scene_vision, guided_assessments,
+                 age_estimation]
 
 tracking:
   enabled: false              # opt in with --enable-multi-person
@@ -41,7 +47,9 @@ modules:
     classical_talk_delta_threshold: 0.05  # mouth-aspect-ratio delta that flags talking; drops cheek ROIs for that sample
     openrppg_model: null              # null = open-rppg default; try physformer/efficientphys
     openrppg_brightness_normalize: true  # lift dark face crops toward the model's training range
-    openrppg_infer_every: 5.0       # CPU-only JAX is heavy; same 30s window, fewer freezes
+    openrppg_infer_every: 20.0      # CPU-only JAX is heavy; each run is a ~3-4s
+                                    # multi-core burst that visibly dents capture
+                                    # fps, so space runs out for smooth showcases
     openrppg_min_seconds: 10.0
     openrppg_hrv_min_seconds: 30.0    # HRV/breathing need longer clean windows than HR
     openrppg_min_confidence: 0.35

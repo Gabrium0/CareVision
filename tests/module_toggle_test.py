@@ -27,10 +27,11 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 import pytest
 
-from core.module_gate import ModuleGate
+from core.module_gate import ModuleGate, seed_start_paused
 from webui._http import QuietThreadingHTTPServer
 from webui.server import CompanionServer, _is_loopback
 
@@ -85,6 +86,65 @@ def test_snapshot_is_sorted_public_state():
     gate.set("alpha", True, scope="secondary")
     snap = gate.snapshot()
     assert snap == {"primary": ["alpha", "zeta"], "secondary": ["alpha"]}
+
+
+# ------------------------------------------------------- start_paused seed
+
+
+def test_start_paused_boots_modules_off_in_both_scopes():
+    gate = ModuleGate(primary_enabled={"clothing", "presence"},
+                      secondary_enabled={"clothing"})
+    applied, ignored = seed_start_paused(gate, ["clothing"],
+                                         {"clothing", "presence"})
+    assert applied == ["clothing"]
+    assert ignored == []
+    assert gate.enabled("clothing", "primary") is False
+    assert gate.enabled("clothing", "secondary") is False
+    # Untouched modules keep their boot state.
+    assert gate.enabled("presence", "primary") is True
+
+
+def test_start_paused_modules_stay_warm_and_re_enableable():
+    """The whole point of the gate: pausing never unloads, so recovery is
+    one toggle, not a restart."""
+    gate = ModuleGate(primary_enabled={"grooming"})
+    applied, _ignored = seed_start_paused(gate, ["grooming"], {"grooming"})
+    assert applied == ["grooming"]
+    gate.set("grooming", True)
+    assert gate.enabled("grooming", "primary") is True
+
+
+def test_start_paused_ignores_unknown_names_without_side_effects():
+    gate = ModuleGate(primary_enabled={"presence"})
+    applied, ignored = seed_start_paused(gate, ["no_such_module", "presence"],
+                                         {"presence"})
+    assert applied == ["presence"]
+    assert ignored == ["no_such_module"]
+    assert gate.snapshot() == {"primary": [], "secondary": []}
+
+
+def test_start_paused_empty_config_is_a_no_op():
+    gate = ModuleGate(primary_enabled={"presence"})
+    applied, ignored = seed_start_paused(gate, None, {"presence"})
+    assert (applied, ignored) == ([], [])
+    assert gate.enabled("presence", "primary") is True
+
+
+def test_shipped_start_paused_config_is_wellformed():
+    """Guard the hand-edited YAML: the key must be a list of plain names,
+    and every entry must be a registered module -- a typo here would only
+    surface as an 'ignoring unknown' log line nobody reads."""
+    import yaml
+    from core.registry import all_registered, discover
+    discover()
+    config = yaml.safe_load(
+        (Path(__file__).resolve().parents[1] / "config" / "modules.yaml")
+        .read_text(encoding="utf-8"))
+    paused = ((config or {}).get("runtime") or {}).get("start_paused")
+    assert isinstance(paused, list) and paused
+    assert all(isinstance(name, str) and name for name in paused)
+    unknown = [name for name in paused if name not in all_registered()]
+    assert unknown == []
 
 
 # ------------------------------------------------------- loopback predicate
