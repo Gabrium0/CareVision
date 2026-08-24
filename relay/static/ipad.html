@@ -5,62 +5,190 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>iPad Link</title>
+<title>Care Monitor</title>
 <style>
-  :root { --bg:#0b0d10; --panel:#14171b; --fg:#f2f5f7; --dim:#8a929b; --line:#262b30;
-    --accent:#7fd0ff; --good:#57d977; --bad:#ff5a5a; }
-  * { box-sizing:border-box; -webkit-text-size-adjust:100%; }
+  :root {
+    --bg:#0b0d10; --panel:#14171b; --panel2:#0e1114; --fg:#f2f5f7; --dim:#8a929b;
+    --line:#262b30; --accent:#7fd0ff;
+    --info:#c4ccd4; --notice:#3fb6e6; --warning:#f2b23a; --alert:#ff5a5a; --good:#57d977;
+  }
+  * { box-sizing:border-box; -webkit-text-size-adjust:100%; -webkit-tap-highlight-color:transparent; }
   html, body { margin:0; padding:0; background:var(--bg); color:var(--fg); }
   body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
-    font-size:17px; padding:16px 16px 48px; }
+    font-size:17px; padding:calc(14px + env(safe-area-inset-top)) 14px 40px; }
   h1 { font-size:22px; margin:0 0 4px; font-weight:800; }
-  h2 { font-size:18px; margin:0 0 8px; font-weight:800; }
+  h2 { font-size:16px; margin:0 0 10px; font-weight:800; letter-spacing:.2px; }
+  h3 { font-size:12px; margin:18px 0 8px; font-weight:800; text-transform:uppercase;
+    letter-spacing:.6px; color:var(--dim); }
   .dim { color:var(--dim); }
   .hidden { display:none !important; }
-  header { display:flex; align-items:center; justify-content:space-between; gap:10px;
-    border-bottom:1px solid var(--line); padding-bottom:12px; margin-bottom:16px; }
-  .statusdot { display:flex; align-items:center; gap:8px; font-size:14px; color:var(--dim); }
-  .dot { width:10px; height:10px; border-radius:50%; background:var(--dim); display:inline-block; }
-  .dot.live { background:var(--good); box-shadow:0 0 8px var(--good); }
-  .dot.bad { background:var(--bad); box-shadow:0 0 8px var(--bad); }
-  .panel { background:var(--panel); border:1px solid var(--line); border-radius:12px;
+  button { font:inherit; cursor:pointer; }
+
+  /* ---- pairing (unchanged flow) --------------------------------------- */
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:14px;
     padding:18px; margin-bottom:16px; }
-  .panel.error { border-color:var(--bad); }
-  .panel.error h2 { color:var(--bad); }
+  .panel.error { border-color:var(--alert); }
+  .panel.error h2 { color:var(--alert); }
   label { display:block; font-size:13px; color:var(--dim); text-transform:uppercase;
     letter-spacing:.4px; margin-bottom:8px; }
   input#codeInput { width:100%; font:inherit; font-size:28px; letter-spacing:6px;
-    text-align:center; background:#0e1114; color:var(--fg); border:1px solid var(--line);
+    text-align:center; background:var(--panel2); color:var(--fg); border:1px solid var(--line);
     border-radius:10px; padding:14px; min-height:64px; }
-  button { min-height:64px; font:inherit; cursor:pointer; border-radius:10px;
-    border:1px solid var(--accent); background:#1c2b33; color:var(--fg); }
-  button:disabled { opacity:.5; cursor:default; }
-  #connectBtn { width:100%; margin-top:12px; font-size:18px; font-weight:700; }
+  #connectBtn { width:100%; margin-top:12px; min-height:64px; font-size:18px; font-weight:700;
+    border-radius:10px; border:1px solid var(--accent); background:#1c2b33; color:var(--fg); }
+  #connectBtn:disabled { opacity:.5; }
   #pairMsg { margin-top:10px; font-size:14px; min-height:1.2em; }
-  video#preview { width:100%; max-width:480px; border-radius:10px; border:1px solid var(--line);
-    background:#000; display:block; margin:0 auto 14px; }
-  .statusrow { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:8px;
-    font-size:13px; margin-bottom:16px; }
-  .stat { border:1px solid var(--line); border-radius:8px; padding:8px 10px; background:#0e1114; }
-  .stat .k { color:var(--dim); text-transform:uppercase; font-size:10px; letter-spacing:.4px; }
+
+  /* ---- app bar --------------------------------------------------------- */
+  .appbar { display:flex; align-items:center; gap:10px; padding-bottom:12px;
+    border-bottom:1px solid var(--line); margin-bottom:16px; }
+  .brand { font-weight:800; font-size:16px; display:flex; align-items:center; gap:8px;
+    white-space:nowrap; }
+  .statusdot { display:inline-flex; align-items:center; gap:7px; font-size:12px; color:var(--dim); }
+  .dot { width:10px; height:10px; border-radius:50%; background:var(--dim); }
+  .dot.live { background:var(--good); box-shadow:0 0 8px var(--good); }
+  .dot.bad { background:var(--alert); box-shadow:0 0 8px var(--alert); }
+  .spacer { flex:1 1 auto; }
+  .seg { display:inline-flex; background:var(--panel2); border:1px solid var(--line);
+    border-radius:11px; padding:3px; }
+  .seg button { border:none; background:transparent; color:var(--dim); min-height:40px;
+    padding:7px 15px; border-radius:8px; font-weight:700; font-size:14px; }
+  .seg button.on { background:var(--accent); color:#04121a; }
+  .iconbtn { min-height:44px; min-width:44px; border-radius:11px; border:1px solid var(--line);
+    background:var(--panel2); color:var(--fg); font-size:19px; line-height:1; }
+
+  /* ---- headline -------------------------------------------------------- */
+  .headline { border-radius:14px; padding:16px 18px; margin-bottom:16px; background:var(--panel);
+    border:1px solid var(--line); }
+  .headline .hkicker { font-size:12px; text-transform:uppercase; letter-spacing:.6px;
+    color:var(--dim); margin-bottom:6px; }
+  .headline .htext { font-size:21px; font-weight:700; line-height:1.3; }
+  .headline.s-notice { border-color:var(--notice); }
+  .headline.s-warning { border-color:var(--warning); background:#20190c; }
+  .headline.s-alert { border-color:var(--alert); background:#2a1213; }
+
+  /* ---- vitals tiles ---------------------------------------------------- */
+  .vitals { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:14px; }
+  .vtile { position:relative; background:var(--panel); border:1px solid var(--line);
+    border-radius:18px; padding:18px 14px 16px; text-align:center; }
+  .vtile .vicon { font-size:20px; opacity:.85; }
+  .vtile .vlabel { font-size:12px; color:var(--dim); text-transform:uppercase;
+    letter-spacing:.5px; margin-top:2px; }
+  .vtile .vval { font-size:46px; font-weight:800; line-height:1.02; margin:8px 0 0; }
+  .vtile .vunit { font-size:13px; color:var(--dim); margin-top:2px; min-height:1em; }
+  .vtile .vsub { font-size:11px; color:var(--dim); margin-top:8px; min-height:1.1em; }
+  .vtile .vtier { position:absolute; top:10px; right:10px; font-size:9px; font-weight:800;
+    letter-spacing:.4px; padding:2px 6px; border-radius:6px; background:var(--panel2);
+    color:var(--dim); }
+  .vtile.s-notice { border-color:var(--notice); }
+  .vtile.s-warning { border-color:var(--warning); }
+  .vtile.s-alert { border-color:var(--alert); }
+  .vtile.s-warning .vval { color:var(--warning); }
+  .vtile.s-alert .vval { color:var(--alert); }
+  .vtile.stale .vval { color:var(--dim); }
+  .vtile .dotpulse { display:inline-block; width:7px; height:7px; border-radius:50%;
+    background:var(--good); margin-right:5px; vertical-align:middle; animation:pulse 1.8s ease-in-out infinite; }
+  .vtile.stale .dotpulse { background:var(--dim); animation:none; }
+  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:.3;} }
+
+  /* compact vitals variant for the provider view */
+  .vitals.compact .vtile { padding:12px 12px 10px; border-radius:12px; }
+  .vitals.compact .vtile .vval { font-size:30px; }
+  .vitals.compact .vtile .vicon, .vitals.compact .vtile .vsub { display:none; }
+
+  /* ---- signal feed ----------------------------------------------------- */
+  .feed { display:flex; flex-direction:column; gap:8px; }
+  .srow { display:flex; align-items:flex-start; gap:10px; background:var(--panel);
+    border:1px solid var(--line); border-left-width:4px; border-radius:10px; padding:11px 13px; }
+  .srow.s-info { border-left-color:var(--info); }
+  .srow.s-notice { border-left-color:var(--notice); }
+  .srow.s-warning { border-left-color:var(--warning); }
+  .srow.s-alert { border-left-color:var(--alert); }
+  .srow .smsg { flex:1 1 auto; font-size:15px; line-height:1.35; }
+  .srow .smeta { font-size:11px; color:var(--dim); margin-top:3px; }
+  .srow .stier { font-size:9px; font-weight:800; color:var(--dim); border:1px solid var(--line);
+    border-radius:6px; padding:2px 6px; white-space:nowrap; }
+  .empty { color:var(--dim); font-size:14px; padding:8px 2px; }
+
+  /* ---- stat rows ------------------------------------------------------- */
+  .stats { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px; }
+  .stat { border:1px solid var(--line); border-radius:9px; padding:9px 11px; background:var(--panel2); }
+  .stat .k { color:var(--dim); font-size:10px; text-transform:uppercase; letter-spacing:.4px; }
   .stat .v { font-size:15px; font-weight:700; margin-top:2px; }
-  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
-  .mbtn2 { min-height:64px; display:flex; flex-direction:column; align-items:flex-start;
-    justify-content:center; gap:4px; padding:10px 12px; text-align:left; }
-  .mbtn2.on { border-color:var(--good); background:#12271a; }
-  .mlabel2 { font-weight:700; font-size:14px; }
-  .mstate { font-size:12px; color:var(--dim); }
-  .mbtn2.on .mstate { color:var(--good); }
-  .mres { font-size:12px; margin-top:-4px; margin-bottom:6px; }
+  .stat.s-notice .v { color:var(--notice); }
+  .stat.s-warning .v { color:var(--warning); }
+  .stat.s-alert .v { color:var(--alert); }
+
+  /* ---- camera preview -------------------------------------------------- */
+  .previewWrap { margin-top:16px; }
+  video#preview { width:100%; max-width:180px; border-radius:12px; border:1px solid var(--line);
+    background:#000; display:block; }
+  .previewWrap.big video#preview { max-width:100%; }
+  .previewCap { font-size:11px; color:var(--dim); margin-top:6px; }
+
+  /* ---- settings drawer ------------------------------------------------- */
+  .scrim { position:fixed; inset:0; background:rgba(0,0,0,.55); opacity:0; pointer-events:none;
+    transition:opacity .25s; z-index:40; }
+  .scrim.open { opacity:1; pointer-events:auto; }
+  .drawer { position:fixed; top:0; right:0; height:100%; width:min(430px,92vw); z-index:50;
+    background:var(--panel); border-left:1px solid var(--line); transform:translateX(100%);
+    transition:transform .25s ease; overflow-y:auto; padding:20px 20px 60px;
+    padding-top:calc(20px + env(safe-area-inset-top)); }
+  .drawer.open { transform:translateX(0); }
+  .drawer .drawhead { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+  .setrow { display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:12px 0; border-bottom:1px solid var(--line); }
+  .setrow .lbl { font-size:15px; }
+  .setrow .hint { font-size:12px; color:var(--dim); margin-top:2px; }
+  /* toggle switch */
+  .sw { position:relative; width:52px; height:32px; flex:0 0 auto; }
+  .sw input { opacity:0; width:0; height:0; }
+  .sw span { position:absolute; inset:0; background:var(--panel2); border:1px solid var(--line);
+    border-radius:32px; transition:.2s; }
+  .sw span:before { content:""; position:absolute; height:24px; width:24px; left:3px; top:3px;
+    background:var(--dim); border-radius:50%; transition:.2s; }
+  .sw input:checked + span { background:#12271a; border-color:var(--good); }
+  .sw input:checked + span:before { transform:translateX(20px); background:var(--good); }
+  .sw input:disabled + span { opacity:.4; }
+  .bigbtn { width:100%; min-height:52px; border-radius:11px; border:1px solid var(--accent);
+    background:#1c2b33; color:var(--fg); font-weight:700; font-size:15px; margin-top:10px; }
+  .bigbtn:disabled { opacity:.5; }
+
+  /* module toggle grid in the drawer */
+  .mgrid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .mbtn { display:flex; flex-direction:column; align-items:flex-start; justify-content:center;
+    gap:3px; min-height:60px; padding:9px 11px; text-align:left; border-radius:10px;
+    border:1px solid var(--line); background:var(--panel2); color:var(--fg); }
+  .mbtn.on { border-color:var(--good); background:#12271a; }
+  .mbtn:disabled { opacity:.45; }
+  .mbtn .mlabel { font-weight:700; font-size:13px; }
+  .mbtn .mstate { font-size:11px; color:var(--dim); }
+  .mbtn.on .mstate { color:var(--good); }
+  .mres { grid-column:1 / -1; font-size:12px; margin:-2px 2px 2px; }
   .mres.ok { color:var(--good); }
-  .mres.err { color:var(--bad); }
+  .mres.err { color:var(--alert); }
+
+  /* connection diagnostics */
+  .diaggrid { display:grid; grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); gap:8px;
+    font-size:13px; }
+
+  .foot { margin-top:22px; font-size:11px; color:var(--dim); line-height:1.5;
+    border-top:1px solid var(--line); padding-top:12px; }
+
+  /* ---- presentation mode ---------------------------------------------- */
+  body.presenting #provDiagCard { display:none; }
+  /* Never display:none the preview — iOS pauses a hidden <video>, which stops
+     requestVideoFrameCallback and kills capture. Shrink it to a corner pip. */
+  body.presenting .previewWrap { position:fixed; right:12px; bottom:12px; margin:0;
+    z-index:30; opacity:.85; }
+  body.presenting .previewWrap video#preview { max-width:96px; }
+  body.presenting .previewWrap.big video#preview { max-width:60vw; }
+  body.presenting .previewCap { display:none; }
+  body.presenting .vtile .vval { font-size:54px; }
+  body.presenting .headline .htext { font-size:24px; }
 </style>
 </head>
 <body>
-<header>
-  <h1>iPad Link</h1>
-  <span class="statusdot"><span class="dot" id="liveDot"></span><span id="liveLabel">offline</span></span>
-</header>
 
 <div id="secureError" class="panel error hidden">
   <h2>HTTPS required</h2>
@@ -73,27 +201,114 @@
 </div>
 
 <div id="pairPanel" class="panel">
-  <label for="codeInput">Pairing code (from the laptop)</label>
+  <h1>Care Monitor</h1>
+  <p class="dim" style="margin:0 0 16px;font-size:14px;">Enter the code shown on the laptop to pair this iPad.</p>
+  <label for="codeInput">Pairing code</label>
   <input id="codeInput" inputmode="numeric" pattern="[0-9]*" maxlength="6"
     autocomplete="off" placeholder="123456">
   <button id="connectBtn" type="button">Connect</button>
   <div id="pairMsg" class="dim"></div>
 </div>
 
-<div id="mainPanel" class="panel hidden">
-  <video id="preview" muted playsinline autoplay></video>
-  <div class="statusrow" id="statusRow">
-    <div class="stat"><div class="k">WS</div><div class="v" id="stWs">–</div></div>
-    <div class="stat"><div class="k">ICE</div><div class="v" id="stIce">–</div></div>
-    <div class="stat"><div class="k">DC</div><div class="v" id="stDc">–</div></div>
-    <div class="stat"><div class="k">FPS</div><div class="v" id="stFps">0</div></div>
-    <div class="stat"><div class="k">Clock</div><div class="v" id="stClock">–</div></div>
-    <div class="stat"><div class="k">Frames sent</div><div class="v" id="stFrames">0</div></div>
-    <div class="stat"><div class="k">Capture</div><div class="v" id="stErr">–</div></div>
+<div id="app" class="hidden">
+  <div class="appbar">
+    <span class="brand">🩺 Care Monitor</span>
+    <span class="statusdot"><span class="dot" id="liveDot"></span><span id="liveLabel">offline</span></span>
+    <span class="spacer"></span>
+    <div class="seg" id="viewSeg">
+      <button type="button" data-view="resident" class="on">Resident</button>
+      <button type="button" data-view="provider">Provider</button>
+    </div>
+    <button type="button" class="iconbtn" id="settingsBtn" aria-label="Settings">⚙</button>
   </div>
-  <h2>Modules</h2>
-  <div class="grid" id="moduleGrid"><p class="dim">waiting for module list&hellip;</p></div>
+
+  <div class="headline" id="headline">
+    <div class="hkicker" id="hkicker">Status</div>
+    <div class="htext" id="htext">Connecting…</div>
+  </div>
+
+  <!-- RESIDENT VIEW -->
+  <div id="viewResident">
+    <div class="vitals" id="vitalsResident"></div>
+  </div>
+
+  <!-- PROVIDER VIEW -->
+  <div id="viewProvider" class="hidden">
+    <div class="vitals compact" id="vitalsProvider"></div>
+
+    <h3>Live signals</h3>
+    <div class="feed" id="signalFeed"><div class="empty">waiting for data…</div></div>
+
+    <h3>Fatigue &amp; environment</h3>
+    <div class="stats" id="statFeed"><div class="empty">waiting for data…</div></div>
+
+    <div class="panel" id="provDiagCard" style="margin-top:18px;">
+      <h2>Connection</h2>
+      <div class="diaggrid">
+        <div class="stat"><div class="k">WS</div><div class="v" id="stWs">–</div></div>
+        <div class="stat"><div class="k">ICE</div><div class="v" id="stIce">–</div></div>
+        <div class="stat"><div class="k">DC</div><div class="v" id="stDc">–</div></div>
+        <div class="stat"><div class="k">Capture FPS</div><div class="v" id="stFps">0</div></div>
+        <div class="stat"><div class="k">Clock</div><div class="v" id="stClock">–</div></div>
+        <div class="stat"><div class="k">Frames sent</div><div class="v" id="stFrames">0</div></div>
+        <div class="stat"><div class="k">Capture</div><div class="v" id="stErr">–</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- camera preview: kept OUTSIDE the view containers and never display:none,
+       so switching to the Provider view or presentation mode cannot pause the
+       capture stream (iOS stops requestVideoFrameCallback for a hidden video). -->
+  <div class="previewWrap" id="previewWrap">
+    <video id="preview" muted playsinline autoplay></video>
+    <div class="previewCap">Camera in use · tap to enlarge</div>
+  </div>
+
+  <div class="foot">
+    Observational wellness monitoring, not a medical device. Readings are cues to
+    look closer, not diagnoses. Reliability tiers (HIGH / MEDIUM / LOW) reflect
+    how far each signal can be trusted.
+  </div>
 </div>
+
+<!-- settings drawer -->
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <div class="drawhead">
+    <h1 style="font-size:20px;margin:0;">Settings</h1>
+    <button type="button" class="iconbtn" id="closeDrawer" aria-label="Close">✕</button>
+  </div>
+
+  <h3>Display</h3>
+  <div class="setrow">
+    <div><div class="lbl">Default view</div><div class="hint">What this iPad opens to</div></div>
+    <div class="seg" id="viewSegDrawer">
+      <button type="button" data-view="resident" class="on">Resident</button>
+      <button type="button" data-view="provider">Provider</button>
+    </div>
+  </div>
+  <div class="setrow">
+    <div><div class="lbl">Presentation mode</div><div class="hint">Larger text, hides diagnostics &amp; preview</div></div>
+    <label class="sw"><input type="checkbox" id="presentSw"><span></span></label>
+  </div>
+  <div class="setrow">
+    <div><div class="lbl">Keep screen awake</div><div class="hint">Prevents the iPad from sleeping</div></div>
+    <label class="sw"><input type="checkbox" id="wakeSw" checked><span></span></label>
+  </div>
+
+  <h3>Vitals tiles</h3>
+  <div id="tileToggles"></div>
+
+  <h3>Live demo</h3>
+  <button type="button" class="bigbtn" id="circuitBtn">▶ Run guided demo circuit</button>
+  <div class="mres" id="circuitMsg" style="display:none;"></div>
+
+  <h3>Detectors</h3>
+  <p class="hint" style="margin:0 0 8px;">Pause or resume a detector on the paired laptop.</p>
+  <div class="mgrid" id="moduleGrid"><p class="dim">waiting for module list…</p></div>
+
+  <div class="foot" id="drawerFoot"></div>
+</aside>
 
 <canvas id="cnv" width="640" height="480" class="hidden"></canvas>
 
@@ -150,11 +365,12 @@
 
   // ---- DOM refs -----------------------------------------------------------
   const pairPanel = document.getElementById('pairPanel');
-  const mainPanel = document.getElementById('mainPanel');
+  const appEl = document.getElementById('app');
   const codeInput = document.getElementById('codeInput');
   const connectBtn = document.getElementById('connectBtn');
   const pairMsg = document.getElementById('pairMsg');
   const previewEl = document.getElementById('preview');
+  const previewWrap = document.getElementById('previewWrap');
   const liveDot = document.getElementById('liveDot');
   const liveLabel = document.getElementById('liveLabel');
   const stWs = document.getElementById('stWs');
@@ -171,15 +387,59 @@
   const canvas = document.getElementById('cnv');
   const ctx = canvas.getContext('2d', {willReadFrequently:false});
 
+  // dashboard refs
+  const headlineEl = document.getElementById('headline');
+  const hkickerEl = document.getElementById('hkicker');
+  const htextEl = document.getElementById('htext');
+  const vitalsResidentEl = document.getElementById('vitalsResident');
+  const vitalsProviderEl = document.getElementById('vitalsProvider');
+  const signalFeedEl = document.getElementById('signalFeed');
+  const statFeedEl = document.getElementById('statFeed');
+  const viewResidentEl = document.getElementById('viewResident');
+  const viewProviderEl = document.getElementById('viewProvider');
+  const tileTogglesEl = document.getElementById('tileToggles');
+  const circuitBtn = document.getElementById('circuitBtn');
+  const circuitMsg = document.getElementById('circuitMsg');
+  const drawerFoot = document.getElementById('drawerFoot');
+
   // ---- state ----------------------------------------------------------
   let ws = null, pc = null, dcFrames = null, dcControl = null, stream = null;
   let seq = 0, framesSent = 0, framesSentAtLastTick = 0;
   let lastFrameSentAt = 0;
   let clockSource = null;
   let lastState = null;               // last {type:'state', modules:[...]}
+  let lastTelemetry = null;           // last {type:'telemetry', ...}
+  const vitalDeadline = Object.create(null);   // vital id -> local expiry ms
   const moduleBusy = Object.create(null);
   const moduleResult = Object.create(null);
   let wakeLock = null;
+
+  // ---- UI preferences (persisted) --------------------------------------
+  // Tiles listed in the order they render; each row in the settings drawer is
+  // built from this, so adding a vital to output/dashboard.py needs only a new
+  // entry here to gain a visibility switch.
+  const VITAL_META = {
+    hr:   {icon:'❤️'}, resp: {icon:'🫁'}, spo2: {icon:'🩸'}, mood: {icon:'🙂'},
+  };
+  const DEFAULT_PREFS = {view:'resident', presenting:false, wake:true,
+    tiles:{hr:true, resp:true, spo2:true, mood:true}};
+  function loadPrefs(){
+    try{
+      const raw = localStorage.getItem('careUI');
+      if(!raw) return {view:'resident', presenting:false, wake:true,
+        tiles:Object.assign({}, DEFAULT_PREFS.tiles)};
+      const p = JSON.parse(raw);
+      return {view: p.view === 'provider' ? 'provider' : 'resident',
+        presenting: !!p.presenting, wake: p.wake !== false,
+        tiles: Object.assign({}, DEFAULT_PREFS.tiles, (p.tiles||{}))};
+    }catch(_){ return {view:'resident', presenting:false, wake:true,
+      tiles:Object.assign({}, DEFAULT_PREFS.tiles)}; }
+  }
+  const prefs = loadPrefs();
+  function savePrefs(){
+    try{ localStorage.setItem('careUI', JSON.stringify({view:prefs.view,
+      presenting:prefs.presenting, wake:prefs.wake, tiles:prefs.tiles})); }catch(_){}
+  }
 
   function setOverallLive(on){
     liveDot.classList.toggle('live', on);
@@ -191,83 +451,324 @@
   function setDc(state){ try{ stDc.textContent = state; }catch(_){} }
   function setClock(source){ try{ clockSource = source; stClock.textContent = source; }catch(_){} }
 
-  function showMain(){ pairPanel.classList.add('hidden'); mainPanel.classList.remove('hidden'); }
-  function showPairPanel(){ mainPanel.classList.add('hidden'); pairPanel.classList.remove('hidden'); connectBtn.disabled = false; }
+  function showMain(){ pairPanel.classList.add('hidden'); appEl.classList.remove('hidden'); }
+  function showPairPanel(){ appEl.classList.add('hidden'); pairPanel.classList.remove('hidden'); connectBtn.disabled = false; }
+
+  // ---- view switching + settings drawer --------------------------------
+  function applyView(){
+    const resident = prefs.view !== 'provider';
+    viewResidentEl.classList.toggle('hidden', !resident);
+    viewProviderEl.classList.toggle('hidden', resident);
+    document.querySelectorAll('#viewSeg button, #viewSegDrawer button').forEach(b => {
+      b.classList.toggle('on', b.getAttribute('data-view') === prefs.view);
+    });
+    renderVitals();  // both grids share data; re-render the now-visible one
+  }
+  function setView(v){ prefs.view = (v === 'provider') ? 'provider' : 'resident'; savePrefs(); applyView(); }
+
+  document.getElementById('viewSeg').addEventListener('click', ev => {
+    const b = ev.target.closest('button[data-view]'); if(b) setView(b.getAttribute('data-view'));
+  });
+  document.getElementById('viewSegDrawer').addEventListener('click', ev => {
+    const b = ev.target.closest('button[data-view]'); if(b) setView(b.getAttribute('data-view'));
+  });
+
+  const scrim = document.getElementById('scrim');
+  const drawer = document.getElementById('drawer');
+  function openDrawer(){ drawer.classList.add('open'); scrim.classList.add('open'); drawer.setAttribute('aria-hidden','false'); }
+  function closeDrawer(){ drawer.classList.remove('open'); scrim.classList.remove('open'); drawer.setAttribute('aria-hidden','true'); }
+  document.getElementById('settingsBtn').addEventListener('click', openDrawer);
+  document.getElementById('closeDrawer').addEventListener('click', closeDrawer);
+  scrim.addEventListener('click', closeDrawer);
+
+  const presentSw = document.getElementById('presentSw');
+  presentSw.checked = prefs.presenting;
+  function applyPresenting(){ document.body.classList.toggle('presenting', prefs.presenting); }
+  presentSw.addEventListener('change', () => { prefs.presenting = presentSw.checked; savePrefs(); applyPresenting(); });
+
+  const wakeSw = document.getElementById('wakeSw');
+  wakeSw.checked = prefs.wake;
+  wakeSw.addEventListener('change', () => {
+    prefs.wake = wakeSw.checked; savePrefs();
+    if(prefs.wake) requestWakeLock(); else releaseWakeLock();
+  });
+
+  // tap the small preview to enlarge it
+  previewWrap.addEventListener('click', () => previewWrap.classList.toggle('big'));
+
+  // vitals tile visibility switches (built once from the tiles pref order)
+  function buildTileToggles(){
+    tileTogglesEl.innerHTML = '';
+    Object.keys(prefs.tiles).forEach(id => {
+      const row = document.createElement('div');
+      row.className = 'setrow';
+      row.innerHTML = `<div><div class="lbl">${esc(id.toUpperCase())}</div></div>` +
+        `<label class="sw"><input type="checkbox" data-tile="${esc(id)}"${prefs.tiles[id] ? ' checked' : ''}><span></span></label>`;
+      tileTogglesEl.appendChild(row);
+    });
+  }
+  tileTogglesEl.addEventListener('change', ev => {
+    const inp = ev.target.closest('input[data-tile]'); if(!inp) return;
+    prefs.tiles[inp.getAttribute('data-tile')] = inp.checked; savePrefs(); renderVitals();
+  });
+
+  circuitBtn.addEventListener('click', () => {
+    if(!dcControl || dcControl.readyState !== 'open'){
+      circuitMsg.style.display = 'block'; circuitMsg.className = 'mres err';
+      circuitMsg.textContent = 'Control channel not open.'; return;
+    }
+    try{
+      dcControl.send(JSON.stringify({type:'module', action:'circuit'}));
+      circuitBtn.disabled = true;
+      circuitMsg.style.display = 'block'; circuitMsg.className = 'mres';
+      circuitMsg.textContent = 'Requested…';
+    }catch(_){
+      circuitMsg.style.display = 'block'; circuitMsg.className = 'mres err';
+      circuitMsg.textContent = 'Send failed.';
+    }
+  });
+
+  // ---- dashboard rendering --------------------------------------------
+  function sevClass(sev){ return 's-' + (sev || 'info'); }
+
+  function vitalTileHTML(v, opts){
+    const id = v.id;
+    const tier = (v.reliability && v.reliability.tier) || null;
+    const stale = !v.present || (vitalDeadline[id] && Date.now() > vitalDeadline[id]);
+    const meta = VITAL_META[id] || {icon:'•'};
+    const cls = 'vtile ' + sevClass(v.severity) + (stale ? ' stale' : '');
+    const bigVal = v.present ? esc(String(v.value)) :
+      '<span style="font-size:20px;color:var(--dim);">measuring…</span>';
+    const tierHtml = tier ? `<span class="vtier">${esc(tier)}</span>` : '';
+    return `<div class="${cls}">${tierHtml}` +
+      (opts.big ? `<div class="vicon">${meta.icon}</div>` : '') +
+      `<div class="vlabel">${esc(v.label)}</div>` +
+      `<div class="vval">${bigVal}</div>` +
+      `<div class="vunit">${v.present ? esc(v.unit || '') : ''}</div>` +
+      (opts.big ? `<div class="vsub"><span class="dotpulse"></span>${stale ? 'updating…' : (v.present ? 'live' : 'starting…')}</div>` : '') +
+      `</div>`;
+  }
+
+  function renderVitals(){
+    if(!lastTelemetry || !Array.isArray(lastTelemetry.vitals)) return;
+    const visible = lastTelemetry.vitals.filter(v => prefs.tiles[v.id] !== false);
+    try{
+      vitalsResidentEl.innerHTML = visible.map(v => vitalTileHTML(v, {big:true})).join('') ||
+        '<div class="empty">no vitals selected — enable some in settings</div>';
+      vitalsProviderEl.innerHTML = lastTelemetry.vitals.map(v => vitalTileHTML(v, {big:false})).join('');
+    }catch(_){ /* one malformed frame must never blank the dashboard */ }
+  }
+
+  function renderHeadline(){
+    if(!lastTelemetry){ return; }
+    const signals = Array.isArray(lastTelemetry.signals) ? lastTelemetry.signals : [];
+    // Same promotion contract as the /demo big screen: a low-confidence notice
+    // can't outrank the greeting. Only a real warning/alert takes the headline.
+    const concern = signals.find(s => s && !s.internal && s.promote !== false &&
+                (s.severity === 'warning' || s.severity === 'alert'));
+    let kicker = 'Status', text = lastTelemetry.greeting || 'Watching over things.', sev = 'info';
+    if(concern){
+      kicker = 'Worth a look'; text = concern.message || text; sev = concern.severity;
+    } else if(lastTelemetry.person_present === false){
+      text = 'No one in view right now.';
+    }
+    hkickerEl.textContent = kicker;
+    htextEl.textContent = text;
+    headlineEl.className = 'headline ' + sevClass(sev);
+  }
+
+  function renderSignals(){
+    if(!lastTelemetry){ return; }
+    const signals = (lastTelemetry.signals || []).filter(s => s && !s.internal);
+    if(!signals.length){ signalFeedEl.innerHTML = '<div class="empty">nothing notable right now.</div>'; return; }
+    signalFeedEl.innerHTML = signals.map(s => {
+      const conf = (typeof s.conf === 'number') ? s.conf.toFixed(2) : '';
+      const tier = s.tier ? `<span class="stier">${esc(s.tier)}</span>` : '';
+      const sub = (s.subject_id && s.subject_id !== 'primary') ? ' · ' + esc(s.subject_id) : '';
+      return `<div class="srow ${sevClass(s.severity)}">` +
+        `<div class="smsg">${esc(s.message || s.label || '')}` +
+        `<div class="smeta">${esc(s.label || '')} · conf ${conf}${sub}</div></div>${tier}</div>`;
+    }).join('');
+  }
+
+  function renderStats(){
+    if(!lastTelemetry || !lastTelemetry.stats){ return; }
+    const rows = [];
+    (lastTelemetry.stats.clothing_weather || []).forEach(r => rows.push(r));
+    (lastTelemetry.stats.fatigue || []).forEach(r => rows.push(r));
+    const advice = lastTelemetry.stats.advice;
+    let html = rows.map(r =>
+      `<div class="stat ${sevClass(r.severity)}"><div class="k">${esc(r.label)}</div>` +
+      `<div class="v">${esc(r.value)}</div></div>`).join('');
+    if(advice){
+      html = `<div class="stat" style="grid-column:1/-1;"><div class="k">Clothing advice</div>` +
+        `<div class="v" style="font-size:14px;">${esc(advice)}</div></div>` + html;
+    }
+    statFeedEl.innerHTML = html || '<div class="empty">warming up…</div>';
+  }
+
+  function renderTelemetry(msg){
+    lastTelemetry = msg;
+    const now = Date.now();
+    (msg.vitals || []).forEach(v => {
+      if(v.present && typeof v.fresh_for === 'number'){
+        vitalDeadline[v.id] = now + Math.max(0, v.fresh_for) * 1000;
+      } else if(!v.present){
+        delete vitalDeadline[v.id];
+      }
+    });
+    renderVitals();
+    renderHeadline();
+    renderSignals();
+    renderStats();
+    renderModulesGrid();
+    updateDrawerFoot();
+  }
+
+  function updateDrawerFoot(){
+    if(!lastTelemetry) return;
+    const c = lastTelemetry.module_counts || {};
+    const perf = lastTelemetry.performance || {};
+    drawerFoot.textContent = `${c.running || 0}/${c.registered || 0} detectors active · ` +
+      `capture ${(perf.capture_fps||0)} fps · analysis ${(perf.analysis_fps||0)} fps`;
+  }
+
+  // re-evaluate freshness once a second so a vital greys to "updating…" between
+  // telemetry pushes without waiting for the next one.
+  setInterval(() => { if(lastTelemetry) renderVitals(); }, 1000);
 
   // ---- wake lock (point 9) ----------------------------------------------
+  // Best-effort: freeze auto-exposure and white balance once they settle.
+  // Auto-exposure is the single biggest rPPG accuracy killer, and iOS Safari
+  // historically ignores these constraints — but newer builds expose some, so
+  // attempt it and report what actually stuck over the control channel.
+  function tuneCamera(mediaStream){
+    setTimeout(() => {
+      try{
+        const track = mediaStream.getVideoTracks()[0];
+        if(!track || !track.applyConstraints) return;
+        const caps = (track.getCapabilities && track.getCapabilities()) || {};
+        const advanced = [];
+        if(caps.exposureMode && caps.exposureMode.indexOf('manual') >= 0){
+          advanced.push({exposureMode: 'manual'});
+        } else if(caps.exposureMode && caps.exposureMode.indexOf('continuous') >= 0){
+          advanced.push({exposureMode: 'continuous'});
+        }
+        if(caps.whiteBalanceMode && caps.whiteBalanceMode.indexOf('manual') >= 0){
+          advanced.push({whiteBalanceMode: 'manual'});
+        }
+        const supported = Object.keys(caps).filter(k => /exposure|whiteBalance|iso|focus/i.test(k));
+        const report = (locked) => {
+          if(dcControl && dcControl.readyState === 'open'){
+            try{ dcControl.send(JSON.stringify({type:'camera_tuning', locked: locked,
+              capabilities: supported})); }catch(_){}
+          }
+        };
+        if(advanced.length){
+          track.applyConstraints({advanced}).then(() => report(advanced))
+            .catch(() => report('applyConstraints rejected; caps=' + supported.join(',')));
+        } else {
+          report('no lockable caps; exposure/WB not adjustable on this Safari');
+        }
+      }catch(_){ /* best effort only */ }
+    }, 2000);  // let auto-exposure settle before freezing it
+  }
+
   async function requestWakeLock(){
+    if(!prefs.wake) return;
     try{
       wakeLock = await navigator.wakeLock.request('screen');
     }catch(_){ /* not available everywhere; not fatal */ }
+  }
+  async function releaseWakeLock(){
+    try{ if(wakeLock){ await wakeLock.release(); wakeLock = null; } }catch(_){}
   }
   document.addEventListener('visibilitychange', () => {
     if(document.visibilityState === 'visible' && ws) requestWakeLock();
   });
 
-  // ---- module control UI (point 7) ---------------------------------------
-  function renderModules(){
+  // ---- module control UI (drawer) ----------------------------------------
+  // Sourced from telemetry.modules (richer than the legacy state message):
+  // label, per-scope enabled/toggleable, and the reason a switch is locked.
+  function moduleList(){
+    if(lastTelemetry && Array.isArray(lastTelemetry.modules)) return lastTelemetry.modules;
+    return [];
+  }
+
+  function renderModulesGrid(){
     try{
-      if(!lastState || !Array.isArray(lastState.modules) || !lastState.modules.length){
-        moduleGrid.innerHTML = '<p class="dim">waiting for module list&hellip;</p>';
+      const mods = moduleList().filter(m => m && !m.internal);
+      if(!mods.length){
+        moduleGrid.innerHTML = '<p class="dim">waiting for module list…</p>';
         return;
       }
-      moduleGrid.innerHTML = lastState.modules.map(m => {
-        const name = String((m && m.name) || '');
-        const enabled = !!(m && m.enabled);
-        const scope = (m && m.scope) || 'primary';
+      moduleGrid.innerHTML = mods.map(m => {
+        const name = String(m.module || '');
+        const enabled = !!(m.enabled && m.enabled.primary);
+        const toggleable = !!(m.toggleable && m.toggleable.primary);
         const busy = !!moduleBusy[name];
         const res = moduleResult[name];
+        const reason = (m.toggle_reason && m.toggle_reason.primary) || '';
         const resHtml = res ? `<div class="mres ${res.ok ? 'ok' : 'err'}">${esc(res.text)}</div>` : '';
-        return `<button type="button" class="mbtn2${enabled ? ' on' : ''}" data-name="${esc(name)}" ` +
-          `data-scope="${esc(scope)}" ${busy ? 'disabled' : ''}>` +
-          `<span class="mlabel2">${esc(name)}</span>` +
-          `<span class="mstate">${busy ? 'working…' : (enabled ? 'On' : 'Off')}</span>` +
-          `</button>${resHtml}`;
+        const state = busy ? 'working…' : (!toggleable ? (reason ? 'locked' : 'unavailable') : (enabled ? 'On' : 'Off'));
+        return `<button type="button" class="mbtn${enabled ? ' on' : ''}" data-name="${esc(name)}" ` +
+          `${(busy || !toggleable) ? 'disabled' : ''} ${reason ? `title="${esc(reason)}"` : ''}>` +
+          `<span class="mlabel">${esc(m.label || name)}</span>` +
+          `<span class="mstate">${esc(state)}</span></button>${resHtml}`;
       }).join('');
-    }catch(_){ /* one malformed frame must never kill the page */ }
+    }catch(_){ /* one malformed frame must never kill the drawer */ }
   }
 
   moduleGrid.addEventListener('click', (ev) => {
-    const btn = ev.target.closest('.mbtn2');
-    if(!btn) return;
-    toggleModule(btn.getAttribute('data-name'), btn.getAttribute('data-scope') || 'primary');
+    const btn = ev.target.closest('.mbtn');
+    if(!btn || btn.disabled) return;
+    toggleModule(btn.getAttribute('data-name'), 'primary');
   });
 
   function toggleModule(name, scope){
     if(!name || moduleBusy[name]) return; // per-button busy flag: no double-fire
-    const mod = (lastState && Array.isArray(lastState.modules))
-      ? lastState.modules.find(m => m && m.name === name) : null;
-    const turningOn = !(mod && mod.enabled);
+    const mod = moduleList().find(m => m && m.module === name);
+    const turningOn = !(mod && mod.enabled && mod.enabled.primary);
     moduleBusy[name] = true;
-    renderModules();
+    renderModulesGrid();
     try{
       dcControl.send(JSON.stringify({type:'module', action: turningOn ? 'enable' : 'disable',
         target: name, scope}));
     }catch(_){
       moduleBusy[name] = false;
       moduleResult[name] = {ok:false, text:'Send failed — control channel not open.'};
-      renderModules();
+      renderModulesGrid();
     }
   }
 
   function handleControlMessage(raw){
     try{
       const msg = JSON.parse(raw);
-      if(msg && msg.type === 'state'){
-        lastState = msg;
-        renderModules();
-      } else if(msg && msg.type === 'module_result'){
+      if(!msg || typeof msg !== 'object') return;
+      if(msg.type === 'telemetry'){
+        renderTelemetry(msg);
+      } else if(msg.type === 'state'){
+        lastState = msg;                 // legacy module mirror; telemetry is primary
+      } else if(msg.type === 'module_result'){
         const name = (msg.module && msg.module.name) || (msg.target) || null;
+        // Reset the demo-circuit button on any circuit result (it carries no target).
+        if(msg.module && msg.module.action === 'circuit'){
+          circuitBtn.disabled = false;
+          circuitMsg.style.display = 'block';
+          circuitMsg.className = 'mres' + (msg.ok ? '' : ' err');
+          circuitMsg.textContent = msg.ok ? 'Demo circuit started.' :
+            (msg.error ? String(msg.error) : 'Could not start the circuit.');
+        }
         if(name){
           moduleBusy[name] = false;
           // Error ladder mirrors webui/modules.html: show body.error when
-          // present, else a generic HTTP-style fallback (there is no HTTP
-          // status on a data channel, so the fallback names the transport).
+          // present, else a generic fallback naming the transport (there is no
+          // HTTP status on a data channel).
           moduleResult[name] = msg.ok
             ? {ok:true, text:'Updated.'}
             : {ok:false, text: msg.error ? String(msg.error) : 'control channel: no error detail'};
+          renderModulesGrid();
         }
-        renderModules();
       }
     }catch(_){ /* malformed control message: drop, never throw */ }
   }
@@ -350,11 +851,15 @@
       previewEl.requestVideoFrameCallback(onFrame);
     } else {
       setClock('performance-now');
+      // requestAnimationFrame, not setTimeout: iOS clamps and de-prioritises
+      // background timers unpredictably, which is what produced the 16->0 fps
+      // bursts. rAF is display-locked and steady; sendFrame throttles to the
+      // target rate internally, so the effective cadence stays even.
       const tick = () => {
         try{ sendFrame(performance.now() / 1000); }catch(_){}
-        setTimeout(tick, FRAME_INTERVAL_MS);
+        if(wantConnected) requestAnimationFrame(tick);
       };
-      tick();
+      requestAnimationFrame(tick);
     }
     // Report which clock is driving capture over the control channel once it's open.
     const reportClock = () => {
@@ -387,12 +892,19 @@
         }catch(_){}
       }
     };
-    pc.oniceconnectionstatechange = () => setIce(pc.iceConnectionState);
+    pc.oniceconnectionstatechange = () => {
+      const s = pc.iceConnectionState;
+      setIce(s);
+      // Only 'failed' is terminal. 'disconnected' is often transient and
+      // recovers on its own; 'closed' is us tearing down. Reacting to those
+      // would re-offer mid-handshake and cause the open/close flap.
+      if(s === 'failed'){ establishing = false; scheduleReconnect('ice failed'); }
+    };
   }
 
   function wireDataChannels(){
     dcFrames.binaryType = 'arraybuffer';
-    dcFrames.onopen = () => { setDc('open'); showMain(); startCaptureLoop(); };
+    dcFrames.onopen = () => { establishing = false; setDc('open'); showMain(); startCaptureLoop(); };
     dcFrames.onclose = () => setDc('closed');
     dcFrames.onerror = () => setDc('error');
 
@@ -400,6 +912,39 @@
     dcControl.onmessage = (ev) => handleControlMessage(ev.data);
     dcControl.onclose = () => {};
     dcControl.onerror = () => {};
+  }
+
+  // Once the code is entered and the camera granted, the page keeps trying to
+  // stay paired on its own: restarting the laptop pipeline drops the peer
+  // connection but not this WS, so on any transient drop we tear BOTH down and
+  // re-pair in the current 10-minute window. That means dev restarts need no
+  // reload and no re-typing the code.
+  let storedCode = null;          // remembered after the first successful entry
+  let wantConnected = false;      // true once the user has connected once
+  let reconnectTimer = null;
+  let establishing = false;       // single-flight: one handshake attempt at a time
+  let attemptId = 0;              // invalidates watchdogs from superseded attempts
+
+  function cleanupPeer(){
+    // Detach handlers BEFORE closing, so tearing the old connection down does
+    // not fire close/ice events that would schedule yet another reconnect.
+    if(pc){ pc.oniceconnectionstatechange = null; pc.onconnectionstatechange = null; pc.onicecandidate = null; }
+    if(dcFrames){ dcFrames.onopen = dcFrames.onclose = dcFrames.onerror = null; }
+    try{ if(pc) pc.close(); }catch(_){}
+    try{ if(ws && ws.readyState <= 1){ ws.onclose = null; ws.close(); } }catch(_){}
+    dcFrames = dcControl = pc = null; ws = null;
+  }
+
+  function scheduleReconnect(why){
+    // Never interrupt a handshake in flight — ICE can take 10-15s, and
+    // re-offering mid-flight makes the laptop tear down the attempt that was
+    // about to succeed, which is exactly the open/close flapping loop.
+    if(!wantConnected || reconnectTimer || establishing) return;
+    setCapture('reconnecting (' + why + ')');
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      establishPeer().catch(() => scheduleReconnect('retry'));
+    }, 2000);
   }
 
   function wireSocket(room, code, exp, sig){
@@ -411,8 +956,21 @@
         await pc.setLocalDescription(offer);
         ws.send(JSON.stringify({type:'offer', sdp: pc.localDescription.sdp}));
         pairMsg.textContent = 'Waiting for the laptop to answer…';
+        // Watchdog: ICE can legitimately take 10-15s, so wait 20s before giving
+        // up. Scoped to THIS attempt via attemptId so a later attempt's success
+        // can't be torn down by an earlier watchdog firing late.
+        const myAttempt = attemptId;
+        setTimeout(() => {
+          if(myAttempt !== attemptId) return;               // superseded
+          if(!dcFrames || dcFrames.readyState !== 'open'){
+            establishing = false;
+            scheduleReconnect('no answer');
+          }
+        }, 20000);
       }catch(err){
+        establishing = false;
         pairMsg.textContent = 'Could not start the connection: ' + esc(String(err && err.message || err));
+        scheduleReconnect('offer failed');
       }
     });
     ws.addEventListener('message', (ev) => {
@@ -427,20 +985,53 @@
       }catch(_){ /* malformed signaling message: drop, never throw */ }
     });
     ws.addEventListener('close', (ev) => {
+      // Only the CURRENT socket's closure matters. When we've already moved on
+      // to a newer attempt, an evicted old socket firing close here (e.g. the
+      // relay's last-wins 4409 to the stale connection) must be ignored, or it
+      // would tear down the connection that just replaced it.
+      if(ev.target !== ws) return;
       setWs('closed');
+      establishing = false;   // this attempt's socket is gone; allow a retry
       if(ev.code === 4401){
-        pairMsg.textContent = 'Pairing rejected — wrong code, or the codes on ' +
-          'the laptop and this page were entered in different 10-minute windows. Try again.';
-        showPairPanel();
+        // Auth genuinely failed. With a fixed dev code this shouldn't recur, so
+        // surface it rather than loop, but keep retrying slowly in case it was a
+        // window-boundary race that the next attempt clears.
+        pairMsg.textContent = 'Pairing rejected (code/secret mismatch). Retrying…';
+        scheduleReconnect('4401');
       } else if(ev.code === 4409){
-        pairMsg.textContent = 'An iPad is already connected to this room.';
-        showPairPanel();
-      } else if(!dcControl || dcControl.readyState !== 'open'){
-        pairMsg.textContent = 'Connection closed before pairing finished. Try again.';
-        showPairPanel();
+        pairMsg.textContent = 'Another iPad holds this room. Retrying…';
+        scheduleReconnect('4409');
+      } else if(wantConnected){
+        scheduleReconnect('ws closed');
       }
     });
     ws.addEventListener('error', () => setWs('error'));
+  }
+
+  // Build a fresh peer connection + relay socket and offer. Re-entrant: safe to
+  // call again on any drop. Reuses the already-granted camera stream.
+  async function establishPeer(){
+    establishing = true;
+    attemptId++;
+    cleanupPeer();
+    const room = getRoom();
+    const exp = Math.ceil((Date.now() / 1000 + 1) / PAIR_WINDOW_SECONDS) * PAIR_WINDOW_SECONDS;
+    const sig = await hmacSig(RELAY_SECRET, room, storedCode, exp);
+
+    pc = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
+    stream.getTracks().forEach(t => pc.addTrack(t, stream));
+    // Ordered but unreliable: a frame now spans several chunks, so ordering
+    // keeps reassembly and capture timestamps intact, while maxRetransmits:0
+    // still drops a lost chunk rather than head-of-line blocking every frame.
+    dcFrames = pc.createDataChannel('frames', {ordered:true, maxRetransmits:0});
+    dcControl = pc.createDataChannel('control'); // default reliable/ordered
+    wireDataChannels();
+    wirePeerConnection();
+
+    pairMsg.textContent = 'Connecting…';
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    ws = new WebSocket(proto + '//' + location.host + '/ws');
+    wireSocket(room, storedCode, exp, sig);
   }
 
   async function connect(){
@@ -452,51 +1043,40 @@
     connectBtn.disabled = true;
     pairMsg.textContent = 'Requesting camera…';
 
-    try{
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: {width:{ideal:960}, height:{ideal:720}, frameRate:{ideal:24}, facingMode:'user'},
-        audio: false,
-      });
-    }catch(err){
-      pairMsg.textContent = 'Camera permission failed: ' + esc(String(err && err.message || err));
-      connectBtn.disabled = false;
-      return;
+    if(!stream){
+      try{
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {width:{ideal:960}, height:{ideal:720}, frameRate:{ideal:24}, facingMode:'user'},
+          audio: false,
+        });
+      }catch(err){
+        pairMsg.textContent = 'Camera permission failed: ' + esc(String(err && err.message || err));
+        connectBtn.disabled = false;
+        return;
+      }
+      previewEl.srcObject = stream;
+      tuneCamera(stream);
     }
-    previewEl.srcObject = stream;
     requestWakeLock(); // called from a click handler, satisfying user-activation requirements
 
-    const room = getRoom();
-    const exp = Math.ceil((Date.now() / 1000 + 1) / PAIR_WINDOW_SECONDS) * PAIR_WINDOW_SECONDS;
-    let sig;
+    storedCode = code;
+    wantConnected = true;
     try{
-      sig = await hmacSig(RELAY_SECRET, room, code, exp);
+      await establishPeer();
     }catch(err){
-      pairMsg.textContent = 'Could not compute the pairing signature on this browser.';
+      pairMsg.textContent = 'Could not start the connection: ' + esc(String(err && err.message || err));
       connectBtn.disabled = false;
-      return;
+      scheduleReconnect('connect failed');
     }
-
-    // point 4: the iPad is the offerer.
-    pc = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
-    stream.getTracks().forEach(t => pc.addTrack(t, stream));
-    // Ordered, but still unreliable. Unordered was correct when one frame was
-    // one message; now that a frame spans several chunks, interleaving between
-    // frames destroys reassembly and delivers capture timestamps out of order.
-    // maxRetransmits:0 keeps it lossy, so a dropped chunk is skipped rather
-    // than head-of-line blocking every frame behind it.
-    dcFrames = pc.createDataChannel('frames', {ordered:true, maxRetransmits:0}); // unreliable ON PURPOSE
-    dcControl = pc.createDataChannel('control'); // default reliable/ordered
-    wireDataChannels();
-    wirePeerConnection();
-
-    pairMsg.textContent = 'Connecting…';
-    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    ws = new WebSocket(proto + '//' + location.host + '/ws');
-    wireSocket(room, code, exp, sig);
   }
 
   connectBtn.addEventListener('click', () => { connect().catch(() => {}); });
   codeInput.addEventListener('keydown', (ev) => { if(ev.key === 'Enter') connectBtn.click(); });
+
+  // ---- initial UI state -------------------------------------------------
+  buildTileToggles();
+  applyView();
+  applyPresenting();
 })();
 </script>
 </body>

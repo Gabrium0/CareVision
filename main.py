@@ -333,7 +333,17 @@ def main():
     ipad_source = is_ipad_source(args.source) or is_ipad_source(args.alt_source)
     ipad_code = None
     if ipad_source:
-        ipad_code = f"{secrets.randbelow(1_000_000):06d}"
+        # A fresh random code per run is the secure default. IPAD_PAIR_CODE in
+        # .env pins it instead, so restarting the pipeline reuses the same code
+        # and an already-paired iPad reconnects on its own — a dev convenience,
+        # not for production, since a stable code is easier to guess.
+        fixed_code = os.environ.get("IPAD_PAIR_CODE", "").strip()
+        if fixed_code:
+            if not (fixed_code.isdigit() and len(fixed_code) == 6):
+                ap.error("IPAD_PAIR_CODE must be exactly 6 digits")
+            ipad_code = fixed_code
+        else:
+            ipad_code = f"{secrets.randbelow(1_000_000):06d}"
         ipad_relay = args.ipad_relay_url or os.environ.get("IPAD_RELAY_URL")
         ipad_room = args.ipad_room or os.environ.get("IPAD_ROOM")
         ipad_secret = os.environ.get("RELAY_SECRET")
@@ -496,7 +506,8 @@ def main():
     web_publish_executor = None
     web_publish_state = {"future": None, "last": -1e9}
     ipad_executor = None
-    ipad_publish_state = {"last": -1e9}
+    ipad_publish_executor = None
+    ipad_publish_state = {"future": None, "last": -1e9, "last_tele": -1e9}
     # The control handlers below serve both surfaces, so they are built whenever
     # either one is active. Keeping them in one place matters: module toggles
     # validate against the loaded scheduler/subject-pool names, and that
@@ -588,6 +599,12 @@ def main():
         if ipad_source:
             ipad_executor = ThreadPoolExecutor(
                 max_workers=1, thread_name_prefix="ipad-control")
+            # Separate from ipad_executor (which services inbound control
+            # replies): the outbound telemetry projection calls to_payload(),
+            # which is non-trivial, so it is built here off the capture loop and
+            # pushed at ~1 Hz, mirroring the /data web-publish executor above.
+            ipad_publish_executor = ThreadPoolExecutor(
+                max_workers=1, thread_name_prefix="ipad-telemetry")
 
             def ipad_control(payload, reply):
                 """Service a control message from the paired iPad.
@@ -853,6 +870,41 @@ def main():
                 "fps": round(ctx.fps, 1),
                 "capture": pipeline.camera.diagnostics()})
 
+        # push the live dashboard to the paired iPad over that same control
+        # channel -- its only feed, since the hotspot AP isolates it from the
+        # /data HTTP endpoint. Built on a worker thread (ipad_payload wraps the
+        # non-trivial to_payload) so the capture loop stays cheap; mirrors the
+        # /data web-publish future pattern above.
+        if ipad_source and ipad_publish_executor is not None:
+            pending: Future | None = ipad_publish_state["future"]
+            if pending is not None and pending.done():
+                try:
+                    pending.result()
+                except Exception as exc:  # noqa: BLE001
+                    print(f"[ipad] telemetry publication failed ({type(exc).__name__})")
+                ipad_publish_state["future"] = None
+                pending = None
+            if pending is None and ctx.timestamp - ipad_publish_state["last_tele"] >= 1.0:
+                tele_snapshot = list(snapshot)
+                tele_fps = ctx.fps
+                tele_greeting = last_greeting["text"]
+                tele_reasoning = voice_agent.reasoning_card()
+                tele_performance = pipeline.runtime_metrics.snapshot()
+                tele_features = {"face": ctx.face is not None,
+                                 "pose": ctx.pose is not None,
+                                 "person": bool(ctx.person_present),
+                                 "depth": ctx.depth is not None}
+                def publish_ipad_telemetry():
+                    payload = dashboard.ipad_payload(
+                        tele_snapshot, tele_fps, tele_greeting,
+                        reasoning=tele_reasoning,
+                        system=system_snapshot(features=tele_features),
+                        performance=tele_performance)
+                    pipeline.camera.ipad_control(payload)
+                ipad_publish_state["future"] = ipad_publish_executor.submit(
+                    publish_ipad_telemetry)
+                ipad_publish_state["last_tele"] = ctx.timestamp
+
         print_vitals(snapshot)
 
         with analysis_state_lock:
@@ -1005,6 +1057,11 @@ def main():
             web_publish_executor.shutdown(wait=False, cancel_futures=True)
         if ipad_executor is not None:
             ipad_executor.shutdown(wait=False, cancel_futures=True)
+        if ipad_publish_executor is not None:
+            pending = ipad_publish_state.get("future")
+            if pending is not None:
+                pending.cancel()
+            ipad_publish_executor.shutdown(wait=False, cancel_futures=True)
         voice_agent.close()
         sensor_manager.close()
         if sound_detector is not None:

@@ -24,3 +24,8 @@ aiortc>=1.9
 # aiohttp serves as the relay WebSocket client rather than the `websockets`
 # package, because aiohttp is already present in both environments.
 aiohttp>=3.9
+# Renders the iPad pairing URL as an on-screen ASCII QR code so the operator
+# can scan it with the iPad camera instead of typing the trycloudflare URL.
+# Optional: scripts/show_qr.py degrades to printing the plain URL if this
+# isn't installed.
+qrcode>=7.4

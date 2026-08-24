@@ -89,7 +89,7 @@ RealSense needs `requirements-realsense.txt` and physical hardware. Use the
 [RealSense guide](REALSENSE_D435I.md) for depth/IMU expectations and the
 hardware validation checklist. Never claim that path was verified from replay.
 
-### iPad as the camera and control surface
+### iPad as the camera and main interface
 
 `--source ipad` takes frames from an iPad browser over WebRTC instead of a local
 device, and lets the same page drive the detector toggles. Needs
@@ -109,11 +109,31 @@ Two constraints force this shape, and neither is optional:
 
 The relay can be hosted (see `relay/render.yaml`) or simply **run locally behind
 a tunnel**, which is the lower-friction option: nothing to deploy, no cold
-start, and the shared secret never leaves the machine. In two terminals:
+start, and the shared secret never leaves the machine.
+
+**Fastest path — one launcher script.** `scripts/start-showcase.ps1` opens all
+three windows (relay, `cloudflared`, the app) itself, captures that run's fresh
+`trycloudflare.com` URL straight out of the `cloudflared` log and passes it to
+`main.py --ipad-relay-url` — so `IPAD_RELAY_URL` in `.env` never needs manual
+updating — and opens a fourth window with a scannable QR code
+(`scripts/show_qr.py`) for the pairing URL:
+
+```powershell
+pwsh -File scripts\start-showcase.ps1
+```
+
+Extra flags are forwarded to `main.py`, e.g. `pwsh -File scripts\start-showcase.ps1
+--no-ipad-toggle`. It reads `RELAY_SECRET` and `IPAD_ROOM` out of `.env` into its
+own session only (never printed, never on a command line, `.env` itself is
+never modified), and requires `qrcode` (`requirements-ipad.txt`) for the QR —
+without it, `show_qr.py` degrades to printing the plain URL.
+
+**Manual path**, in three terminals, is equivalent to what the script above
+automates:
 
 ```powershell
 $env:RELAY_SECRET=(Select-String '^RELAY_SECRET=' .env).Line.Split('=',2)[1]
-.venv\Scripts\python.exe relay\server.py
+python relay\server.py
 
 cloudflared tunnel --url http://localhost:10000
 ```
@@ -125,16 +145,50 @@ Cloudflare tunnel (free, needs an account and a domain) gives a stable one.
 Media still goes peer-to-peer over WebRTC either way — the tunnel carries only
 the page load and the SDP/ICE handshake.
 
-Put `IPAD_RELAY_URL`, `IPAD_ROOM` and `RELAY_SECRET` in `.env` — never on the
-command line, where they would land in shell history and the process list. Then:
-
 ```powershell
-.venv\Scripts\python.exe main.py --source ipad --webui --enable-multi-person
+python main.py --source ipad --webui --enable-multi-person --ipad-relay-url https://<random>.trycloudflare.com
 ```
+
+`--ipad-relay-url` overrides `IPAD_RELAY_URL` from `.env` for this run, which is
+how the launcher script above avoids ever touching `.env`; pass it explicitly
+(or edit `.env`) with whatever URL `cloudflared` printed this time. `IPAD_ROOM`
+and `RELAY_SECRET` still come from `.env` — never put them on the command line,
+where they would land in shell history and the process list.
+
+Run this and `relay/server.py` on **system Python**, not `.venv`:
+`requirements-ipad.txt` documents that `.venv` on a typical dev machine is a
+stale, unused environment missing `aiortc`/`cv2`/`mediapipe`/`torch`, while
+system Python (on `PATH`) has the actual working set. Confirm with
+`python -c "import aiortc, cv2, mediapipe, torch; print('ok')"` before relying
+on either interpreter.
 
 The run prints a bookmarkable URL and a fresh 6-digit pairing code. **Start the
 laptop first**: the relay's free tier can take ~60s to wake, and whoever
 connects first waits for it.
+
+Once paired, the iPad is the **main interface**, not just a camera. The laptop
+pushes a live telemetry snapshot (`output.dashboard.ipad_payload`) over the same
+WebRTC control channel at ~1 Hz — the iPad cannot reach `webui/server.py`'s
+`/data` endpoint because the hotspot AP isolates clients, so this is its only
+feed. The page (`relay/static/ipad.html`) renders it two ways, switched from the
+app bar and remembered per device:
+
+- **Resident** — big live-vitals tiles (heart rate, breathing, SpO2 trend, mood)
+  with reliability tiers and a calm one-line headline. A vital greys to
+  "measuring…" once its `fresh_for` window lapses, so a stalled reading is never
+  shown as current.
+- **Provider** — a severity-ranked signal feed, fatigue/clothing/weather stats,
+  and the connection diagnostics (WS/ICE/DC/FPS) that used to be the whole page.
+
+The ⚙ settings drawer holds the view default, per-tile visibility, a
+**presentation mode** (larger type, hides diagnostics and the preview for a
+showcase), keep-awake, a **Run guided demo circuit** button, and the detector
+pause/resume grid (honours `--no-ipad-toggle`). The telemetry stays a strict
+subset of `to_payload` and is size-gated below the 64 KB control-channel ceiling
+by `tests/ipad_payload_test.py` — grow it and that test fails rather than the
+iPad silently going blank. Editing `relay/static/ipad.html` only reaches the
+device once the relay serving it is restarted/redeployed (it is `no-store`, so a
+reload then picks it up).
 
 Network: put both devices on a Windows Mobile Hotspot (share from Ethernet so
 the laptop keeps internet for cloud features). ICE then settles on host

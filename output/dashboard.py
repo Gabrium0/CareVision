@@ -203,7 +203,8 @@ _MODULE_RELIABILITY = {
     "agitation":        ("LOW", "Erratic upper-body movement"),
     "grooming":         ("LOW", "Needs weeks of history; a haircut also trips it"),
     "body_estimate":    ("LOW", "Monocular and uncalibrated; explicitly not BMI"),
-    "spo2":             ("LOW", "Trend only, uncalibrated by default"),
+    "spo2":             ("LOW", "Trend only, uncalibrated by default; plain-webcam "
+                                "mode is opt-in and unvalidated against a reference oximeter"),
     "hazard_zones":     ("MEDIUM", "Only as good as the zones configured for the room"),
     "multi_person":     ("MEDIUM", "Anonymous track assignment; carries no identity"),
     "routine":          ("LOW", "An occupancy trend; makes no adherence claim"),
@@ -678,6 +679,17 @@ def to_payload(snapshot, fps: float = 0.0, greeting: str | None = None,
     except Exception:
         registered = {}
     enabled = set((system or {}).get("modules_enabled", []) if system else [])
+    # ModuleGate (core/module_gate.py) pause/resume overlay for the /modules
+    # console. Absent (None) for a caller/test that predates the gate -- fall
+    # back to the existing `enabled` set so old payloads still render.
+    gate_snapshot = (system or {}).get("module_gate") if system else None
+    # What was actually instantiated at startup -- independent of live gate
+    # state. modules_enabled above is gate-filtered (empty under
+    # --start-blank), so it cannot answer "is this module loaded" without
+    # falsely claiming a merely-paused module needs a restart to toggle on.
+    # A caller/test that predates this field falls back to `enabled`.
+    loaded = set((system or {}).get("modules_loaded", enabled)) if system else enabled
+    secondary_eligible = set((system or {}).get("secondary_modules", []) if system else [])
     modules_list = []
     cloud_vision = (system or {}).get("cloud_vision")
     for slug, cls in registered.items():
@@ -685,6 +697,31 @@ def to_payload(snapshot, fps: float = 0.0, greeting: str | None = None,
         # requires/interval/consent come straight off the registered class, so
         # the /modules console can never drift from what the scheduler enforces.
         trigger = _MODULE_TRIGGERS.get(slug)
+        loaded_primary = slug in loaded
+        if gate_snapshot is not None:
+            primary_on = slug in gate_snapshot.get("primary", [])
+        else:
+            primary_on = slug in enabled
+        eligible_secondary = slug in secondary_eligible
+        if not eligible_secondary:
+            secondary_on = None
+        elif gate_snapshot is not None:
+            secondary_on = slug in gate_snapshot.get("secondary", [])
+        else:
+            secondary_on = False
+        # Toggleable mirrors what main.py's module_handler will actually accept:
+        # primary requires the module to already be instantiated (loaded from
+        # config/modules.yaml at startup); secondary requires it to be listed
+        # under tracking.secondary_modules. Neither can be granted by a UI click
+        # -- both need a restart or a config change, so the reason text below
+        # must never imply the switch alone can flip them on.
+        toggleable_primary = loaded_primary
+        toggleable_secondary = eligible_secondary
+        reason_primary = None if toggleable_primary else (
+            "Not loaded — enable in config/modules.yaml and restart.")
+        reason_secondary = None if toggleable_secondary else (
+            "Not configured for secondary subjects — add to "
+            "tracking.secondary_modules in config/modules.yaml.")
         entry = {"module": slug, "label": label, "blurb": blurb,
                  "running": slug in enabled,
                  "requires": list(getattr(cls, "requires", ()) or ()),
@@ -692,7 +729,12 @@ def to_payload(snapshot, fps: float = 0.0, greeting: str | None = None,
                  "consent": bool(getattr(cls, "consent", False)),
                  "internal": slug in INTERNAL_MODULES,
                  "reliability": _reliability(slug),
-                 "trigger": trigger}
+                 "trigger": trigger,
+                 "enabled": {"primary": bool(primary_on), "secondary": secondary_on},
+                 "toggleable": {"primary": bool(toggleable_primary),
+                                "secondary": bool(toggleable_secondary)},
+                 "toggle_reason": {"primary": reason_primary,
+                                   "secondary": reason_secondary}}
         # Only the cards whose button actually calls the cloud carry provider
         # health, so an outage explains itself where the button is.
         if cloud_vision and trigger and trigger.get("action") == "vlm_scan":
@@ -719,4 +761,142 @@ def to_payload(snapshot, fps: float = 0.0, greeting: str | None = None,
         "module_readings": module_readings,
         "module_counts": module_counts,
         "assessments": _launchable_assessments(),
+    }
+
+
+# --- iPad telemetry -------------------------------------------------------
+#
+# The paired iPad cannot reach the laptop's /data HTTP endpoint: the hotspot
+# AP isolates clients from each other (the whole reason the signaling relay
+# exists). Its dashboard is therefore fed over the WebRTC *control* data
+# channel instead of HTTP. aiortc advertises a=max-message-size:65536 and
+# Safari throws on send() past it, so one telemetry message must serialize
+# below this ceiling -- tests/ipad_payload_test.py asserts it with a full
+# module roster loaded.
+IPAD_PAYLOAD_MAX_BYTES = 60000
+
+# Most-severe-first signals shown on the iPad, trimmed so one message stays
+# well under the ceiling no matter how busy the scene gets.
+_IPAD_MAX_SIGNALS = 18
+
+# Vitals promoted to the iPad's "live vitals" tiles -- the showcase's visual
+# star. Each names the canonical Result its module emits (heart_rate->"bpm",
+# respiration->"breaths_per_min", spo2->"spo2"); emotion has no canonical key,
+# so the best-confidence "emotion_<backend>" wins.
+# (id, label, unit, module, metric, kind)
+_IPAD_VITALS = [
+    ("hr",   "Heart rate", "bpm",  "heart_rate",  "bpm",             "number"),
+    ("resp", "Breathing",  "/min", "respiration", "breaths_per_min", "number"),
+    ("spo2", "SpO₂",  "%",    "spo2",        "spo2",            "number"),
+    ("mood", "Mood",       "",     "emotion",     "emotion",         "label"),
+]
+
+
+def _best_vital(snapshot, module: str, metric: str):
+    """Best Result for one vital: an exact canonical key wins; otherwise the
+    highest-confidence backend-suffixed key (``<metric>_<backend>``)."""
+    exact = [r for r in snapshot if r.module == module and r.key == metric]
+    if exact:
+        return max(exact, key=lambda r: r.confidence)
+    prefix = metric + "_"
+    backend = [r for r in snapshot if r.module == module and r.key.startswith(prefix)]
+    if not backend:
+        return None
+    return max(backend, key=lambda r: r.confidence)
+
+
+def _ipad_vital(snapshot, spec, now: float) -> dict:
+    vid, label, unit, module, metric, kind = spec
+    reliability = _reliability(module)
+    r = _best_vital(snapshot, module, metric)
+    if r is None:
+        # A tile the page still renders as "measuring…" rather than dropping,
+        # so the layout is stable and the audience sees what is being tracked.
+        return {"id": vid, "label": label, "unit": unit, "value": None,
+                "present": False, "severity": "info", "conf": 0.0,
+                "reliability": reliability}
+    value = str(r.value) if kind == "label" else _fmt(r.value)
+    return {
+        "id": vid, "label": label, "unit": unit, "value": value,
+        "present": True, "severity": r.severity.value,
+        "conf": round(float(r.confidence), 2),
+        "quality": (round(float(r.quality), 2) if r.quality is not None else None),
+        "message": r.message,
+        # A local deadline the page derives without trusting a shared clock,
+        # mirroring _module_reading's fresh_for (LAN wall clocks drift).
+        "fresh_for": round(max(0.0, float(r.timestamp + r.ttl) - now), 3),
+        "reliability": reliability,
+    }
+
+
+def ipad_payload(snapshot, fps: float = 0.0, greeting: str | None = None,
+                 reasoning: dict | None = None, system: dict | None = None,
+                 performance: dict | None = None) -> dict:
+    """Compact telemetry projection pushed to the paired iPad.
+
+    A strict subset of :func:`to_payload`: it reuses the same signal, module,
+    and stat builders (single source of truth for promotion floors, reliability
+    tiers, and gate state) and then drops the heavy fields -- module_readings,
+    per-backend comparison rows, requires/interval -- and caps the signal feed,
+    so one JSON message serializes below ``IPAD_PAYLOAD_MAX_BYTES``. Adds a
+    clean ``vitals`` list scanned straight from the snapshot, because
+    to_payload exposes vitals only as prose signals, not as tile-ready values.
+    """
+    public = [r for r in snapshot if r.visibility == Visibility.PUBLIC]
+    now = time.time()
+    full = to_payload(snapshot, fps=fps, greeting=greeting, reasoning=reasoning,
+                      system=system, performance=performance)
+
+    vitals = [_ipad_vital(public, spec, now) for spec in _IPAD_VITALS]
+
+    signals = []
+    for s in full["signals"][:_IPAD_MAX_SIGNALS]:
+        rel = _MODULE_RELIABILITY.get(s["module"])
+        signals.append({
+            "label": s["label"], "message": s["message"],
+            "severity": s["severity"], "conf": s["conf"],
+            "module": s["module"], "promote": s["promote"],
+            "internal": s["internal"], "subject_id": s["subject_id"],
+            "tier": rel[0] if rel else None,
+        })
+
+    modules = []
+    for m in full["modules"]:
+        rel = m.get("reliability")
+        modules.append({
+            "module": m["module"], "label": m["label"], "blurb": m["blurb"],
+            "running": m["running"], "enabled": m["enabled"],
+            "toggleable": m["toggleable"], "toggle_reason": m["toggle_reason"],
+            "tier": rel["tier"] if rel else None,
+            "consent": m["consent"], "internal": m["internal"],
+            "trigger": m["trigger"],
+        })
+
+    perf = performance or {}
+    performance_slim = {
+        "capture_fps": round(float(perf.get("capture_fps", fps) or 0.0), 1),
+        "preview_fps": round(float(perf.get("preview_fps", 0.0) or 0.0), 1),
+        "analysis_fps": round(float(perf.get("analysis_fps", 0.0) or 0.0), 1),
+    }
+    features = (system or {}).get("features") or {}
+    tracks = full.get("tracks")
+
+    return {
+        "type": "telemetry",
+        "v": 1,
+        "ts": round(now, 3),
+        "fps": round(float(fps), 1),
+        "performance": performance_slim,
+        "greeting": full["greeting"],
+        "person_present": bool(features.get("person")),
+        "vitals": vitals,
+        "signals": signals,
+        "stats": {"fatigue": full["fatigue"],
+                  "clothing_weather": full["clothing_weather"],
+                  "advice": full["advice"]},
+        "modules": modules,
+        "module_counts": full["module_counts"],
+        "reasoning": full["reasoning"],
+        "assessments": full["assessments"],
+        "subjects": len(tracks) if isinstance(tracks, list) else 0,
     }
