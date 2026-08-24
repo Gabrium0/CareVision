@@ -310,7 +310,7 @@
   <div class="foot" id="drawerFoot"></div>
 </aside>
 
-<canvas id="cnv" width="640" height="480" class="hidden"></canvas>
+<canvas id="cnv" width="960" height="720" class="hidden"></canvas>
 
 <script>
 (function(){
@@ -335,8 +335,12 @@
   const PAIR_WINDOW_SECONDS = 600;
   // 960x720 rather than 640x480: rPPG SNR scales ~1/sqrt(skin pixels), and the
   // chunked transport removed the 64KB-per-frame ceiling that forced the lower
-  // size. Must match the getUserMedia request below, or drawImage just upscales.
-  const CANVAS_W = 960, CANVAS_H = 720;
+  // size. This is only the starting point: once the track reports its real
+  // size, the canvas follows it exactly. Stretching a portrait track into a
+  // fixed landscape canvas displaced faces, so what the laptop received did
+  // not match what the iPad preview showed. Each frame header carries the
+  // true w/h, and the receiver decodes the JPEG's own dimensions anyway.
+  let CANVAS_W = 960, CANVAS_H = 720;
   const TARGET_FPS = 20;
   const FRAME_INTERVAL_MS = 1000 / TARGET_FPS;
   const BUFFERED_AMOUNT_LIMIT = 1024 * 1024; // ~1MB backpressure ceiling
@@ -1056,6 +1060,24 @@
       }
       previewEl.srcObject = stream;
       tuneCamera(stream);
+      // Follow the track's true geometry. Safari treats the request above as
+      // a hint: the front camera may be center-cropped to a different aspect,
+      // and a turned iPad delivers portrait frames. Drawing those into fixed
+      // 960x720 coordinates squashed or displaced the subject, so the capture
+      // canvas now adopts videoWidth x videoHeight whenever it changes.
+      const syncCapture = () => {
+        const vw = previewEl.videoWidth, vh = previewEl.videoHeight;
+        if(!vw || !vh) return;
+        const cap = 1280, big = Math.max(vw, vh);
+        const scale = big > cap ? cap / big : 1;
+        CANVAS_W = Math.round(vw * scale / 2) * 2;
+        CANVAS_H = Math.round(vh * scale / 2) * 2;
+        if(canvas.width !== CANVAS_W) canvas.width = CANVAS_W;
+        if(canvas.height !== CANVAS_H) canvas.height = CANVAS_H;
+      };
+      previewEl.addEventListener('loadedmetadata', syncCapture);
+      previewEl.addEventListener('resize', syncCapture);
+      syncCapture();
     }
     requestWakeLock(); // called from a click handler, satisfying user-activation requirements
 
