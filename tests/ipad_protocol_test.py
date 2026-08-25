@@ -110,12 +110,33 @@ def test_seq_gap_accounting():
     print("[ipad-protocol-test] seq-gap accounting (1 gap, 4 frames_rx) OK")
 
 
+def test_ingest_returns_sequence_only_when_frame_is_complete():
+    from core.ipad_link import IPadLink
+
+    link = IPadLink(relay_url="https://x", room="r", secret="s", code="123456")
+
+    single = pack_frame_header(10, 0.5, 640, 480) + b"single-jpeg"
+    assert link._ingest_frame(single) == 10
+
+    first = pack_frame_header(11, 0.55, 640, 480, 0, 2) + b"chunk-a"
+    second = pack_frame_header(11, 0.55, 640, 480, 1, 2) + b"chunk-b"
+    assert link._ingest_frame(first) is None
+    assert link._ingest_frame(second) == 11
+    assert link.status()["frames_rx"] == 2
+
+    # An already-completed older sequence is rejected and must not be ACKed by
+    # the data-channel handler that consumes this return value.
+    older = pack_frame_header(9, 0.45, 640, 480) + b"older-jpeg"
+    assert link._ingest_frame(older) is None
+
+
 def main():
     """Run all iPad protocol tests."""
     test_header_roundtrip()
     test_header_size_matches_wire_format()
     test_jpeg_subsampling_probe()
     test_seq_gap_accounting()
+    test_ingest_returns_sequence_only_when_frame_is_complete()
     print("[ipad-protocol-test] OK")
 
 

@@ -224,6 +224,8 @@ class IPadCamera:
         self._owns_link = link is None
 
         self._fast_hooks: list[Callable[[np.ndarray, float], None]] = []
+        self._capture_reset_hooks: list[Callable[[], None]] = []
+        self._last_capture_profile_generation: Optional[int] = None
         self._clock = CaptureClock()
         self._latest_lock = threading.Lock()
         self._latest_frame: Optional[np.ndarray] = None
@@ -254,6 +256,11 @@ class IPadCamera:
         Vitals depend on this: without it heart-rate/SpO2 fall back to sampling
         once per heavy-loop tick."""
         self._fast_hooks.append(hook)
+
+    def register_capture_reset_hook(self, hook: Callable[[], None]) -> None:
+        """Run ``hook`` before pixels from a changed capture profile are used."""
+        if hook not in self._capture_reset_hooks:
+            self._capture_reset_hooks.append(hook)
 
     def open(self) -> None:
         """Bring up the link and start the reader thread.
@@ -383,6 +390,7 @@ class IPadCamera:
         if self._reader_thread is not None:
             return
         self._reader_stop.clear()
+        self._last_capture_profile_generation = None
         self._reader_thread = threading.Thread(
             target=self._reader_loop, daemon=True, name="ipad-reader")
         self._reader_thread.start()
@@ -415,6 +423,27 @@ class IPadCamera:
             self._waiting_notice = waited
             print(f"[ipad] waiting for pair ({waited:.0f}s)")
 
+    def _apply_capture_profile_boundary(self, header: dict) -> None:
+        """Reset consumers once, before decoding the first changed-profile frame."""
+        generation = header.get("capture_profile_generation")
+        if isinstance(generation, bool) or not isinstance(generation, int):
+            return
+        if self._last_capture_profile_generation is None:
+            # Whatever generation the reader sees first is its initial profile;
+            # no accumulated samples exist yet, so there is nothing to reset.
+            self._last_capture_profile_generation = generation
+            return
+        if generation == self._last_capture_profile_generation:
+            return
+        # Commit the boundary before invoking user hooks so even a faulty hook
+        # cannot make this same generation reset repeatedly on later frames.
+        self._last_capture_profile_generation = generation
+        for hook in tuple(self._capture_reset_hooks):
+            try:
+                hook()
+            except Exception:  # noqa: BLE001 - capture must continue after reset failure
+                pass
+
     def _reader_loop(self) -> None:
         """Decode pushed frames off the link, publish the newest, fire hooks.
 
@@ -430,6 +459,7 @@ class IPadCamera:
                 time.sleep(0.001)
                 continue
             header, payload = item
+            self._apply_capture_profile_boundary(header)
             frame = cv2.imdecode(np.frombuffer(payload, np.uint8), cv2.IMREAD_COLOR)
             if frame is None:
                 self._decode_errors += 1

@@ -20,6 +20,7 @@ modules/. Add a detector by dropping a file there and listing it in the yaml.
 from __future__ import annotations
 
 import argparse
+import math
 import os
 import secrets
 import sys
@@ -70,6 +71,9 @@ from core.events import PersistencePolicy, Result, Severity
 CONFIG = Path(__file__).resolve().parent / "config" / "modules.yaml"
 ALERTS_CONFIG = Path(__file__).resolve().parent / "config" / "alerts.yaml"
 
+_IPAD_CAPTURE_FPS_BOUNDS = (1.0, 30.0)
+_IPAD_CAPTURE_DIMENSION_BOUNDS = (160, 4096)
+
 
 def load_config():
     """Load the module configuration YAML."""
@@ -83,6 +87,46 @@ def load_alerts_config():
         with open(ALERTS_CONFIG, "r", encoding="utf-8") as f:
             return yaml.safe_load(f) or {}
     return {}
+
+
+def _build_ipad_capture_config(request_fps: float,
+                               request_size: tuple[int, int] | None) -> dict:
+    """Build the bounded camera request sent to the paired browser.
+
+    ``None`` keeps resolution selection adaptive on the iPad.  An explicit
+    size is fixed so ``--resolution WxH`` has the same meaning at capture as
+    it does for the laptop backends.
+    """
+    min_fps, max_fps = _IPAD_CAPTURE_FPS_BOUNDS
+    fps = float(request_fps)
+    if not math.isfinite(fps) or not min_fps <= fps <= max_fps:
+        raise ValueError(
+            f"--ipad-fps must be between {min_fps:g} and {max_fps:g}, got "
+            f"{request_fps!r}")
+    if request_size is None:
+        return {"fps": fps, "resolution": {"mode": "auto"}}
+
+    min_dimension, max_dimension = _IPAD_CAPTURE_DIMENSION_BOUNDS
+    width, height = (int(request_size[0]), int(request_size[1]))
+    if not (min_dimension <= width <= max_dimension
+            and min_dimension <= height <= max_dimension):
+        raise ValueError(
+            "iPad --resolution dimensions must each be between "
+            f"{min_dimension} and {max_dimension}, got {width}x{height}")
+    return {"fps": fps,
+            "resolution": {"mode": "fixed", "width": width, "height": height}}
+
+
+def _uses_decoupled_display(display: bool, *sources) -> bool:
+    """Whether this run can use non-consuming preview for either live source."""
+    def supports_latest_frame(source) -> bool:
+        source_text = str(source).strip().lower()
+        return (source_text.isdigit()
+                or source_text in ("realsense", "rs", "d435i")
+                or is_ipad_source(source))
+
+    return bool(display
+                and any(supports_latest_frame(source) for source in sources))
 
 
 def build_pipeline(source, config, camera_opts=None, max_staleness: float = 0.25,
@@ -216,9 +260,9 @@ def main():
     ap.add_argument("--fps", type=float, default=30.0,
                     help="requested capture fps (default 30)")
     ap.add_argument("--resolution", default="auto",
-                    help="'auto' probes candidate resolutions on startup and picks the "
-                         "largest that holds --min-fps (default), or an explicit WxH "
-                         "e.g. 1280x720 to skip probing")
+                    help="'auto' probes local-camera resolutions (and lets an iPad "
+                         "adapt capture size) by default; an explicit WxH such as "
+                         "1280x720 skips probing and fixes the iPad capture size")
     ap.add_argument("--min-fps", type=float, default=25.0,
                     help="fps floor for --resolution auto, below which the FFT-based "
                          "vitals (heart rate/respiration/tremor) start to alias (default 25)")
@@ -317,13 +361,13 @@ def main():
                     help="relay room name for --source ipad (default: $IPAD_ROOM); "
                          "stable so the iPad can keep a bookmark")
     ap.add_argument("--ipad-fps", type=float, default=20.0,
-                    help="frame rate to request from the iPad camera (default 20; "
+                    help="frame rate to request from the iPad camera, 1-30 "
+                         "(default 20; "
                          "below ~20 the rPPG quality score is scaled down)")
     ap.add_argument("--ipad-transport", default="datachannel",
                     choices=("datachannel", "video"),
                     help="datachannel = JPEG frames (no temporal compression, "
-                         "better for rPPG); video = WebRTC video track (cheaper, "
-                         "but codec noise lands in the pulse band)")
+                         "better for rPPG); video is reserved but not implemented")
     ap.add_argument("--ipad-stun", default="",
                     help="comma-separated STUN URLs; unused on a laptop hotspot "
                          "where ICE settles on host candidates")
@@ -331,6 +375,9 @@ def main():
                     help="refuse module enable/disable from the paired iPad "
                          "(default: allowed, since control is the point)")
     args = ap.parse_args()
+    if args.ipad_transport == "video":
+        ap.error("--ipad-transport video is not implemented; use "
+                 "--ipad-transport datachannel")
     apply_loaded_limits(args.quality_profile)
     if args.list_cameras:
         Camera.list_devices()
@@ -348,6 +395,9 @@ def main():
         except ValueError:
             ap.error(f"--resolution must be 'auto' or WxH (e.g. 1280x720), got "
                       f"{args.resolution!r}")
+        if rw <= 0 or rh <= 0:
+            ap.error("--resolution dimensions must be positive, got "
+                     f"{rw}x{rh}")
         request_size = (rw, rh)
     camera_opts = {"lock": not args.no_lock, "exposure": args.exposure,
                    "request_fps": args.fps, "request_size": request_size,
@@ -362,7 +412,13 @@ def main():
     # it never lands in shell history or the process list.
     ipad_source = is_ipad_source(args.source) or is_ipad_source(args.alt_source)
     ipad_code = None
+    ipad_capture_config = None
     if ipad_source:
+        try:
+            ipad_capture_config = _build_ipad_capture_config(
+                args.ipad_fps, None if auto_resolution else request_size)
+        except ValueError as exc:
+            ap.error(str(exc))
         # A fresh random code per run is the secure default. IPAD_PAIR_CODE in
         # .env pins it instead, so restarting the pipeline reuses the same code
         # and an already-paired iPad reconnects on its own — a dev convenience,
@@ -698,10 +754,13 @@ def main():
         import cv2 as _cv2
         cv2 = _cv2
         from output import overlay, dashboard
+    elif ipad_source:
+        # The paired page still needs its compact telemetry payload in headless
+        # mode; only the OpenCV overlay renderer is display-dependent.
+        from output import dashboard
 
-    source_text = str(args.source).strip().lower()
-    decoupled_display = bool(display and not is_replay and
-                             (source_text.isdigit() or source_text in ("realsense", "rs", "d435i")))
+    decoupled_display = _uses_decoupled_display(
+        display, args.source, args.alt_source)
 
     force_greet = {"v": False}
     last_alert_print: dict[str, float] = {}
@@ -912,6 +971,9 @@ def main():
                 "type": "state", "modules": modules_state,
                 "fps": round(ctx.fps, 1),
                 "capture": pipeline.camera.diagnostics(),
+                # Desired browser capture policy is deliberately separate from
+                # delivered capture diagnostics and analysis-loop performance.
+                "capture_config": ipad_capture_config,
                 # The agent's own last line for a caption bar (never a
                 # transcript of the person).
                 "agent": voice_agent.public_line()})
@@ -927,7 +989,8 @@ def main():
                 try:
                     pending.result()
                 except Exception as exc:  # noqa: BLE001
-                    print(f"[ipad] telemetry publication failed ({type(exc).__name__})")
+                    print(f"[ipad] telemetry publication failed "
+                          f"({type(exc).__name__}: {exc})")
                 ipad_publish_state["future"] = None
                 pending = None
             if pending is None and ctx.timestamp - ipad_publish_state["last_tele"] >= 1.0:
@@ -1020,46 +1083,62 @@ def main():
             worker = threading.Thread(target=analysis_worker, daemon=True,
                                       name="analysis-loop")
             worker.start()
-            last_seq = -1
+            last_preview_token = None
             last_panel_at = 0.0
             while worker.is_alive():
                 packet = pipeline.camera.latest_frame()
+                preview_frame = None
+                preview_token = None
                 if packet is not None:
                     seq, raw_frame, captured_at = packet
                     pipeline.runtime_metrics.note_capture(
                         pipeline.camera.current_fps, captured_at,
                         pipeline.camera.diagnostics())
-                    if seq != last_seq:
-                        last_seq = seq
-                        with analysis_state_lock:
-                            analyzed_ctx = analysis_state["ctx"]
-                            snapshot = list(analysis_state["snapshot"])
-                            reasoning = analysis_state["reasoning"]
-                        performance = pipeline.runtime_metrics.snapshot()
-                        frame = raw_frame.copy()
-                        if args.combined:
-                            frame = overlay.draw(frame, analyzed_ctx, snapshot,
-                                                 performance["capture_fps"]) \
-                                if analyzed_ctx is not None else frame
-                            cv2.imshow("Humanoid Camera — detections", frame)
-                        else:
-                            if analyzed_ctx is not None:
-                                frame = overlay.draw_boxes(frame, analyzed_ctx,
-                                                           performance["capture_fps"],
-                                                           performance)
-                            cv2.imshow("Camera", frame)
-                            now = time.time()
-                            if now - last_panel_at >= 0.5:
-                                panel = dashboard.render(
-                                    snapshot, performance["capture_fps"],
-                                    last_greeting["text"], reasoning=reasoning,
-                                    performance=performance,
-                                    moondream=voice_agent.moondream_status())
-                                cv2.imshow("Detections — Data", panel)
-                                last_panel_at = now
-                        pipeline.runtime_metrics.note_preview(
-                            overlay_timestamp=(analyzed_ctx.timestamp
-                                               if analyzed_ctx is not None else None))
+                    preview_frame = raw_frame
+                    preview_token = ("capture", cam_state["current"], seq)
+                else:
+                    # Files and replay-style backends do not expose a separate
+                    # latest-frame slot. If one is selected via the hot switch,
+                    # keep the GUI live at analysis cadence instead of freezing
+                    # the decoupled loop that an iPad/local source enabled.
+                    with analysis_state_lock:
+                        fallback_ctx = analysis_state["ctx"]
+                    if fallback_ctx is not None:
+                        preview_frame = fallback_ctx.frame
+                        preview_token = (
+                            "analysis", cam_state["current"],
+                            fallback_ctx.frame_index, fallback_ctx.timestamp)
+                if preview_frame is not None and preview_token != last_preview_token:
+                    last_preview_token = preview_token
+                    with analysis_state_lock:
+                        analyzed_ctx = analysis_state["ctx"]
+                        snapshot = list(analysis_state["snapshot"])
+                        reasoning = analysis_state["reasoning"]
+                    performance = pipeline.runtime_metrics.snapshot()
+                    frame = preview_frame.copy()
+                    if args.combined:
+                        frame = overlay.draw(frame, analyzed_ctx, snapshot,
+                                             performance["capture_fps"]) \
+                            if analyzed_ctx is not None else frame
+                        cv2.imshow("Humanoid Camera — detections", frame)
+                    else:
+                        if analyzed_ctx is not None:
+                            frame = overlay.draw_boxes(frame, analyzed_ctx,
+                                                       performance["capture_fps"],
+                                                       performance)
+                        cv2.imshow("Camera", frame)
+                        now = time.time()
+                        if now - last_panel_at >= 0.5:
+                            panel = dashboard.render(
+                                snapshot, performance["capture_fps"],
+                                last_greeting["text"], reasoning=reasoning,
+                                performance=performance,
+                                moondream=voice_agent.moondream_status())
+                            cv2.imshow("Detections — Data", panel)
+                            last_panel_at = now
+                    pipeline.runtime_metrics.note_preview(
+                        overlay_timestamp=(analyzed_ctx.timestamp
+                                           if analyzed_ctx is not None else None))
                 key = cv2.waitKey(1) & 0xFF
                 if key == ord("q"):
                     pipeline.request_stop()
@@ -1085,10 +1164,11 @@ def main():
                     print(f"[camera] switching -> {nxt}")
                     with analysis_state_lock:
                         analysis_state["ctx"] = None
+                    last_preview_token = None
                     pipeline.reset_capture_state()
                     pipeline.camera.switch_to(nxt, camera_opts)
                     cam_state["current"] = nxt
-                if packet is None:
+                if preview_frame is None:
                     time.sleep(0.002)
             pipeline.request_stop()
             worker.join()

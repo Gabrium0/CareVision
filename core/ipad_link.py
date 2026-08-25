@@ -22,6 +22,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
+import inspect
 import json
 import math
 import threading
@@ -43,6 +44,37 @@ DEFAULT_STUN = ("stun:stun.l.google.com:19302",)
 # relay/static/ipad.html.
 PAIR_WINDOW_SECONDS = 600
 
+# Browser-reported sender telemetry is diagnostic only.  Keep this whitelist in
+# sync with relay/static/ipad.html and reject rather than clamp values outside
+# the browser's documented bounds.  In particular, never retain arbitrary
+# fields from a control-channel message in the long-lived link state.
+_SENDER_STATS_FLOATS = {
+    "sent_fps": (0.0, 60.0),
+    "target_fps": (0.0, 60.0),
+    "encode_p90_ms": (0.0, 60_000.0),
+    "ack_p90_ms": (0.0, 60_000.0),
+    "jpeg_quality": (0.1, 1.0),
+}
+_SENDER_STATS_INTS = {
+    "width": (2, 4096),
+    "height": (2, 4096),
+    "tier": (0, 16),
+    "quality_tier": (0, 16),
+    "jpeg_bytes": (0, 33_554_432),
+    "buffered_bytes": (0, 33_554_432),
+    "encode_busy_skips": (0, 100_000),
+    "backpressure_skips": (0, 100_000),
+    "transport_wait_skips": (0, 100_000),
+    "ack_timeouts": (0, 100_000),
+}
+_CAPTURE_PROFILE_INTS = {
+    "width": (2, 4096),
+    "height": (2, 4096),
+    "tier": (0, 16),
+    "quality_tier": (0, 16),
+}
+_CAPTURE_PROFILE_MAX_JSON = 512
+
 
 def pairing_expiry(now: Optional[float] = None) -> int:
     """Next pairing-window boundary, matching the iPad page's computation."""
@@ -60,6 +92,52 @@ def pairing_signature(secret: str, room: str, code: str, exp: int) -> str:
     """
     msg = f"{room}|{code}|{exp}".encode("utf-8")
     return hmac.new(secret.encode("utf-8"), msg, hashlib.sha256).hexdigest()[:32]
+
+
+def _validated_sender_stats(payload: dict) -> dict:
+    """Return the bounded sender telemetry subset safe to retain in diagnostics."""
+    stats = {}
+    for key, (low, high) in _SENDER_STATS_FLOATS.items():
+        value = payload.get(key)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            continue
+        number = float(value)
+        if math.isfinite(number) and low <= number <= high:
+            stats[key] = round(number, 2)
+    for key, (low, high) in _SENDER_STATS_INTS.items():
+        value = payload.get(key)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            continue
+        number = float(value)
+        if math.isfinite(number) and number.is_integer() and low <= number <= high:
+            stats[key] = int(number)
+    constrained = payload.get("constrained")
+    if isinstance(constrained, bool):
+        stats["constrained"] = constrained
+    return stats
+
+
+def _validated_capture_profile(payload: dict) -> Optional[dict]:
+    """Validate the complete, bounded profile that orders subsequent frames."""
+    if not isinstance(payload, dict) or payload.get("type") != "capture_profile":
+        return None
+    profile = {}
+    for key, (low, high) in _CAPTURE_PROFILE_INTS.items():
+        value = payload.get(key)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return None
+        number = float(value)
+        if not math.isfinite(number) or not number.is_integer() or not low <= number <= high:
+            return None
+        profile[key] = int(number)
+    quality = payload.get("jpeg_quality")
+    if isinstance(quality, bool) or not isinstance(quality, (int, float)):
+        return None
+    quality = float(quality)
+    if not math.isfinite(quality) or not 0.1 <= quality <= 1.0:
+        return None
+    profile["jpeg_quality"] = round(quality, 2)
+    return profile
 
 
 class IPadLink:
@@ -89,7 +167,11 @@ class IPadLink:
         self._state_lock = threading.Lock()
         self._state = {"relay": "idle", "ice": "new", "dc": "closed",
                        "frames_rx": 0, "seq_gaps": 0, "last_rx_at": None,
-                       "clock_source": None, "error": None, "dropped": 0}
+                       "clock_source": None, "error": None, "dropped": 0,
+                       "coalesced": 0, "sender_stats": None,
+                       "unexpected_media_tracks": 0, "frame_acks_tx": 0,
+                       "frame_ack_errors": 0, "capture_profile_generation": 0,
+                       "capture_profile": None}
 
         self._thread: Optional[threading.Thread] = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
@@ -97,6 +179,8 @@ class IPadLink:
         self._pc = None
         self._control_channel = None
         self._last_seq: Optional[int] = None
+        self._unexpected_tracks: list = []
+        self._media_drain_tasks: set[asyncio.Task] = set()
 
     # ---- thread-facing API (called from the pipeline's threads) ----------
 
@@ -118,11 +202,27 @@ class IPadLink:
             self._thread = None
 
     def take_frame(self) -> Optional[tuple[dict, bytes]]:
-        """Pop the newest pushed frame, or None. Never blocks."""
+        """Return only the newest pushed frame, or None. Never blocks.
+
+        A short receive burst can fill both entries in ``_frames`` before the
+        reader runs.  Returning the newest without clearing the older entry
+        makes the *next* call deliver time backwards, which forces a capture-
+        clock resync and publishes a stale frame after the link pauses.  Clear
+        every older complete frame atomically to preserve newest-wins semantics.
+
+        Queue-overflow drops are counted at admission in ``_ingest_frame``.
+        Entries discarded here were successfully admitted, so report them as
+        intentional ``coalesced`` frames instead of double-counting ``dropped``.
+        """
         with self._frames_lock:
             if not self._frames:
                 return None
-            return self._frames.pop()
+            newest = self._frames.pop()
+            coalesced = len(self._frames)
+            self._frames.clear()
+        if coalesced:
+            self._bump("coalesced", coalesced)
+        return newest
 
     def send_control(self, payload: dict) -> None:
         """Send a JSON control message to the iPad. Safe from any thread."""
@@ -143,8 +243,14 @@ class IPadLink:
         self._on_control = handler
 
     def status(self) -> dict:
+        """Return a thread-safe diagnostics snapshot with nested telemetry copied."""
         with self._state_lock:
-            return dict(self._state)
+            state = dict(self._state)
+            if isinstance(state.get("sender_stats"), dict):
+                state["sender_stats"] = dict(state["sender_stats"])
+            if isinstance(state.get("capture_profile"), dict):
+                state["capture_profile"] = dict(state["capture_profile"])
+            return state
 
     # ---- internals ------------------------------------------------------
 
@@ -163,6 +269,136 @@ class IPadLink:
                 channel.send(data)
             except Exception:  # noqa: BLE001 - a dead channel must not kill the loop
                 pass
+
+    def _send_frame_ack(self, channel, seq: int) -> None:
+        """Acknowledge one admitted JPEG without risking the receive callback.
+
+        The sequence came from an unsigned 32-bit wire field, but mask it again
+        here so this helper remains bounded if called independently in a test or
+        by a future transport adapter.  ACKs intentionally travel back on the
+        frames channel; they are tiny and describe only completed JPEGs.
+        """
+        if getattr(channel, "readyState", "") != "open":
+            return
+        data = json.dumps({"type": "frame_ack", "seq": int(seq) & 0xFFFFFFFF},
+                          separators=(",", ":"))
+        try:
+            channel.send(data)
+        except Exception:  # noqa: BLE001 - ACK loss must not stop frame receive
+            self._bump("frame_ack_errors")
+            return
+        self._bump("frame_acks_tx")
+
+    def _ingest_capture_profile(self, message) -> bool:
+        """Apply one ordered browser profile, advancing only on real changes."""
+        if not isinstance(message, str) or len(message) > _CAPTURE_PROFILE_MAX_JSON:
+            return False
+        try:
+            payload = json.loads(message)
+        except (TypeError, ValueError):
+            return False
+        profile = _validated_capture_profile(payload)
+        if profile is None:
+            return False
+        with self._state_lock:
+            if self._state.get("capture_profile") == profile:
+                return False
+            generation = int(self._state.get("capture_profile_generation", 0)) + 1
+            self._state["capture_profile_generation"] = generation
+            self._state["capture_profile"] = dict(profile)
+        return True
+
+    def _capture_profile_snapshot(self) -> tuple[int, Optional[dict]]:
+        """Return a copied profile boundary for attachment to a frame header."""
+        with self._state_lock:
+            generation = int(self._state.get("capture_profile_generation", 0))
+            profile = self._state.get("capture_profile")
+            return generation, (dict(profile) if isinstance(profile, dict) else None)
+
+    async def _drain_unexpected_track(self, track) -> None:
+        """Discard media from a stale page without allowing an unbounded queue."""
+        try:
+            # aiortc's RemoteStreamTrack currently exposes the decoder output as
+            # an unbounded ``_queue``.  Drain it directly even after track.stop()
+            # marks recv() unavailable.  Fall back to the public recv() API for
+            # other versions or compatible implementations.
+            queue = getattr(track, "_queue", None)
+            receive = getattr(queue, "get", None)
+            if callable(receive):
+                while True:
+                    if await receive() is None:
+                        return
+            receive = getattr(track, "recv", None)
+            if callable(receive):
+                while True:
+                    await receive()
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - ending/rejected media is expected
+            return
+
+    def _reject_unexpected_track(self, track) -> None:
+        """Stop an offered media track immediately and keep its queue drained."""
+        self._unexpected_tracks.append(track)
+        self._bump("unexpected_media_tracks")
+        stop = getattr(track, "stop", None)
+        if callable(stop):
+            try:
+                stop()
+            except Exception:  # noqa: BLE001 - drain remains the safety net
+                pass
+        try:
+            task = asyncio.get_running_loop().create_task(
+                self._drain_unexpected_track(track))
+        except RuntimeError:  # no running loop: stop() above is still fail-safe
+            return
+        self._media_drain_tasks.add(task)
+        task.add_done_callback(self._media_drain_tasks.discard)
+
+    @staticmethod
+    async def _deactivate_media_transceivers(pc) -> None:
+        """Reject offered RTP media while leaving the SCTP data channels intact."""
+        get_transceivers = getattr(pc, "getTransceivers", None)
+        if not callable(get_transceivers):
+            return
+        try:
+            transceivers = list(get_transceivers() or ())
+        except Exception:  # noqa: BLE001 - optional aiortc API variation
+            return
+        for transceiver in transceivers:
+            inactive = False
+            try:
+                transceiver.direction = "inactive"
+                inactive = getattr(transceiver, "direction", None) == "inactive"
+            except Exception:  # noqa: BLE001 - fall back to permanent stop
+                pass
+            if inactive:
+                continue
+            stop = getattr(transceiver, "stop", None)
+            if not callable(stop):
+                continue
+            try:
+                result = stop()
+                if inspect.isawaitable(result):
+                    await result
+            except Exception:  # noqa: BLE001 - track drain still bounds memory
+                pass
+
+    async def _clear_unexpected_tracks(self) -> None:
+        """Cancel discard tasks and release media-track references on teardown."""
+        tasks, self._media_drain_tasks = list(self._media_drain_tasks), set()
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        tracks, self._unexpected_tracks = self._unexpected_tracks, []
+        for track in tracks:
+            stop = getattr(track, "stop", None)
+            if callable(stop):
+                try:
+                    stop()
+                except Exception:  # noqa: BLE001
+                    pass
 
     def _run(self) -> None:
         loop = asyncio.new_event_loop()
@@ -304,6 +540,16 @@ class IPadLink:
             self._set(ice=pc.iceConnectionState)
             print(f"[ipad] ice: {pc.iceConnectionState}")
 
+        @pc.on("track")
+        def _on_track(track):
+            # Current pages send JPEGs over the ``frames`` data channel only.
+            # Older cached pages also offered their native camera track.  aiortc
+            # backs RemoteStreamTrack with an unbounded queue, so ignoring that
+            # unexpected track leaks decoded frames indefinitely.
+            print(f"[ipad] rejecting unexpected media track: "
+                  f"{getattr(track, 'kind', 'unknown')}")
+            self._reject_unexpected_track(track)
+
         @pc.on("datachannel")
         def _on_datachannel(channel):
             print(f"[ipad] data channel opened: {channel.label!r}")
@@ -312,7 +558,16 @@ class IPadLink:
 
                 @channel.on("message")
                 def _on_frame(message):
-                    self._ingest_frame(message)
+                    # A closed, superseded peer can race one final callback with
+                    # teardown. Never admit or acknowledge that stale message.
+                    if pc is not self._pc:
+                        return
+                    if isinstance(message, str):
+                        self._ingest_capture_profile(message)
+                        return
+                    completed_seq = self._ingest_frame(message)
+                    if completed_seq is not None:
+                        self._send_frame_ack(channel, completed_seq)
 
                 @channel.on("close")
                 def _on_frames_closed():
@@ -327,6 +582,11 @@ class IPadLink:
         print("[ipad] offer received; answering")
         await pc.setRemoteDescription(
             RTCSessionDescription(sdp=payload.get("sdp", ""), type="offer"))
+        # Reject every audio/video m-line before answer generation. RTP
+        # transceivers are separate from SCTP, so the two data channels remain
+        # negotiated. The track handler above is a version-independent safety
+        # net for the brief pre-answer window and older aiortc variants.
+        await self._deactivate_media_transceivers(pc)
         answer = await pc.createAnswer()
         # setLocalDescription blocks here until aiortc finishes gathering ICE,
         # which is where a blocked STUN/UDP path shows up as a long stall.
@@ -359,10 +619,13 @@ class IPadLink:
         except Exception:  # noqa: BLE001 - a bad candidate must not kill the loop
             pass
 
-    def _ingest_frame(self, message) -> None:
+    def _ingest_frame(self, message) -> Optional[int]:
         """Header-parse a pushed frame and hand it to the reader thread.
 
         Runs on the event loop, so it must stay cheap: no JPEG decode here.
+        Returns the completed sequence only after the full JPEG is accepted into
+        the newest-frame slot; partial, invalid, and out-of-order data return
+        ``None`` and therefore receive no application ACK.
         """
         if not isinstance(message, (bytes, bytearray, memoryview)):
             return
@@ -375,8 +638,8 @@ class IPadLink:
         count = header["chunk_count"]
         if count > 1:
             # Reassemble: one JPEG spans several SCTP messages because aiortc
-            # caps a message at 65536 bytes. The channel is unreliable, so a
-            # frame missing any chunk is discarded rather than half-decoded.
+            # caps a message at 65536 bytes. Reliable delivery should complete
+            # each slot; the bound remains defensive against stale/corrupt peers.
             slot = self._partial.setdefault(seq, {})
             slot[header["chunk_index"]] = payload
             if len(slot) < count:
@@ -400,6 +663,9 @@ class IPadLink:
             if 0 < gap < 1000:          # ignore wrap/reconnect discontinuities
                 self._bump("seq_gaps", gap)
         self._last_seq = seq
+        profile_generation, profile = self._capture_profile_snapshot()
+        header["capture_profile_generation"] = profile_generation
+        header["capture_profile"] = profile
         header["recv_wall"] = time.time()
         with self._frames_lock:
             if len(self._frames) == self._frames.maxlen:
@@ -407,6 +673,7 @@ class IPadLink:
             self._frames.append((header, payload))
         self._bump("frames_rx")
         self._set(last_rx_at=header["recv_wall"])
+        return seq
 
     def _ingest_control(self, message) -> None:
         try:
@@ -427,7 +694,13 @@ class IPadLink:
             # so we know if the biggest rPPG error source is actually pinned or
             # (as is usual on iOS Safari) still free-running.
             self._set(camera_tuning=payload.get("locked"),
-                      camera_caps=payload.get("capabilities"))
+                      camera_caps=payload.get("capabilities"),
+                      camera_settings=payload.get("settings"))
+            return
+        if payload.get("type") == "sender_stats":
+            stats = _validated_sender_stats(payload)
+            if stats:
+                self._set(sender_stats=dict(stats))
             return
         if self._on_control is not None:
             # The callback is expected to hand work to an executor and return
@@ -441,9 +714,18 @@ class IPadLink:
     async def _teardown(self) -> None:
         pc, self._pc = self._pc, None
         self._control_channel = None
-        self._set(dc="closed")
+        # A browser reload starts its sequence counter at zero. Retaining an
+        # incomplete JPEG from the previous peer could otherwise combine old
+        # and new chunks under the same sequence number; queued complete frames
+        # would also keep a stale preview alive across the reconnect.
+        self._partial.clear()
+        self._last_seq = None
+        with self._frames_lock:
+            self._frames.clear()
+        self._set(dc="closed", sender_stats=None)
         if pc is not None:
             try:
                 await pc.close()
             except Exception:  # noqa: BLE001
                 pass
+        await self._clear_unexpected_tracks()

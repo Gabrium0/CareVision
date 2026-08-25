@@ -173,7 +173,37 @@ def test_backpressure_drops_oldest():
     header, payload = newest
     assert header["seq"] == 9, f"take_frame() must return the newest frame, got seq={header['seq']}"
     assert payload == b"payload9"
+    assert link.take_frame() is None
+    status = link.status()
+    assert status["dropped"] == 8       # seq 0..7 evicted at admission
+    assert status["coalesced"] == 1     # seq 8 cleared while taking seq 9
     print("[ipad-camera-test] backpressure drops oldest, take_frame returns newest OK")
+
+
+def test_take_frame_coalesces_older_complete_frame():
+    """A two-frame burst must never be replayed newest-then-stale.
+
+    This is distinct from deque admission overflow: both frames fit in the
+    depth-2 slot, then the consumer intentionally coalesces seq 10 while taking
+    seq 11.  ``dropped`` therefore stays zero and ``coalesced`` records one.
+    """
+    from core.ipad_link import IPadLink
+
+    link = IPadLink(relay_url="https://x", room="r", secret="s", code="123456")
+    for seq in (10, 11):
+        buf = pack_frame_header(seq, seq * 0.05, 640, 480) + f"payload{seq}".encode()
+        link._ingest_frame(buf)
+
+    newest = link.take_frame()
+    assert newest is not None
+    header, payload = newest
+    assert header["seq"] == 11
+    assert payload == b"payload11"
+    assert link.take_frame() is None
+
+    status = link.status()
+    assert status["coalesced"] == 1
+    assert status["dropped"] == 0
 
 
 def test_unknown_camera_opts_are_swallowed():
@@ -225,6 +255,7 @@ def main():
     test_frames_fire_fast_hooks_like_replay()
     test_frames_generator_survives_starvation()
     test_backpressure_drops_oldest()
+    test_take_frame_coalesces_older_complete_frame()
     test_unknown_camera_opts_are_swallowed()
     test_bgr_channel_order()
     print("[ipad-camera-test] OK")

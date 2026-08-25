@@ -13,6 +13,7 @@ relay is needed).
 Routes:
     GET /healthz  -> "ok" (cold-start warm-up target)
     GET /r/{room} -> static/ipad.html, with the shared secret templated in
+    GET /static/ipad_capture_policy.js -> bounded browser capture policy
     GET /ws       -> WebSocket signaling, two members per room ("host", "ipad")
 
 Hard safety rules enforced below, not just documented: a 64KB message ceiling
@@ -38,6 +39,7 @@ log = logging.getLogger("relay")
 
 STATIC_DIR = Path(__file__).parent / "static"
 IPAD_HTML_PATH = STATIC_DIR / "ipad.html"
+CAPTURE_POLICY_PATH = STATIC_DIR / "ipad_capture_policy.js"
 
 # The placeholder ipad.html templates the shared secret into, so the page can
 # derive its HMAC client-side. See relay/README.md for why shipping the
@@ -57,6 +59,7 @@ ROLES = ("host", "ipad")
 HELLO_CLOSE_CODE = 4401       # bad/missing hello, sig mismatch, or expired
 ROLE_TAKEN_CLOSE_CODE = 4409  # second connection for an already-occupied role
 MAX_MSG_SIZE = 64 * 1024      # hard ceiling; makes relaying video impossible
+SIGNAL_HEARTBEAT_SECONDS = 30.0
 
 
 class Room:
@@ -95,6 +98,15 @@ async def serve_ipad_page(request: web.Request) -> web.Response:
                         headers={"Cache-Control": "no-store, must-revalidate"})
 
 
+async def serve_capture_policy(_request: web.Request) -> web.Response:
+    """Serve only the dependency-free capture policy used by the iPad page."""
+    return web.Response(
+        text=CAPTURE_POLICY_PATH.read_text(encoding="utf-8"),
+        content_type="application/javascript",
+        headers={"Cache-Control": "no-store, must-revalidate"},
+    )
+
+
 def _parse_hello(raw: str) -> dict | None:
     try:
         msg = json.loads(raw)
@@ -117,7 +129,10 @@ def _parse_hello(raw: str) -> dict | None:
 
 
 async def ws_handler(request: web.Request) -> web.WebSocketResponse:
-    ws = web.WebSocketResponse(max_msg_size=MAX_MSG_SIZE)
+    # Keep the short-lived signalling socket alive through reverse proxies
+    # while SDP/ICE is still being exchanged. Media never traverses this WS.
+    ws = web.WebSocketResponse(max_msg_size=MAX_MSG_SIZE,
+                               heartbeat=SIGNAL_HEARTBEAT_SECONDS)
     await ws.prepare(request)
 
     room_obj: Room | None = None
@@ -203,6 +218,7 @@ def build_app() -> web.Application:
     app = web.Application()
     app.router.add_get("/healthz", healthz)
     app.router.add_get("/r/{room}", serve_ipad_page)
+    app.router.add_get("/static/ipad_capture_policy.js", serve_capture_policy)
     app.router.add_get("/ws", ws_handler)
     return app
 

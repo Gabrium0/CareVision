@@ -346,6 +346,7 @@
 
 <canvas id="cnv" width="960" height="720" class="hidden"></canvas>
 
+<script src="/static/ipad_capture_policy.js"></script>
 <script>
 (function(){
   'use strict';
@@ -355,6 +356,15 @@
     document.getElementById('secureError').classList.remove('hidden');
     document.getElementById('pairPanel').classList.add('hidden');
     return; // deliberate: nothing else on this page can work without getUserMedia
+  }
+
+  const CapturePolicy = window.IPadCapturePolicy;
+  if(!CapturePolicy){
+    const policyError = document.getElementById('secureError');
+    policyError.textContent = 'Capture policy failed to load. Reload this page to try again.';
+    policyError.classList.remove('hidden');
+    document.getElementById('pairPanel').classList.add('hidden');
+    return;
   }
 
   // Secret is templated in server-side from RELAY_SECRET (relay/server.py).
@@ -367,20 +377,25 @@
   // window (PAIR_WINDOW_SECONDS) rather than "now plus a TTL". Anyone
   // connecting within the same window computes the identical value.
   const PAIR_WINDOW_SECONDS = 600;
-  // 960x720 rather than 640x480: rPPG SNR scales ~1/sqrt(skin pixels), and the
-  // chunked transport removed the 64KB-per-frame ceiling that forced the lower
-  // size. This is only the starting point: once the track reports its real
-  // size, the canvas follows it exactly. Stretching a portrait track into a
-  // fixed landscape canvas displaced faces, so what the laptop received did
-  // not match what the iPad preview showed. Each frame header carries the
-  // true w/h, and the receiver decodes the JPEG's own dimensions anyway.
+  // 960x720 is the quality-first tier: rPPG SNR scales ~1/sqrt(skin pixels).
+  // When Safari cannot encode/send at the requested cadence, the capture policy
+  // can step down to 800x600 and 640x480 while retaining aspect/orientation.
   let CANVAS_W = 960, CANVAS_H = 720;
-  const TARGET_FPS = 20;
-  const FRAME_INTERVAL_MS = 1000 / TARGET_FPS;
-  const BUFFERED_AMOUNT_LIMIT = 1024 * 1024; // ~1MB backpressure ceiling
-  // Stay clear of aiortc's a=max-message-size:65536, leaving room for the
-  // 24-byte header. Exceeding it makes Safari throw inside send().
-  const MAX_CHUNK_BYTES = 60000;
+  // Admit a new logical JPEG only after the previous one has drained. A
+  // persistent queue turns current physiological samples into stale samples.
+  const BUFFERED_AMOUNT_LIMIT = 0;
+  // Stay below aiortc's negotiated 64 KiB message ceiling. Receiver ACK gating
+  // permits only one complete JPEG in flight, so a 60 KiB message cannot build
+  // a stale queue behind itself despite reliable ordered delivery.
+  const FRAME_HEADER_BYTES = 24;
+  const MAX_MESSAGE_BYTES = 60 * 1024;
+  const MAX_CHUNK_BYTES = MAX_MESSAGE_BYTES - FRAME_HEADER_BYTES;
+  const FRAME_ACK_TIMEOUT_MS = 2500;
+  // Frames allowed in flight before an ACK. >1 pipelines across the receiver's
+  // ACK round-trip (the throughput ceiling on a CPU-busy host), while bounding
+  // in-flight memory to FRAME_WINDOW * one JPEG.
+  const FRAME_WINDOW = 3;
+  const CAPTURE_WINDOW_MS = 2000;
 
   function esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
@@ -420,7 +435,7 @@
   const stErr = document.getElementById('stErr');
   // A silent catch around the capture path hides the one thing worth knowing
   // when "Frames sent" sticks at 0, so surface the reason on screen instead.
-  function setCapture(note){ try{ stErr.textContent = String(note).slice(0, 60); }catch(_){} }
+  function setCapture(note){ try{ stErr.textContent = String(note).slice(0, 96); }catch(_){} }
   const moduleGrid = document.getElementById('moduleGrid');
   const canvas = document.getElementById('cnv');
   const ctx = canvas.getContext('2d', {willReadFrequently:false});
@@ -446,11 +461,30 @@
 
   // ---- state ----------------------------------------------------------
   let ws = null, pc = null, dcFrames = null, dcControl = null, stream = null;
-  let seq = 0, framesSent = 0, framesSentAtLastTick = 0;
-  let lastFrameSentAt = 0;
+  let seq = 0, framesSent = 0;
+  let nextFrameDueAt = 0;
+  let captureGeneration = 0;
+  let lastCaptureProfileKey = null;
+  let captureCanvasSyncPending = false;
+  let encodeInFlight = false;
+  const frameFlow = CapturePolicy.createFrameFlowController(FRAME_ACK_TIMEOUT_MS, FRAME_WINDOW);
   let clockSource = null;
+  const capturePolicy = CapturePolicy.createAdaptivePolicy(CapturePolicy.DEFAULT_CONFIG);
+  let captureWindowStartedAt = performance.now();
+  let captureWindowFrames = 0;
+  let captureWindowBusySkips = 0;
+  let captureWindowBackpressureSkips = 0;
+  let captureWindowTransportWaitSkips = 0;
+  let captureWindowAckTimeouts = 0;
+  let captureWindowEncodeMs = [];
+  let captureWindowAckMs = [];
+  let lastJpegBytes = 0;
+  let lastSenderWindow = {sent_fps:0, encode_p90_ms:0, ack_p90_ms:0,
+    encode_busy_skips:0, backpressure_skips:0, transport_wait_skips:0,
+    ack_timeouts:0};
   let lastState = null;               // last {type:'state', modules:[...]}
   let lastTelemetry = null;           // last {type:'telemetry', ...}
+  let pendingCameraTuning = null;      // retained until/replayed on control open
   const vitalDeadline = Object.create(null);   // vital id -> local expiry ms
   const moduleBusy = Object.create(null);
   const moduleResult = Object.create(null);
@@ -713,6 +747,11 @@
   // Auto-exposure is the single biggest rPPG accuracy killer, and iOS Safari
   // historically ignores these constraints — but newer builds expose some, so
   // attempt it and report what actually stuck over the control channel.
+  function sendCameraTuningReport(){
+    if(!pendingCameraTuning || !dcControl || dcControl.readyState !== 'open') return;
+    try{ dcControl.send(JSON.stringify(pendingCameraTuning)); }catch(_){}
+  }
+
   function tuneCamera(mediaStream){
     setTimeout(() => {
       try{
@@ -730,17 +769,23 @@
         }
         const supported = Object.keys(caps).filter(k => /exposure|whiteBalance|iso|focus/i.test(k));
         const report = (locked) => {
-          if(dcControl && dcControl.readyState === 'open'){
-            try{ dcControl.send(JSON.stringify({type:'camera_tuning', locked: locked,
-              capabilities: supported})); }catch(_){}
-          }
+          const rawSettings = (track.getSettings && track.getSettings()) || {};
+          const settings = {};
+          ['width', 'height', 'frameRate', 'exposureMode', 'whiteBalanceMode',
+            'exposureTime', 'iso'].forEach((key) => {
+            const value = rawSettings[key];
+            if(typeof value === 'string' || typeof value === 'number' ||
+                typeof value === 'boolean') settings[key] = value;
+          });
+          pendingCameraTuning = {type:'camera_tuning', locked:locked,
+            capabilities:supported.slice(0, 32), settings:settings};
+          sendCameraTuningReport();
         };
-        if(advanced.length){
-          track.applyConstraints({advanced}).then(() => report(advanced))
-            .catch(() => report('applyConstraints rejected; caps=' + supported.join(',')));
-        } else {
-          report('no lockable caps; exposure/WB not adjustable on this Safari');
-        }
+        const constraints = captureTrackConstraints();
+        if(advanced.length) constraints.advanced = advanced;
+        track.applyConstraints(constraints).then(() => report(advanced.length ? advanced :
+          'no lockable caps; exposure/WB not adjustable on this Safari'))
+          .catch(() => report('applyConstraints rejected; caps=' + supported.join(',')));
       }catch(_){ /* best effort only */ }
     }, 2000);  // let auto-exposure settle before freezing it
   }
@@ -755,6 +800,7 @@
     try{ if(wakeLock){ await wakeLock.release(); wakeLock = null; } }catch(_){}
   }
   document.addEventListener('visibilitychange', () => {
+    resetCaptureWindow(performance.now());
     if(document.visibilityState === 'visible' && ws) requestWakeLock();
   });
 
@@ -820,6 +866,7 @@
         renderTelemetry(msg);
       } else if(msg.type === 'state'){
         lastState = msg;                 // legacy module mirror; telemetry is primary
+        applyHostCaptureConfig(msg);
         if(agentPillEl && agentStateEl){
           const agent = msg.agent || {};
           agentPillEl.classList.remove('hidden');
@@ -865,82 +912,315 @@
     });
   }
 
-  function sendFrame(mediaTime){
-    if(!dcFrames || dcFrames.readyState !== 'open'){ setCapture('dc not open'); return; }
-    if(dcFrames.bufferedAmount > BUFFERED_AMOUNT_LIMIT){ setCapture('backpressure'); return; }
-    const now = performance.now();
-    if(now - lastFrameSentAt < FRAME_INTERVAL_MS) return;       // throttle to ~20fps
-    lastFrameSentAt = now;
+  function percentile90(values){
+    if(!values.length) return 0;
+    const ordered = values.slice().sort((a, b) => a - b);
+    return ordered[Math.max(0, Math.ceil(ordered.length * 0.9) - 1)];
+  }
+
+  function resetCaptureWindow(now){
+    captureWindowStartedAt = now;
+    captureWindowFrames = 0;
+    captureWindowBusySkips = 0;
+    captureWindowBackpressureSkips = 0;
+    captureWindowTransportWaitSkips = 0;
+    captureWindowAckTimeouts = 0;
+    captureWindowEncodeMs = [];
+    captureWindowAckMs = [];
+  }
+
+  function captureProfileSnapshot(){
+    const size = capturePolicy.getSize();
+    return CapturePolicy.boundedCaptureProfile({
+      width: size.width,
+      height: size.height,
+      tier: capturePolicy.getTier(),
+      quality_tier: capturePolicy.getQualityTier(),
+      jpeg_quality: capturePolicy.getJpegQuality(),
+    });
+  }
+
+  function publishCaptureProfileBoundary(force){
+    const profile = captureProfileSnapshot();
+    const key = [profile.width, profile.height, profile.tier,
+      profile.quality_tier, profile.jpeg_quality].join(':');
+    if(!force && key === lastCaptureProfileKey) return true;
+    // Do not put the boundary ahead of an older JPEG whose asynchronous encode
+    // or receiver ACK is still pending. The next capture callback retries it
+    // before drawing any pixels with the new profile.
+    if(!force && (encodeInFlight || !frameFlow.canAdmit())) return false;
+    const frameChannel = dcFrames;
+    if(!frameChannel || frameChannel.readyState !== 'open'){
+      lastCaptureProfileKey = null;
+      return false;
+    }
     try{
-      ctx.drawImage(previewEl, 0, 0, CANVAS_W, CANVAS_H);
-    }catch(err){ setCapture('drawImage: ' + (err && err.name || err)); return; }
-    canvas.toBlob(async (blob) => {
-      if(!blob){ setCapture('toBlob gave null'); return; }
-      try{
-        if(!dcFrames || dcFrames.readyState !== 'open') return;
-        if(dcFrames.bufferedAmount > BUFFERED_AMOUNT_LIMIT) return;
-        const jpegBuf = await blobToArrayBuffer(blob);
-        // aiortc advertises a=max-message-size:65536, and Safari enforces it by
-        // throwing on send. A quality-0.92 frame is routinely larger, so split
-        // it rather than degrade the image to fit — the receiver reassembles by
-        // (seq, chunk_index) and discards any frame missing a chunk.
-        const total = Math.max(1, Math.ceil(jpegBuf.byteLength / MAX_CHUNK_BYTES));
-        const thisSeq = seq >>> 0;
-        seq = (seq + 1) >>> 0;
-        for(let i = 0; i < total; i++){
-          const start = i * MAX_CHUNK_BYTES;
-          const end = Math.min(start + MAX_CHUNK_BYTES, jpegBuf.byteLength);
-          // 24-byte header: magic(4s) seq(u32) mediaTime(f64) w(u16) h(u16)
-          // chunk_index(u16) chunk_count(u16).
-          // Must match struct.Struct("<4sIdHHHH") in core/ipad_camera.py exactly.
-          const header = new ArrayBuffer(24);
-          const dv = new DataView(header);
-          dv.setUint8(0, 0x49); dv.setUint8(1, 0x50); dv.setUint8(2, 0x46); dv.setUint8(3, 0x31); // "IPF1"
-          dv.setUint32(4, thisSeq, true);
-          dv.setFloat64(8, mediaTime, true);
-          dv.setUint16(16, CANVAS_W, true);
-          dv.setUint16(18, CANVAS_H, true);
-          dv.setUint16(20, i, true);
-          dv.setUint16(22, total, true);
-          const out = new Uint8Array(24 + (end - start));
-          out.set(new Uint8Array(header), 0);
-          out.set(new Uint8Array(jpegBuf, start, end - start), 24);
-          dcFrames.send(out.buffer);
-        }
-        framesSent++;
-        setCapture('ok ' + total + 'ch/' + jpegBuf.byteLength + 'B');
-      }catch(err){
-        // One bad frame must never stop the loop, but it must not vanish
-        // either — a stuck "Frames sent: 0" is otherwise undiagnosable.
-        setCapture('send: ' + (err && (err.name + ' ' + err.message) || err));
+      // This travels on the same reliable ordered channel as the JPEG chunks.
+      // The receiver can therefore reset temporal rPPG buffers before it
+      // admits the first frame encoded with the new spatial/quality profile.
+      frameChannel.send(JSON.stringify(profile));
+      lastCaptureProfileKey = key;
+      return true;
+    }catch(_){
+      lastCaptureProfileKey = null;
+      captureGeneration++;
+      establishing = false;
+      scheduleReconnect('capture profile boundary failed');
+      return false;
+    }
+  }
+
+  function syncCaptureCanvas(){
+    const config = capturePolicy.getConfig();
+    const sourceWidth = previewEl.videoWidth || config.max_width;
+    const sourceHeight = previewEl.videoHeight || config.max_height;
+    capturePolicy.setSource(sourceWidth, sourceHeight);
+    const size = capturePolicy.getSize();
+    // Resizing a canvas clears its backing store. Defer that mutation while
+    // Safari is asynchronously encoding the previous profile's bitmap.
+    if(encodeInFlight){
+      captureCanvasSyncPending = true;
+      return;
+    }
+    captureCanvasSyncPending = false;
+    CANVAS_W = size.width;
+    CANVAS_H = size.height;
+    if(canvas.width !== CANVAS_W) canvas.width = CANVAS_W;
+    if(canvas.height !== CANVAS_H) canvas.height = CANVAS_H;
+    publishCaptureProfileBoundary(false);
+  }
+
+  function captureTrackConstraints(){
+    const config = capturePolicy.getConfig();
+    return {
+      width: {ideal:config.max_width},
+      height: {ideal:config.max_height},
+      frameRate: {ideal:config.target_fps},
+    };
+  }
+
+  function applyTrackCaptureConfig(){
+    try{
+      const track = stream && stream.getVideoTracks()[0];
+      if(track && track.applyConstraints) track.applyConstraints(captureTrackConstraints()).catch(() => {});
+    }catch(_){ /* constraints are best-effort; canvas sizing is authoritative */ }
+  }
+
+  function applyHostCaptureConfig(message){
+    const next = CapturePolicy.configFromStateMessage(message, capturePolicy.getConfig());
+    if(!next || !capturePolicy.setConfig(next)) return;
+    nextFrameDueAt = 0;
+    resetCaptureWindow(performance.now());
+    syncCaptureCanvas();
+    applyTrackCaptureConfig();
+    const size = capturePolicy.getSize();
+    setCapture('configured ' + next.target_fps + 'fps ' + size.width + 'x' + size.height +
+      (next.adaptive_resolution ? ' auto' : ' fixed'));
+  }
+
+  function finishCaptureWindow(now){
+    const elapsed = now - captureWindowStartedAt;
+    if(elapsed < CAPTURE_WINDOW_MS) return null;
+    const sample = {
+      sent_fps: captureWindowFrames * 1000 / Math.max(1, elapsed),
+      encode_p90_ms: percentile90(captureWindowEncodeMs),
+      ack_p90_ms: percentile90(captureWindowAckMs),
+      encode_busy_skips: captureWindowBusySkips,
+      backpressure_skips: captureWindowBackpressureSkips,
+      transport_wait_skips: captureWindowTransportWaitSkips,
+      ack_timeouts: captureWindowAckTimeouts,
+    };
+    lastSenderWindow = sample;
+    resetCaptureWindow(now);
+    const change = capturePolicy.observeWindow(sample, document.hidden);
+    if(change.changed){
+      syncCaptureCanvas();
+      nextFrameDueAt = 0;
+    }
+    return sample;
+  }
+
+  function senderStatsSnapshot(){
+    const config = capturePolicy.getConfig();
+    const size = capturePolicy.getSize();
+    let buffered = 0;
+    try{ buffered = dcFrames ? dcFrames.bufferedAmount : 0; }catch(_){}
+    return CapturePolicy.boundedSenderStats({
+      sent_fps: lastSenderWindow.sent_fps,
+      target_fps: config.target_fps,
+      width: size.width,
+      height: size.height,
+      tier: capturePolicy.getTier(),
+      quality_tier: capturePolicy.getQualityTier(),
+      jpeg_quality: capturePolicy.getJpegQuality(),
+      encode_p90_ms: lastSenderWindow.encode_p90_ms,
+      jpeg_bytes: lastJpegBytes,
+      buffered_bytes: buffered,
+      encode_busy_skips: lastSenderWindow.encode_busy_skips,
+      backpressure_skips: lastSenderWindow.backpressure_skips,
+      transport_wait_skips: lastSenderWindow.transport_wait_skips,
+      ack_p90_ms: lastSenderWindow.ack_p90_ms,
+      ack_timeouts: lastSenderWindow.ack_timeouts,
+      constrained: capturePolicy.isConstrained(),
+    });
+  }
+
+  function sendFrame(mediaTime, generation){
+    if(generation !== captureGeneration) return;
+    const frameChannel = dcFrames;
+    if(!frameChannel || frameChannel.readyState !== 'open'){
+      setCapture('dc not open');
+      return;
+    }
+    const now = performance.now();
+    finishCaptureWindow(now);
+    if(generation !== captureGeneration) return;
+    const frameIntervalMs = 1000 / capturePolicy.getConfig().target_fps;
+    if(nextFrameDueAt && now < nextFrameDueAt) return;
+    if(encodeInFlight){
+      captureWindowBusySkips++;
+      return;
+    }
+    if(!frameFlow.canAdmit()){
+      captureWindowTransportWaitSkips++;
+      if(frameFlow.isTimedOut(now)){
+        captureWindowAckTimeouts++;
+        captureGeneration++;
+        establishing = false;
+        setDc('stalled');
+        scheduleReconnect('frame ack timeout');
       }
-    }, 'image/jpeg', 0.92);
+      return;
+    }
+    if(!publishCaptureProfileBoundary(false)) return;
+    // This is a queue-admission threshold, not a frame-size ceiling. Once a
+    // JPEG is admitted, all of its bounded chunks are enqueued synchronously.
+    if(frameChannel.bufferedAmount > BUFFERED_AMOUNT_LIMIT){
+      captureWindowBackpressureSkips++;
+      setCapture('backpressure ' + frameChannel.bufferedAmount + 'B');
+      return;
+    }
+
+    // Advance the cadence deadline rather than measuring from the last camera
+    // callback. A 24fps track can then select 20 evenly distributed frames
+    // instead of aliasing down to 12fps by skipping every other callback.
+    nextFrameDueAt = CapturePolicy.nextFrameDeadline(nextFrameDueAt, now, frameIntervalMs);
+    encodeInFlight = true;
+    const encodeStartedAt = performance.now();
+    const frameWidth = CANVAS_W;
+    const frameHeight = CANVAS_H;
+    try{
+      ctx.drawImage(previewEl, 0, 0, frameWidth, frameHeight);
+      canvas.toBlob(async (blob) => {
+        const encodeMs = performance.now() - encodeStartedAt;
+        if(captureWindowEncodeMs.length < 120) captureWindowEncodeMs.push(encodeMs);
+        let markedForAck = false;
+        try{
+          if(!blob){ setCapture('toBlob gave null'); return; }
+          if(generation !== captureGeneration || frameChannel !== dcFrames ||
+              frameChannel.readyState !== 'open') return;
+          const jpegBuf = await blobToArrayBuffer(blob);
+          if(generation !== captureGeneration || frameChannel !== dcFrames ||
+              frameChannel.readyState !== 'open') return;
+          if(frameChannel.bufferedAmount > BUFFERED_AMOUNT_LIMIT){
+            captureWindowBackpressureSkips++;
+            return;
+          }
+          // Preserve the JPEG exactly while keeping individual SCTP messages
+          // small enough to avoid association monopolization without message
+          // interleaving.
+          const total = Math.max(1, Math.ceil(jpegBuf.byteLength / MAX_CHUNK_BYTES));
+          const thisSeq = seq >>> 0;
+          seq = (seq + 1) >>> 0;
+          if(!frameFlow.markSent(thisSeq, performance.now())){
+            captureWindowTransportWaitSkips++;
+            return;
+          }
+          markedForAck = true;
+          for(let i = 0; i < total; i++){
+            const start = i * MAX_CHUNK_BYTES;
+            const end = Math.min(start + MAX_CHUNK_BYTES, jpegBuf.byteLength);
+            // 24-byte header: magic(4s) seq(u32) mediaTime(f64) w(u16) h(u16)
+            // chunk_index(u16) chunk_count(u16). Must match <4sIdHHHH in Python.
+            const header = new ArrayBuffer(24);
+            const dv = new DataView(header);
+            dv.setUint8(0, 0x49); dv.setUint8(1, 0x50); dv.setUint8(2, 0x46); dv.setUint8(3, 0x31);
+            dv.setUint32(4, thisSeq, true);
+            dv.setFloat64(8, mediaTime, true);
+            dv.setUint16(16, frameWidth, true);
+            dv.setUint16(18, frameHeight, true);
+            dv.setUint16(20, i, true);
+            dv.setUint16(22, total, true);
+            const out = new Uint8Array(24 + (end - start));
+            out.set(new Uint8Array(header), 0);
+            out.set(new Uint8Array(jpegBuf, start, end - start), 24);
+            frameChannel.send(out.buffer);
+          }
+          framesSent++;
+          lastJpegBytes = jpegBuf.byteLength;
+        }catch(err){
+          // One bad frame must never stop the loop, but it must remain visible.
+          setCapture('send: ' + (err && (err.name + ' ' + err.message) || err));
+          if(markedForAck){
+            frameFlow.reset();
+            captureWindowAckTimeouts++;
+            captureGeneration++;
+            establishing = false;
+            scheduleReconnect('frame send failed');
+          }
+        }finally{
+          encodeInFlight = false;
+          if(captureCanvasSyncPending) syncCaptureCanvas();
+        }
+      }, 'image/jpeg', capturePolicy.getJpegQuality());
+    }catch(err){
+      encodeInFlight = false;
+      setCapture('draw/encode: ' + (err && err.name || err));
+    }
+  }
+
+  function handleFrameMessage(data){
+    if(typeof data !== 'string') return;
+    try{
+      const message = JSON.parse(data);
+      if(!message || message.type !== 'frame_ack') return;
+      const ackMs = frameFlow.acknowledge(message.seq, performance.now());
+      if(ackMs === null) return;
+      captureWindowFrames++;
+      if(captureWindowAckMs.length < 120) captureWindowAckMs.push(ackMs);
+    }catch(_){ /* malformed or stale acknowledgement: ignore */ }
   }
 
   function startCaptureLoop(){
+    const generation = ++captureGeneration;
+    nextFrameDueAt = 0;
+    resetCaptureWindow(performance.now());
+    if(!publishCaptureProfileBoundary(true)) return;
     setCapture('loop started');
     if('requestVideoFrameCallback' in previewEl){
       setClock('rvfc-mediaTime');
       const onFrame = (_now, metadata) => {
-        try{ sendFrame(metadata.mediaTime); }
+        if(generation !== captureGeneration) return;
+        try{ sendFrame(metadata.mediaTime, generation); }
         catch(err){ setCapture('loop: ' + (err && err.name || err)); }
-        if(previewEl.requestVideoFrameCallback) previewEl.requestVideoFrameCallback(onFrame);
+        if(generation === captureGeneration && dcFrames && dcFrames.readyState === 'open'){
+          previewEl.requestVideoFrameCallback(onFrame);
+        }
       };
       previewEl.requestVideoFrameCallback(onFrame);
     } else {
       setClock('performance-now');
-      // requestAnimationFrame, not setTimeout: iOS clamps and de-prioritises
-      // background timers unpredictably, which is what produced the 16->0 fps
-      // bursts. rAF is display-locked and steady; sendFrame throttles to the
-      // target rate internally, so the effective cadence stays even.
       const tick = () => {
-        try{ sendFrame(performance.now() / 1000); }catch(_){}
-        if(wantConnected) requestAnimationFrame(tick);
+        if(generation !== captureGeneration) return;
+        try{ sendFrame(performance.now() / 1000, generation); }catch(_){}
+        if(generation === captureGeneration && dcFrames && dcFrames.readyState === 'open'){
+          requestAnimationFrame(tick);
+        }
       };
       requestAnimationFrame(tick);
     }
-    // Report which clock is driving capture over the control channel once it's open.
     const reportClock = () => {
+      if(generation !== captureGeneration) return;
       if(dcControl && dcControl.readyState === 'open'){
         try{ dcControl.send(JSON.stringify({type:'clock_source', clock_source: clockSource})); }catch(_){}
       } else {
@@ -950,19 +1230,30 @@
     reportClock();
   }
 
-  // ---- fps display ---------------------------------------------------
+  // ---- bounded sender stats + status display -------------------------
   setInterval(() => {
     try{
-      const delta = framesSent - framesSentAtLastTick;
-      framesSentAtLastTick = framesSent;
-      stFps.textContent = String(delta);
+      finishCaptureWindow(performance.now());
+      const stats = senderStatsSnapshot();
+      stFps.textContent = stats.sent_fps.toFixed(1);
       stFrames.textContent = String(framesSent);
+      const detail = stats.width + 'x' + stats.height + ' enc' + stats.encode_p90_ms +
+        'ms ack' + stats.ack_p90_ms + 'ms jpg' + Math.round(stats.jpeg_bytes / 1024) +
+        'KB q' + stats.jpeg_quality.toFixed(2) + ' buf' +
+        Math.round(stats.buffered_bytes / 1024) + 'KB busy' + stats.encode_busy_skips +
+        '/bp' + stats.backpressure_skips + '/wait' + stats.transport_wait_skips +
+        '/timeout' + stats.ack_timeouts;
+      setCapture((stats.constrained ? 'limited ' : '') + detail);
+      if(dcControl && dcControl.readyState === 'open'){
+        dcControl.send(JSON.stringify(stats));
+      }
     }catch(_){}
   }, 1000);
 
   // ---- WebRTC + signaling (point 4) --------------------------------------
-  function wirePeerConnection(){
-    pc.onicecandidate = (ev) => {
+  function wirePeerConnection(peer){
+    peer.onicecandidate = (ev) => {
+      if(peer !== pc) return;
       if(ev.candidate && ws && ws.readyState === WebSocket.OPEN){
         try{
           ws.send(JSON.stringify({type:'candidate',
@@ -970,26 +1261,68 @@
         }catch(_){}
       }
     };
-    pc.oniceconnectionstatechange = () => {
-      const s = pc.iceConnectionState;
+    peer.oniceconnectionstatechange = () => {
+      if(peer !== pc) return;
+      const s = peer.iceConnectionState;
       setIce(s);
       // Only 'failed' is terminal. 'disconnected' is often transient and
       // recovers on its own; 'closed' is us tearing down. Reacting to those
       // would re-offer mid-handshake and cause the open/close flap.
       if(s === 'failed'){ establishing = false; scheduleReconnect('ice failed'); }
     };
+    peer.onconnectionstatechange = () => {
+      if(peer !== pc) return;
+      if(peer.connectionState === 'failed'){
+        establishing = false;
+        scheduleReconnect('peer failed');
+      }
+    };
   }
 
-  function wireDataChannels(){
-    dcFrames.binaryType = 'arraybuffer';
-    dcFrames.onopen = () => { establishing = false; setDc('open'); showMain(); startCaptureLoop(); };
-    dcFrames.onclose = () => setDc('closed');
-    dcFrames.onerror = () => setDc('error');
+  function wireDataChannels(peer, frameChannel, controlChannel){
+    frameChannel.binaryType = 'arraybuffer';
+    frameChannel.bufferedAmountLowThreshold = BUFFERED_AMOUNT_LIMIT;
+    frameChannel.onmessage = (ev) => {
+      if(peer === pc && frameChannel === dcFrames) handleFrameMessage(ev.data);
+    };
+    frameChannel.onopen = () => {
+      if(peer !== pc || frameChannel !== dcFrames) return;
+      establishing = false;
+      if(reconnectTimer){ clearTimeout(reconnectTimer); reconnectTimer = null; }
+      setDc('open');
+      showMain();
+      startCaptureLoop();
+      // Signalling has finished. Closing this idle tunnel socket deliberately
+      // removes it from the media lifetime; ICE/SCTP continue peer-to-peer.
+      const activeSocket = ws;
+      setTimeout(() => {
+        if(peer === pc && frameChannel === dcFrames && activeSocket &&
+            activeSocket === ws && activeSocket.readyState === WebSocket.OPEN){
+          try{ activeSocket.close(1000, 'signalling complete'); }catch(_){}
+        }
+      }, 500);
+    };
+    frameChannel.onclose = () => {
+      if(peer !== pc || frameChannel !== dcFrames) return;
+      captureGeneration++;
+      establishing = false;
+      setDc('closed');
+      scheduleReconnect('frames closed');
+    };
+    frameChannel.onerror = () => {
+      if(peer === pc && frameChannel === dcFrames) setDc('error');
+    };
 
-    dcControl.onopen = () => { setDc('open'); showMain(); };
-    dcControl.onmessage = (ev) => handleControlMessage(ev.data);
-    dcControl.onclose = () => {};
-    dcControl.onerror = () => {};
+    controlChannel.onopen = () => {
+      if(peer !== pc || controlChannel !== dcControl) return;
+      setDc('open'); showMain();
+      sendCameraTuningReport();
+    };
+    controlChannel.onmessage = (ev) => {
+      if(peer === pc && controlChannel === dcControl) handleControlMessage(ev.data);
+    };
+    controlChannel.onclose = () => {};
+    controlChannel.onerror = () => {};
   }
 
   // Once the code is entered and the camera granted, the page keeps trying to
@@ -1004,13 +1337,20 @@
   let attemptId = 0;              // invalidates watchdogs from superseded attempts
 
   function cleanupPeer(){
+    // Invalidates rVFC/rAF callbacks and async JPEG completions from this peer.
+    // Do not clear encodeInFlight here: a stale toBlob must settle before a new
+    // generation may start another encode.
+    captureGeneration++;
     // Detach handlers BEFORE closing, so tearing the old connection down does
     // not fire close/ice events that would schedule yet another reconnect.
     if(pc){ pc.oniceconnectionstatechange = null; pc.onconnectionstatechange = null; pc.onicecandidate = null; }
-    if(dcFrames){ dcFrames.onopen = dcFrames.onclose = dcFrames.onerror = null; }
+    if(dcFrames){ dcFrames.onopen = dcFrames.onmessage = dcFrames.onclose = dcFrames.onerror = null; }
+    if(dcControl){ dcControl.onopen = dcControl.onmessage = dcControl.onclose = dcControl.onerror = null; }
     try{ if(pc) pc.close(); }catch(_){}
     try{ if(ws && ws.readyState <= 1){ ws.onclose = null; ws.close(); } }catch(_){}
     dcFrames = dcControl = pc = null; ws = null;
+    lastCaptureProfileKey = null;
+    frameFlow.reset();
   }
 
   function scheduleReconnect(why){
@@ -1025,14 +1365,16 @@
     }, 2000);
   }
 
-  function wireSocket(room, code, exp, sig){
-    ws.addEventListener('open', async () => {
+  function wireSocket(socket, peer, frameChannel, room, code, exp, sig){
+    socket.addEventListener('open', async () => {
+      if(socket !== ws || peer !== pc) return;
       setWs('open');
       try{
-        ws.send(JSON.stringify({type:'hello', room, role:'ipad', exp, sig}));
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        ws.send(JSON.stringify({type:'offer', sdp: pc.localDescription.sdp}));
+        socket.send(JSON.stringify({type:'hello', room, role:'ipad', exp, sig}));
+        const offer = await peer.createOffer();
+        await peer.setLocalDescription(offer);
+        if(socket !== ws || peer !== pc || socket.readyState !== WebSocket.OPEN) return;
+        socket.send(JSON.stringify({type:'offer', sdp: peer.localDescription.sdp}));
         pairMsg.textContent = 'Waiting for the laptop to answer…';
         // Watchdog: ICE can legitimately take 10-15s, so wait 20s before giving
         // up. Scoped to THIS attempt via attemptId so a later attempt's success
@@ -1040,7 +1382,7 @@
         const myAttempt = attemptId;
         setTimeout(() => {
           if(myAttempt !== attemptId) return;               // superseded
-          if(!dcFrames || dcFrames.readyState !== 'open'){
+          if(peer === pc && frameChannel === dcFrames && frameChannel.readyState !== 'open'){
             establishing = false;
             scheduleReconnect('no answer');
           }
@@ -1051,25 +1393,30 @@
         scheduleReconnect('offer failed');
       }
     });
-    ws.addEventListener('message', (ev) => {
+    socket.addEventListener('message', (ev) => {
+      if(socket !== ws || peer !== pc) return;
       try{
         const msg = JSON.parse(ev.data);
         if(!msg || typeof msg !== 'object') return;
-        if(msg.type === 'answer' && pc){
-          pc.setRemoteDescription({type:'answer', sdp: msg.sdp}).catch(() => {});
-        } else if(msg.type === 'candidate' && pc && msg.candidate){
-          pc.addIceCandidate(msg.candidate).catch(() => {});
+        if(msg.type === 'answer'){
+          peer.setRemoteDescription({type:'answer', sdp: msg.sdp}).catch(() => {});
+        } else if(msg.type === 'candidate' && msg.candidate){
+          peer.addIceCandidate(msg.candidate).catch(() => {});
         }
       }catch(_){ /* malformed signaling message: drop, never throw */ }
     });
-    ws.addEventListener('close', (ev) => {
+    socket.addEventListener('close', (ev) => {
       // Only the CURRENT socket's closure matters. When we've already moved on
       // to a newer attempt, an evicted old socket firing close here (e.g. the
       // relay's last-wins 4409 to the stale connection) must be ignored, or it
       // would tear down the connection that just replaced it.
-      if(ev.target !== ws) return;
+      if(ev.target !== ws || peer !== pc) return;
       setWs('closed');
-      establishing = false;   // this attempt's socket is gone; allow a retry
+      establishing = false;
+      // SDP/ICE signalling is no longer needed after SCTP is established.
+      // A tunnel idle timeout must never destroy a healthy direct media path.
+      if(CapturePolicy.mediaPathHealthy(frameChannel.readyState,
+          peer.connectionState, peer.iceConnectionState)) return;
       if(ev.code === 4401){
         // Auth genuinely failed. With a fixed dev code this shouldn't recur, so
         // surface it rather than loop, but keep retrying slowly in case it was a
@@ -1083,7 +1430,9 @@
         scheduleReconnect('ws closed');
       }
     });
-    ws.addEventListener('error', () => setWs('error'));
+    socket.addEventListener('error', () => {
+      if(socket === ws && peer === pc) setWs('error');
+    });
   }
 
   // Build a fresh peer connection + relay socket and offer. Re-entrant: safe to
@@ -1092,24 +1441,39 @@
     establishing = true;
     attemptId++;
     cleanupPeer();
-    const room = getRoom();
-    const exp = Math.ceil((Date.now() / 1000 + 1) / PAIR_WINDOW_SECONDS) * PAIR_WINDOW_SECONDS;
-    const sig = await hmacSig(RELAY_SECRET, room, storedCode, exp);
+    try{
+      const room = getRoom();
+      const exp = Math.ceil((Date.now() / 1000 + 1) / PAIR_WINDOW_SECONDS) * PAIR_WINDOW_SECONDS;
+      const sig = await hmacSig(RELAY_SECRET, room, storedCode, exp);
 
-    pc = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
-    stream.getTracks().forEach(t => pc.addTrack(t, stream));
-    // Ordered but unreliable: a frame now spans several chunks, so ordering
-    // keeps reassembly and capture timestamps intact, while maxRetransmits:0
-    // still drops a lost chunk rather than head-of-line blocking every frame.
-    dcFrames = pc.createDataChannel('frames', {ordered:true, maxRetransmits:0});
-    dcControl = pc.createDataChannel('control'); // default reliable/ordered
-    wireDataChannels();
-    wirePeerConnection();
+      const peer = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
+      pc = peer;
+      // The camera stream remains local on previewEl. Do not add a native media
+      // track: the host consumes the JPEG data channel, and an unconsumed RTP
+      // track creates a second encoder plus an ever-growing receiver queue.
+      // Reliable ordered delivery plus an application ACK gives us exactly one
+      // complete JPEG in flight. That avoids partial-frame loss and unbounded
+      // queues while preferring q0.92 pixels; a missing ACK triggers a fresh peer.
+      const frameChannel = peer.createDataChannel('frames', {ordered:true});
+      const controlChannel = peer.createDataChannel('control'); // default reliable/ordered
+      dcFrames = frameChannel;
+      dcControl = controlChannel;
+      wireDataChannels(peer, frameChannel, controlChannel);
+      wirePeerConnection(peer);
 
-    pairMsg.textContent = 'Connecting…';
-    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    ws = new WebSocket(proto + '//' + location.host + '/ws');
-    wireSocket(room, storedCode, exp, sig);
+      pairMsg.textContent = 'Connecting…';
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const socket = new WebSocket(proto + '//' + location.host + '/ws');
+      ws = socket;
+      wireSocket(socket, peer, frameChannel, room, storedCode, exp, sig);
+    }catch(err){
+      // scheduleReconnect deliberately rejects concurrent establishment. Clear
+      // the guard on every synchronous/awaited setup failure so callers can
+      // actually schedule the next attempt instead of wedging until reload.
+      establishing = false;
+      cleanupPeer();
+      throw err;
+    }
   }
 
   async function connect(){
@@ -1123,8 +1487,10 @@
 
     if(!stream){
       try{
+        const initialConfig = capturePolicy.getConfig();
         stream = await navigator.mediaDevices.getUserMedia({
-          video: {width:{ideal:960}, height:{ideal:720}, frameRate:{ideal:24}, facingMode:'user'},
+          video: {width:{ideal:initialConfig.max_width}, height:{ideal:initialConfig.max_height},
+            frameRate:{ideal:initialConfig.target_fps}, facingMode:'user'},
           audio: false,
         });
       }catch(err){
@@ -1133,25 +1499,13 @@
         return;
       }
       previewEl.srcObject = stream;
+      applyTrackCaptureConfig();
       tuneCamera(stream);
-      // Follow the track's true geometry. Safari treats the request above as
-      // a hint: the front camera may be center-cropped to a different aspect,
-      // and a turned iPad delivers portrait frames. Drawing those into fixed
-      // 960x720 coordinates squashed or displaced the subject, so the capture
-      // canvas now adopts videoWidth x videoHeight whenever it changes.
-      const syncCapture = () => {
-        const vw = previewEl.videoWidth, vh = previewEl.videoHeight;
-        if(!vw || !vh) return;
-        const cap = 1280, big = Math.max(vw, vh);
-        const scale = big > cap ? cap / big : 1;
-        CANVAS_W = Math.round(vw * scale / 2) * 2;
-        CANVAS_H = Math.round(vh * scale / 2) * 2;
-        if(canvas.width !== CANVAS_W) canvas.width = CANVAS_W;
-        if(canvas.height !== CANVAS_H) canvas.height = CANVAS_H;
-      };
-      previewEl.addEventListener('loadedmetadata', syncCapture);
-      previewEl.addEventListener('resize', syncCapture);
-      syncCapture();
+      // Safari treats constraints as hints and rotates track geometry with the
+      // device, so policy sizing always follows the actual preview dimensions.
+      previewEl.addEventListener('loadedmetadata', syncCaptureCanvas);
+      previewEl.addEventListener('resize', syncCaptureCanvas);
+      syncCaptureCanvas();
     }
     requestWakeLock(); // called from a click handler, satisfying user-activation requirements
 
