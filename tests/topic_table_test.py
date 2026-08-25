@@ -416,6 +416,7 @@ GOLDEN = {
     "clothing": {
         "signature": "clothing:Bring a layer.",
         "priority": 60,
+        "category": "general",
         "fallback": "Bring a layer.",
         "llm_intent": "Gently mention what you noticed about their clothing "
                       "versus the weather and offer a suggestion.",
@@ -423,6 +424,7 @@ GOLDEN = {
     "vitals": {
         "signature": "vitals:Take it easy.",
         "priority": 65,
+        "category": "general",
         "fallback": "Take it easy.",
         "llm_intent": "Gently mention the health observation without diagnosing, "
                       "and suggest a calm check-in or rest.",
@@ -430,12 +432,16 @@ GOLDEN = {
     "pain": {
         "signature": "pain",
         "priority": 70,
+        "category": "general",
         "fallback": "You look a little uncomfortable — are you okay?",
         "llm_intent": "Gently ask if they are comfortable or in any discomfort.",
     },
     "tired": {
         "signature": "tired",
         "priority": 50,
+        # "mood" (600s gap) rate-limits the drowsiness prompt; it was "general"
+        # (never category-gated) before the false-positive tuning.
+        "category": "mood",
         "fallback": "You seem a little tired — how are you feeling? "
                     "A short rest might feel good.",
         "llm_intent": "Kindly ask how they are feeling and suggest a rest if "
@@ -460,7 +466,7 @@ def test_migrated_candidates_match_the_hand_written_wording_exactly():
         assert intent.fallback == expected["fallback"], topic
         assert intent.llm_intent == expected["llm_intent"], topic
         assert intent.kind == "observation", topic
-        assert intent.category == "general", topic
+        assert intent.category == expected["category"], topic
 
 
 def test_migrated_candidates_carry_the_same_ranking_metadata():

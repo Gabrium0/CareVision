@@ -422,6 +422,10 @@ TOPICS: tuple[TopicSpec, ...] = (
         fallback="You seem a little tired — how are you feeling? A short rest "
                  "might feel good.",
         priority=50,
+        # category "mood" (600s gap) rate-limits the prompt instead of leaving it
+        # on ungated "general"; min_confidence 0.6 rejects a barely-tripped
+        # perclos=0.25 reading, so only a well-supported drowsiness signal speaks.
+        category="mood", min_confidence=0.6,
         support_cues=("under_eye_darkness", "under_eye_puffiness"),
         corroborated_by="tiredness"),
 

@@ -25,7 +25,8 @@ from agent.answers import (
 )
 from agent.state import ObservationMemory
 from agent.policy import Intent, Policy
-from agent.corroboration import CorroborationEngine, safe_check_in
+from agent.corroboration import (CorroborationEngine, enforce_second_person,
+                                  safe_check_in, strip_prior_disclosure)
 from agent.moondream_client import MoondreamClient
 from agent.conversation import (
     AgentContextBroker, AgentResponse, ConversationTurn, ProposedAction,
@@ -489,6 +490,16 @@ class VoiceAgent:
         instruction = intent.llm_intent
         if intent.detail:
             instruction += " Supporting detail: " + intent.detail
+        if intent.signature.startswith(("ask:", "conclude:")):
+            # Corroboration is "ask, don't announce the prior": the low-confidence
+            # visual cue is in the observation context, but the person must never
+            # hear it named. Phrase only the gentle line; never describe, announce,
+            # or hint at any observation, sensor reading, camera, or location.
+            instruction += (
+                " Rephrase the supporting detail as one warm, natural spoken line "
+                "addressed to the person as 'you'. Do NOT describe, announce, quote, "
+                "or hint at any observation, sensor reading, camera, or room/location "
+                "— only say the line itself.")
         if topic is not None:
             instruction += (" First answer the person's current question completely. "
                             "Only afterward, if natural, transition with 'By the way' and "
@@ -1443,8 +1454,12 @@ class VoiceAgent:
         elif intent.signature.startswith(("ask:", "conclude:")):
             # Health check-in lines are LLM-phrased from low-confidence visual
             # priors; the airlock discards any generation that asserts a finding
-            # or accuses, falling back to the hand-authored rule text.
+            # or accuses, falling back to the hand-authored rule text. A second
+            # deterministic guard keeps the line addressed to the person ('you')
+            # rather than a third-person report about them.
             text = safe_check_in(generated, intent.fallback)
+            text = enforce_second_person(text, intent.fallback)
+            text = strip_prior_disclosure(text, intent.fallback)
         else:
             text = generated or intent.fallback
         # Small talk and most topic fallbacks end in a question but belong to no

@@ -22,6 +22,7 @@ so all rate-limiting/no-repeat behavior stays in one place.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from agent.answers import interpret_answer
@@ -72,6 +73,75 @@ def safe_check_in(generated: str | None, fallback: str) -> str:
     if any(bad in lowered for bad in _UNSAFE_CHECK_IN):
         return fallback
     return text
+
+
+# A check-in must be spoken TO the person, in the second person. An LLM
+# generation sometimes drifts into a third-person report ("They've agreed to a
+# check-in", "The person seems tired") — talking about the person to a caregiver
+# rather than to them. That is a quality failure, not a safety one, so it sits in
+# its own deterministic guard: any third-person reference to the person discards
+# the generation for the hand-authored rule text (which is second-person by
+# construction). Over-triggering is safe — it only ever falls back to vetted text.
+_THIRD_PERSON = re.compile(
+    r"\b(?:they|them|their|theirs|themselves|she|he|her|hers|him|his)\b"
+    r"|\bthe\s+(?:person|patient|resident|user|elderly|senior|individual)\b",
+    re.IGNORECASE)
+
+
+def enforce_second_person(generated: str | None, fallback: str) -> str:
+    """Keep an LLM-phrased check-in addressed to the person ('you').
+
+    Returns the generation only if it never refers to the person in the third
+    person; otherwise the deterministic hand-authored fallback. Pure and offline;
+    mirrors the safe_check_in airlock but guards address, not safety.
+    """
+    if not generated:
+        return fallback
+    text = " ".join(str(generated).split())
+    if not text or _THIRD_PERSON.search(text):
+        return fallback
+    return text
+
+
+# Corroboration is "ask, don't announce the prior": the low-confidence visual
+# cue lives in the observation context the LLM sees, but the person must never
+# hear it named ("I noticed a possible skin change in the living room ..."). A
+# generation that prepends such a disclosure has its announcing sentence removed;
+# the genuine question/line is kept. If nothing safe remains, the hand-authored
+# rule text stands in. Deterministic and offline, like the other airlocks.
+_PRIOR_DISCLOSURE = re.compile(
+    r"\bi(?:'ve| have)?\s+(?:noticed|notice|see|saw|observed?|detected?|spotted|"
+    r"can see|could see)\b"
+    r"|\bmy (?:camera|sensor|reading)s?\b|\bthe camera\b|\bsensors?\b"
+    r"|\bin (?:the|your) (?:living\s?room|bedroom|kitchen|bathroom|hallway|"
+    r"dining\s?room|room)\b",
+    re.IGNORECASE)
+
+
+def _split_sentences(text: str) -> list[str]:
+    # Split on sentence punctuation AND on dashes/semicolons/colons, so an
+    # announcement joined to the real question by an em-dash ("I noticed a rash
+    # — have you felt itchy?") can have just its announcing clause removed.
+    parts = re.split(r"(?<=[.!?])\s+|\s*[—–]\s*|\s+-\s+|\s*[;:]\s+",
+                     text.strip())
+    return [s.strip() for s in parts if s and s.strip()]
+
+
+def strip_prior_disclosure(generated: str | None, fallback: str) -> str:
+    """Remove any sentence that announces the visual prior or a location.
+
+    Keeps the genuine spoken line (the question or gentle conclusion) so the
+    LLM's natural phrasing survives; falls back to the hand-authored rule text
+    only when nothing disclosure-free remains. Pure and offline.
+    """
+    if not generated:
+        return fallback
+    text = " ".join(str(generated).split())
+    kept = [s for s in _split_sentences(text) if not _PRIOR_DISCLOSURE.search(s)]
+    cleaned = " ".join(kept).strip()
+    if not cleaned or _PRIOR_DISCLOSURE.search(cleaned):
+        return fallback
+    return cleaned
 
 
 @dataclass

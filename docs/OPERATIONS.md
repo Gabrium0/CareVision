@@ -111,12 +111,14 @@ The relay can be hosted (see `relay/render.yaml`) or simply **run locally behind
 a tunnel**, which is the lower-friction option: nothing to deploy, no cold
 start, and the shared secret never leaves the machine.
 
-**Fastest path — one launcher script.** `scripts/start-showcase.ps1` opens all
-three windows (relay, `cloudflared`, the app) itself, captures that run's fresh
-`trycloudflare.com` URL straight out of the `cloudflared` log and passes it to
-`main.py --ipad-relay-url` — so `IPAD_RELAY_URL` in `.env` never needs manual
-updating — and opens a fourth window with a scannable QR code
-(`scripts/show_qr.py`) for the pairing URL:
+**Fastest path — one launcher script.** `scripts/start-showcase.ps1` starts all
+three processes (relay, `cloudflared`, the app) itself — as tabs in one
+Windows Terminal window when `wt` is installed, otherwise as separate pwsh
+windows — captures that run's fresh `trycloudflare.com` URL straight out of
+the `cloudflared` log and passes it to `main.py --ipad-relay-url` — so
+`IPAD_RELAY_URL` in `.env` never needs manual updating — and adds a fourth
+tab/window with a scannable QR code (`scripts/show_qr.py`) for the pairing
+URL:
 
 ```powershell
 pwsh -File scripts\start-showcase.ps1

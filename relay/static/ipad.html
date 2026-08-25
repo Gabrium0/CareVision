@@ -104,6 +104,27 @@
   .vitals.compact .vtile .vval { font-size:30px; }
   .vitals.compact .vtile .vicon, .vitals.compact .vtile .vsub { display:none; }
 
+  /* ---- live-demo strip -------------------------------------------------- */
+  .demostrip { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
+    gap:14px; margin-bottom:16px; }
+  .demostrip:empty { display:none; }
+  .dtile { position:relative; background:var(--panel); border:1px solid var(--line);
+    border-radius:16px; padding:16px 16px 14px; text-align:center; overflow:hidden; }
+  .dtile .dicon { font-size:26px; line-height:1; }
+  .dtile .dlabel { font-size:12px; color:var(--dim); text-transform:uppercase;
+    letter-spacing:.06em; margin-top:6px; }
+  .dtile .dval { font-size:60px; font-weight:800; line-height:1.0; margin-top:4px;
+    font-variant-numeric:tabular-nums; }
+  .dtile.label .dval { font-size:34px; text-transform:capitalize; }
+  .dtile.absent .dval { color:var(--dim); }
+  body.presenting .dtile .dval { font-size:72px; }
+  /* Flash the whole tile when its counter/label changes, so the eye is drawn to
+     exactly the tile that just reacted to the action being demoed. */
+  @keyframes dpulse { 0% { box-shadow:0 0 0 0 var(--notice); border-color:var(--notice); }
+    100% { box-shadow:0 0 0 14px transparent; border-color:var(--line); } }
+  .dtile.bump { animation:dpulse .9s ease-out; }
+  .dtile.bump .dval { color:var(--notice); }
+
   /* ---- signal feed ----------------------------------------------------- */
   .feed { display:flex; flex-direction:column; gap:8px; }
   .srow { display:flex; align-items:flex-start; gap:10px; background:var(--panel);
@@ -238,6 +259,10 @@
 
   <!-- RESIDENT VIEW -->
   <div id="viewResident">
+    <!-- Live-demo strip: big counter/label tiles that react to a single action
+         (yawn, blink, nod, expression, gesture) so a showcase can prove a
+         detector works on the spot. Populated from telemetry.demo_tiles. -->
+    <div class="demostrip" id="demoStrip"></div>
     <div class="vitals" id="vitalsResident"></div>
   </div>
 
@@ -406,6 +431,8 @@
   const htextEl = document.getElementById('htext');
   const vitalsResidentEl = document.getElementById('vitalsResident');
   const vitalsProviderEl = document.getElementById('vitalsProvider');
+  const demoStripEl = document.getElementById('demoStrip');
+  const demoPrev = {};   // id -> last rendered value, to flash a tile on change
   const signalFeedEl = document.getElementById('signalFeed');
   const statFeedEl = document.getElementById('statFeed');
   const viewResidentEl = document.getElementById('viewResident');
@@ -564,6 +591,34 @@
       `</div>`;
   }
 
+  function renderDemoTiles(){
+    if(!demoStripEl) return;
+    const tiles = (lastTelemetry && Array.isArray(lastTelemetry.demo_tiles))
+      ? lastTelemetry.demo_tiles : [];
+    // Detect which tiles changed since the last frame BEFORE rewriting the DOM,
+    // so a freshly-created node carries the .bump class from the outset and its
+    // CSS animation plays. A count going up, or a label flipping, both bump.
+    const bumped = {};
+    tiles.forEach(t => {
+      const key = (t.value === null || t.value === undefined) ? null : String(t.value);
+      if(key !== null && key !== demoPrev[t.id] && demoPrev[t.id] !== undefined){
+        bumped[t.id] = true;
+      }
+      demoPrev[t.id] = key;
+    });
+    try{
+      demoStripEl.innerHTML = tiles.map(t => {
+        const absent = !t.present || t.value === null || t.value === undefined;
+        const kind = t.kind === 'label' ? ' label' : '';
+        const cls = 'dtile' + kind + (absent ? ' absent' : '') + (bumped[t.id] ? ' bump' : '');
+        const val = absent ? '—' : esc(String(t.value));
+        return `<div class="${cls}"><div class="dicon">${esc(t.icon || '•')}</div>` +
+          `<div class="dlabel">${esc(t.label)}</div>` +
+          `<div class="dval">${val}</div></div>`;
+      }).join('');
+    }catch(_){ /* a malformed frame must never blank the dashboard */ }
+  }
+
   function renderVitals(){
     if(!lastTelemetry || !Array.isArray(lastTelemetry.vitals)) return;
     const visible = lastTelemetry.vitals.filter(v => prefs.tiles[v.id] !== false);
@@ -633,6 +688,7 @@
       }
     });
     renderVitals();
+    renderDemoTiles();
     renderHeadline();
     renderSignals();
     renderStats();

@@ -114,6 +114,21 @@ def test_start_paused_modules_stay_warm_and_re_enableable():
     assert gate.enabled("grooming", "primary") is True
 
 
+@pytest.mark.parametrize("module_name", ["pain", "facial_asymmetry"])
+def test_showcase_noise_modules_stay_warm_and_re_enableable(module_name):
+    gate = ModuleGate(primary_enabled={module_name},
+                      secondary_enabled={module_name})
+    applied, ignored = seed_start_paused(gate, [module_name], {module_name})
+    assert applied == [module_name]
+    assert ignored == []
+    assert gate.enabled(module_name, "primary") is False
+    assert gate.enabled(module_name, "secondary") is False
+
+    gate.set(module_name, True, scope="primary")
+    assert gate.enabled(module_name, "primary") is True
+    assert gate.enabled(module_name, "secondary") is False
+
+
 def test_start_paused_ignores_unknown_names_without_side_effects():
     gate = ModuleGate(primary_enabled={"presence"})
     applied, ignored = seed_start_paused(gate, ["no_such_module", "presence"],
@@ -143,6 +158,7 @@ def test_shipped_start_paused_config_is_wellformed():
     paused = ((config or {}).get("runtime") or {}).get("start_paused")
     assert isinstance(paused, list) and paused
     assert all(isinstance(name, str) and name for name in paused)
+    assert {"pain", "facial_asymmetry"} <= set(paused)
     unknown = [name for name in paused if name not in all_registered()]
     assert unknown == []
 

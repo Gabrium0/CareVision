@@ -33,6 +33,8 @@ def test_conversation_zone_allows_stable_face_measurements():
     assert ctx.extras["showcase"]["zone"] == "conversation"
     assert ctx.extras["showcase"]["stable"] is True
     assert gate.allow("heart_rate", ctx)
+    assert gate.allow("pain", ctx)
+    assert gate.allow("facial_asymmetry", ctx)
     assert not gate.allow("gait", ctx)
     assert {r.key for r in results} == {"zone", "capture_ready", "heart_rate_ready"}
 
@@ -74,10 +76,14 @@ def test_gate_rejects_multiple_people_and_bad_capture():
     assert not ctx.extras["showcase"]["stable"]
     assert "one at a time" in ctx.extras["showcase"]["guidance"]
     assert not gate.allow("heart_rate", ctx)
+    assert not gate.allow("pain", ctx)
+    assert not gate.allow("facial_asymmetry", ctx)
     ctx = _ctx(motion=20)
     gate.assess(ctx)
     assert not ctx.extras["showcase"]["stable"]
     assert "hold still" in ctx.extras["showcase"]["guidance"]
+    assert not gate.allow("pain", ctx)
+    assert not gate.allow("facial_asymmetry", ctx)
 
 
 def test_movement_zone_only_allows_whole_body_features():
@@ -119,6 +125,7 @@ def test_depth_free_source_gates_close_range_modules_by_framing_proxy():
     assert state["block_reason"] is None
     assert state["heart_rate_ready"] is True
     assert gate.allow("respiration", ctx)
+    assert gate.allow("pain", ctx)
     assert gate.allow("facial_asymmetry", ctx)
     # Whole-body demos still need real depth-measured distance.
     assert not gate.allow("gait", ctx)
@@ -140,6 +147,8 @@ def test_depth_free_source_reports_framing_problem_not_missing_depth():
     assert state["stable"] is False
     assert state["block_reason"] == "no_face"
     assert "face" in state["guidance"].lower()
+    assert not gate.allow("pain", ctx)
+    assert not gate.allow("facial_asymmetry", ctx)
 
 
 def test_dashboard_payload_exposes_reasoning_card():

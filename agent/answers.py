@@ -57,6 +57,15 @@ _DENY = (
     "not now", "maybe later", "rather not", "i'd rather not", "id rather not",
     "no thanks", "no thank you", "not today", "leave it", "another time",
 )
+# Genuine uncertainty, checked BEFORE denials so "not really sure" and "I don't
+# know" read as unclear (buying one gentle re-ask) rather than as a refusal that
+# would suppress the topic for hours. Each phrase is more specific than the bare
+# denial token it would otherwise trip ("not really", "don't").
+_UNCLEAR = (
+    "not sure", "not really sure", "not too sure", "unsure", "not certain",
+    "hard to say", "hard to tell", "cant tell", "can't tell", "no idea",
+    "dont know", "don't know", "do not know", "who knows",
+)
 _CONFIRM = (
     # --- historic corroboration vocabulary (verbatim)
     "yes", "yeah", "yep", "a bit", "a little", "i have", "i do",
@@ -82,6 +91,9 @@ def interpret_answer(text: str) -> str:
     confirming on a stray token.
     """
     t = " " + re.sub(r"[^a-z' ]+", " ", text.lower()) + " "
+    for w in _UNCLEAR:
+        if f" {w} " in t:
+            return "unclear"
     for w in _DENY:
         if f" {w} " in t:
             return "denied"

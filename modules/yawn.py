@@ -32,6 +32,7 @@ class Yawn(DetectionModule):
         super().__init__(**params)
         self.events = TimedBuffer(self.window_seconds)
         self._open_since = None
+        self._total = 0            # cumulative yawns since start; only ever rises
 
     def process(self, ctx: FrameContext):
         """Run this detector on the current frame; return Result(s) or None."""
@@ -55,13 +56,20 @@ class Yawn(DetectionModule):
             if open_duration > self.sustained_seconds:
                 self.events.push(ctx.timestamp, 1.0)
                 self._open_since = None
+                self._total += 1
                 rate = len(self.events)
                 results.append(self.result(
                     "yawn", rate, 0.7, Severity.NOTICE,
-                    f"Yawn detected ({rate} in last 3 min — fatigue?)", ttl=8.0))
+                    f"Yawn detected ({self._total} total, {rate} in last 3 min — fatigue?)",
+                    ttl=8.0))
         else:
             self._open_since = None
         yawn_rate = len(self.events) * (60.0 / max(self.window_seconds, 1e-6))
         results.append(self.result("yawn_rate_per_min", round(float(yawn_rate), 2), 0.6,
+                                   Severity.INFO, "", ttl=8.0))
+        # Monotonic lifetime counter (never decays like the 3-min window), emitted
+        # last so it reflects a yawn confirmed this same frame -- a demo can just
+        # yawn and watch the number tick up on the iPad with no lag.
+        results.append(self.result("yawn_count_total", self._total, 0.6,
                                    Severity.INFO, "", ttl=8.0))
         return results

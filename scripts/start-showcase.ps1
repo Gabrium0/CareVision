@@ -4,12 +4,13 @@
     monitoring project.
 
 .DESCRIPTION
-    Auto-starts the three processes the showcase needs, each in its own
-    visible pwsh window:
+    Auto-starts the three processes the showcase needs. When Windows
+    Terminal (wt) is installed, all of them run as tabs in one wt window;
+    otherwise each falls back to its own separate pwsh window:
 
-      Terminal 1 - relay        python relay\server.py
-      Terminal 2 - cloudflared  quick tunnel to http://localhost:10000
-      Terminal 3 - app          python main.py --source ipad ...
+      relay        python relay\server.py
+      cloudflared  quick tunnel to http://localhost:10000
+      app          python main.py --source ipad ...
 
     Uses the SYSTEM Python interpreter (not .venv): requirements-ipad.txt
     documents that .venv on this machine is a stale, unused environment
@@ -28,7 +29,7 @@
 
     cloudflared is started with --logfile so this launcher can scrape the
     quick-tunnel URL (https://<random>.trycloudflare.com) out of the log
-    even though cloudflared runs in its own separate window. That URL is
+    even though cloudflared runs in its own separate tab/window. That URL is
     then passed to main.py via --ipad-relay-url, so the operator never has
     to hand-edit IPAD_RELAY_URL in .env.
 
@@ -85,6 +86,34 @@ catch {
 if (-not $cloudflaredCmd) {
     Write-Error "cloudflared was not found on PATH. Install it or add it to PATH before running this launcher."
     exit 1
+}
+
+# Windows Terminal, if present, lets every process live as a tab in one
+# window instead of spawning four separate top-level pwsh windows. Falls
+# back to the old one-window-per-process behavior when wt isn't installed.
+$wtCmd = $null
+try {
+    $wtCmd = Get-Command wt -ErrorAction Stop
+}
+catch {
+    $wtCmd = $null
+}
+$useWt = [bool]$wtCmd
+
+# Opens one or more tabs in the showcase's Windows Terminal window. Each
+# entry is a @{ Title; Command } hashtable. '-w 0' targets "the most
+# recently used wt window" - the first call (no such window yet) creates
+# one, every later call reuses it, so all tabs land together.
+function Start-WtTabs {
+    param(
+        [Parameter(Mandatory)] [array] $Tabs
+    )
+    $wtArgs = @('-w', '0')
+    for ($i = 0; $i -lt $Tabs.Count; $i++) {
+        if ($i -gt 0) { $wtArgs += ';' }
+        $wtArgs += @('new-tab', '-d', $root, '--title', $Tabs[$i].Title, 'pwsh', '-NoExit', '-Command', $Tabs[$i].Command)
+    }
+    Start-Process wt -ArgumentList $wtArgs
 }
 
 # ---------------------------------------------------------------------------
@@ -156,23 +185,35 @@ Write-Host "IPAD_ROOM:    $env:IPAD_ROOM"
 Write-Host ""
 
 # ---------------------------------------------------------------------------
-# 3. Terminal 1 - relay server.
-# ---------------------------------------------------------------------------
-Write-Host "Starting Terminal 1 (relay server)..."
-Start-Process pwsh -ArgumentList '-NoExit', '-Command', ("`"$pythonExe`" relay\server.py") -WorkingDirectory $root
-
-# ---------------------------------------------------------------------------
-# 4. Terminal 2 - cloudflared quick tunnel, logging to a temp file so we can
-#    scrape the assigned URL even though it runs in its own window.
+# 3-4. Terminal 1 (relay server) + Terminal 2 (cloudflared quick tunnel),
+#      logging to a temp file so we can scrape the assigned URL even though
+#      it runs in its own tab. Started together as two tabs in one wt window
+#      when Windows Terminal is available; otherwise as two separate windows.
 # ---------------------------------------------------------------------------
 $log = Join-Path $env:TEMP ("cloudflared-showcase-{0}.log" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
 if (Test-Path -LiteralPath $log) {
     Remove-Item -LiteralPath $log -Force
 }
 
-Write-Host "Starting Terminal 2 (cloudflared quick tunnel)..."
-Write-Host "  Log file: $log"
-Start-Process pwsh -ArgumentList '-NoExit', '-Command', ("cloudflared tunnel --url http://localhost:10000 --logfile `"$log`"") -WorkingDirectory $root
+$relayCmd = "`"$pythonExe`" relay\server.py"
+$cloudflaredCmdLine = "cloudflared tunnel --url http://localhost:10000 --logfile `"$log`""
+
+if ($useWt) {
+    Write-Host "Starting relay server + cloudflared tunnel tabs..."
+    Write-Host "  Log file: $log"
+    Start-WtTabs -Tabs @(
+        @{ Title = 'relay'; Command = $relayCmd },
+        @{ Title = 'cloudflared'; Command = $cloudflaredCmdLine }
+    )
+}
+else {
+    Write-Host "Starting Terminal 1 (relay server)..."
+    Start-Process pwsh -ArgumentList '-NoExit', '-Command', $relayCmd -WorkingDirectory $root
+
+    Write-Host "Starting Terminal 2 (cloudflared quick tunnel)..."
+    Write-Host "  Log file: $log"
+    Start-Process pwsh -ArgumentList '-NoExit', '-Command', $cloudflaredCmdLine -WorkingDirectory $root
+}
 
 # ---------------------------------------------------------------------------
 # 5. Poll the log file for the quick-tunnel URL.
@@ -195,7 +236,7 @@ for ($i = 0; $i -lt 80; $i++) {
 }
 
 if (-not $relayUrl) {
-    Write-Error "cloudflared did not report a tunnel URL within the timeout. Check the cloudflared window and the log file: $log"
+    Write-Error "cloudflared did not report a tunnel URL within the timeout. Check the cloudflared tab/window and the log file: $log"
     exit 1
 }
 
@@ -212,20 +253,29 @@ if ($extraArgs.Length -gt 0) {
     $mainCmd = "$mainCmd $extraArgs"
 }
 
-Write-Host "Starting Terminal 3 (app)..."
-Start-Process pwsh -ArgumentList '-NoExit', '-Command', $mainCmd -WorkingDirectory $root
-
 # ---------------------------------------------------------------------------
-# 6b. iPad Pairing window - dedicated persistent window showing a scannable
-#     QR code for the pairing URL, so the operator can scan it with the
-#     iPad camera instead of typing the random trycloudflare URL. Best
-#     effort: scripts\show_qr.py degrades to printing the plain URL if the
-#     optional 'qrcode' package isn't installed.
+# 6b. iPad Pairing tab/window - shows a scannable QR code for the pairing
+#     URL, so the operator can scan it with the iPad camera instead of
+#     typing the random trycloudflare URL. Best effort: scripts\show_qr.py
+#     degrades to printing the plain URL if 'qrcode' isn't installed.
 # ---------------------------------------------------------------------------
 $pairingUrl = "$relayUrl/r/$env:IPAD_ROOM"
+$qrCmd = "`"$pythonExe`" scripts\show_qr.py `"$pairingUrl`""
 
-Write-Host "Starting iPad Pairing window (QR code)..."
-Start-Process pwsh -ArgumentList '-NoExit', '-Command', ("`"$pythonExe`" scripts\show_qr.py `"$pairingUrl`"") -WorkingDirectory $root
+if ($useWt) {
+    Write-Host "Starting app + iPad pairing (QR code) tabs..."
+    Start-WtTabs -Tabs @(
+        @{ Title = 'app'; Command = $mainCmd },
+        @{ Title = 'pairing'; Command = $qrCmd }
+    )
+}
+else {
+    Write-Host "Starting Terminal 3 (app)..."
+    Start-Process pwsh -ArgumentList '-NoExit', '-Command', $mainCmd -WorkingDirectory $root
+
+    Write-Host "Starting iPad Pairing window (QR code)..."
+    Start-Process pwsh -ArgumentList '-NoExit', '-Command', $qrCmd -WorkingDirectory $root
+}
 
 # ---------------------------------------------------------------------------
 # 7. Summary for the operator.
@@ -239,6 +289,6 @@ Write-Host " Tunnel URL:        $relayUrl"
 Write-Host ""
 Write-Host " iPad pairing URL:  $pairingUrl"
 Write-Host ""
-Write-Host " The 6-digit pairing code appears in the app window (Terminal 3)."
-Write-Host " Keep Terminal 1 (relay) running for the whole session."
+Write-Host " The 6-digit pairing code appears in the app tab/window."
+Write-Host " Keep the relay tab/window running for the whole session."
 Write-Host "=================================================================="

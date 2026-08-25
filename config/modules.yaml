@@ -18,7 +18,7 @@ runtime:
   # non-vital detectors live here so a live showcase stays smooth; remove
   # or comment entries to start with the full suite running.
   start_paused: [clothing, grooming, scene_vision, guided_assessments,
-                 age_estimation]
+                 age_estimation, pain, facial_asymmetry]
 
 tracking:
   enabled: false              # opt in with --enable-multi-person
@@ -238,11 +238,11 @@ modules:
   drowsiness:                 # PERCLOS + blink rate + microsleep
     enabled: true
     perclos_window_seconds: 60.0
-    baseline_seconds: 3.0
+    baseline_seconds: 8.0       # 3s was too fragile for a stable open-eye baseline
     closed_ear_ratio: 0.60
-    perclos_notice: 0.15
-    perclos_warning: 0.30
-    microsleep_seconds: 1.2
+    perclos_notice: 0.25        # normal blinking is ~3-5% PERCLOS; 0.15 tripped on squints/downward gaze
+    perclos_warning: 0.40
+    microsleep_seconds: 3.0     # real microsleeps are 3-15s; 1.2s caught slow blinks and reading downward
   yawn:
     enabled: true
     mar_threshold: 0.60

@@ -33,8 +33,8 @@ class ShowcaseGate:
 
     # Face/physiology estimates require the close, stable conversation zone.
     conversation_modules = frozenset({"heart_rate", "respiration", "facial_asymmetry",
-                                      "facial_swelling", "skin_color", "rash", "bruise",
-                                      "eye_redness", "sweating", "dry_lips"})
+                                      "pain", "facial_swelling", "skin_color", "rash",
+                                      "bruise", "eye_redness", "sweating", "dry_lips"})
     # Whole-body movement estimates are demonstrated only at the movement marker.
     movement_modules = frozenset({"balance", "gait", "fall", "tremor", "bradykinesia"})
 

@@ -306,6 +306,7 @@ _FATIGUE_STATS = [
     ("yawn", "mar", "MAR"),
     ("yawn", "mouth_open", "Mouth open"),
     ("yawn", "mouth_open_duration", "Mouth sec"),
+    ("yawn", "yawn_count_total", "Yawns total"),
     ("yawn", "yawn_count_3min", "Yawns/3m"),
     ("yawn", "yawn_rate_per_min", "Yawns/min"),
     ("head_nod", "head_pitch", "Pitch"),
@@ -831,6 +832,43 @@ def _ipad_vital(snapshot, spec, now: float) -> dict:
     }
 
 
+# Big, one-action-verifiable tiles for the iPad Resident view "live demo" strip.
+# Each is a counter that ticks up on a single action, or a label that flips when
+# the person does something, so a showcase can perform the action and point at
+# the tile reacting on screen. Counters read their module's monotonic *_total /
+# *_count keys (never the decaying rolling-window ones). (id, label, icon,
+# module, metric, kind); kind is "count" (integer that only rises) or "label".
+_IPAD_DEMO_TILES = [
+    ("yawns",   "Yawns",     "🥱", "yawn",       "yawn_count_total",  "count"),
+    ("blinks",  "Blinks",    "👁", "drowsiness", "blink_count_total", "count"),
+    ("nods",    "Head nods", "🙂", "head_nod",   "nod_count",         "count"),
+    ("mood",    "Mood",      "😊", "emotion",    "emotion",           "label"),
+    ("gesture", "Gesture",   "✋", "gesture",    "gesture",           "label"),
+]
+
+
+def _ipad_demo_tile(snapshot, spec, now: float) -> dict:
+    """One live-demo tile: current counter/label plus freshness, or absent.
+
+    A count tile stays ``present`` at 0 (its module emits the total every frame),
+    so the tile exists on screen before the first action; a label tile is absent
+    until the module has something to say (e.g. no gesture recognized yet).
+    """
+    tid, label, icon, module, metric, kind = spec
+    r = _best_vital(snapshot, module, metric)
+    if r is None:
+        return {"id": tid, "label": label, "icon": icon, "kind": kind,
+                "value": None, "present": False}
+    if kind == "count":
+        value = int(r.value) if isinstance(r.value, (int, float)) else r.value
+    else:
+        value = str(r.value).replace("_", " ")
+    return {"id": tid, "label": label, "icon": icon, "kind": kind,
+            "value": value, "present": True,
+            "severity": r.severity.value,
+            "fresh_for": round(max(0.0, float(r.timestamp + r.ttl) - now), 3)}
+
+
 def ipad_payload(snapshot, fps: float = 0.0, greeting: str | None = None,
                  reasoning: dict | None = None, system: dict | None = None,
                  performance: dict | None = None) -> dict:
@@ -850,6 +888,7 @@ def ipad_payload(snapshot, fps: float = 0.0, greeting: str | None = None,
                       system=system, performance=performance)
 
     vitals = [_ipad_vital(public, spec, now) for spec in _IPAD_VITALS]
+    demo_tiles = [_ipad_demo_tile(public, spec, now) for spec in _IPAD_DEMO_TILES]
 
     signals = []
     for s in full["signals"][:_IPAD_MAX_SIGNALS]:
@@ -892,6 +931,7 @@ def ipad_payload(snapshot, fps: float = 0.0, greeting: str | None = None,
         "greeting": full["greeting"],
         "person_present": bool(features.get("person")),
         "vitals": vitals,
+        "demo_tiles": demo_tiles,
         "signals": signals,
         "stats": {"fatigue": full["fatigue"],
                   "clothing_weather": full["clothing_weather"],

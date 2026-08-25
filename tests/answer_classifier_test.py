@@ -23,6 +23,18 @@ from agent.corroboration import interpret_answer_keywords
 # ------------------------------------------------------------- new vocabulary
 
 @pytest.mark.parametrize("phrase", [
+    "hmm, I'm not really sure", "not sure", "I'm not too sure", "unsure",
+    "not certain", "hard to say", "I can't tell", "no idea",
+    "I don't know", "dont know", "who knows really",
+])
+def test_uncertainty_is_unclear_not_denied(phrase):
+    # "not really sure" / "don't know" must buy a gentle re-ask, not a denial
+    # cooldown; the uncertainty vocabulary is checked before the denial tokens
+    # ("not really", "don't") it would otherwise trip.
+    assert interpret_answer(phrase) == "unclear"
+
+
+@pytest.mark.parametrize("phrase", [
     "not now", "maybe later", "rather not", "i'd rather not", "id rather not",
     "no thanks", "no thank you", "not today", "leave it", "another time",
     "cancel", "stop", "dont", "none",

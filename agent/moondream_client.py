@@ -15,11 +15,14 @@ from agent.conversation import AgentResponse, ContextItem
 
 _PERSONA = (
     "You are a warm, calm companion robot for an elderly person who may live "
-    "alone. Answer the person's question directly in one or two short, natural "
-    "spoken sentences. You may then ask one relevant follow-up or gently raise one "
-    "new observation. Be conversational and kind, never clinical or alarming. Do not give "
-    "medical diagnoses. If you mention something you noticed, be gentle and "
-    "offer, don't instruct."
+    "alone. When you refer to the person, address them directly as 'you'; do not "
+    "talk about them in the third person ('they', 'them', 'the person'). Answer "
+    "the person's question directly in one or two short, natural spoken sentences. "
+    "You may then ask one relevant follow-up, or gently mention one observation "
+    "ONLY if it is supported by what you actually know right now; never invent, "
+    "assume, or guess an observation you were not given. Be conversational and "
+    "kind, never clinical or alarming. Do not give medical diagnoses. If you "
+    "mention something you noticed, be gentle and offer, don't instruct."
 )
 
 
@@ -27,6 +30,19 @@ class MoondreamClient:
     """Small credential-safe wrapper around Moondream's chat API."""
 
     endpoint = "https://api.moondream.ai/v1/chat/completions"
+    # OpenAI-compatible token limit field. Subclasses targeting a different
+    # OpenAI-compatible backend (e.g. Gemini) may override this and _auth_headers.
+    token_param = "max_completion_tokens"
+
+    def _auth_headers(self, key: str) -> dict:
+        """Authorization header(s) for the backend; overridable by subclasses."""
+        return {"X-Moondream-Auth": key}
+
+    def _payload_extra(self) -> dict:
+        """Extra top-level request fields; overridable by subclasses (e.g. to
+        disable a model's server-side thinking so short spoken lines aren't
+        truncated). Empty for Moondream."""
+        return {}
 
     def __init__(self, model: str | None = None, enabled: bool = True,
                  timeout: float = 8.0):
@@ -186,12 +202,13 @@ class MoondreamClient:
             "model": self.model,
             "messages": messages,
             "temperature": 0.2,
-            "max_completion_tokens": max(32, min(int(max_completion_tokens), 512)),
+            self.token_param: max(32, min(int(max_completion_tokens), 512)),
+            **self._payload_extra(),
         }).encode("utf-8")
         request = urllib.request.Request(
             self.endpoint, data=payload, method="POST",
             headers={
-                "X-Moondream-Auth": key,
+                **self._auth_headers(key),
                 "Content-Type": "application/json",
                 "Accept": "application/json",
                 # Moondream's edge currently rejects Python-urllib's default
@@ -251,7 +268,12 @@ class MoondreamClient:
             "Use only fresh, relevant entries. Items marked agent_only are uncertain "
             "private hypotheses: never state them as facts or diagnoses; at most ask "
             "a gentle clarifying question. If the data does not answer the person, "
-            "say you do not have that information.\nOBSERVATION_DATA=" +
+            "say you do not have that information. Do not volunteer or invent any "
+            "observation about the person that is not present in this data. When the "
+            "person asks what you noticed or how they are, answer with the concrete "
+            "public observations that ARE present (for example a normal heart rate), "
+            "rather than a vague acknowledgement.\n"
+            "OBSERVATION_DATA=" +
             json.dumps(records, ensure_ascii=True, separators=(",", ":")))
         safe_messages = [{"role": "system",
                           "content": _PERSONA + "\n\n" + observation_data}]
@@ -450,7 +472,18 @@ class MoondreamClient:
 
     def generate(self, intent: str, context: str, detail: str = "") -> str | None:
         """Generate one short spoken line, or None for the local template path."""
+        # Intent-aware form guidance: a check-in must stay an actual question,
+        # a conclusion must stay warm and second-person. Without this the
+        # persona's "speak to you" instruction can flatten a question into a
+        # "you ..." statement.
+        if intent.startswith(("ask", "steer")):
+            form = " Phrase it as one gentle question ending with a question mark."
+        elif intent.startswith("conclude"):
+            form = " Speak warmly and directly to the person as 'you'."
+        else:
+            form = ""
         prompt = (f"{_PERSONA}\n\nWhat you know right now: {context}\n\n"
-                  f"Intent: {intent}. {detail}\n\nSay the single line you would speak now:")
+                  f"Intent: {intent}. {detail}{form}\n\n"
+                  f"Say the single line you would speak now:")
         text = self._complete(prompt, "generation")
         return text.split("\n", 1)[0].strip().strip('"')[:240] if text else None
