@@ -24,6 +24,7 @@ and connect/disconnect events.
 """
 from __future__ import annotations
 
+import hashlib
 import hmac
 import json
 import logging
@@ -46,6 +47,22 @@ CAPTURE_POLICY_PATH = STATIC_DIR / "ipad_capture_policy.js"
 # secret to the page is safe here: it is useless without the human-relayed
 # 6-digit pairing code, which the relay itself never learns.
 SECRET_PLACEHOLDER = "__RELAY_SECRET_JSON__"
+
+# Build stamp placeholder: replaced with a short content hash of the page +
+# capture policy so a refreshed iPad can prove it is running the current code.
+BUILD_PLACEHOLDER = "__CLIENT_BUILD_JSON__"
+
+
+def _client_build_id() -> str:
+    """Short hash of the served page + policy, stable per code version.
+
+    Reproducible off-device by hashing the same two files, so the laptop can
+    assert a refreshed iPad reports the build that is actually on disk.
+    """
+    digest = hashlib.sha256()
+    digest.update(IPAD_HTML_PATH.read_bytes())
+    digest.update(CAPTURE_POLICY_PATH.read_bytes())
+    return digest.hexdigest()[:12]
 
 RELAY_SECRET = os.environ.get("RELAY_SECRET")
 if not RELAY_SECRET:
@@ -92,6 +109,7 @@ async def serve_ipad_page(request: web.Request) -> web.Response:
         return web.Response(status=400, text="invalid room id")
     html = IPAD_HTML_PATH.read_text(encoding="utf-8")
     html = html.replace(SECRET_PLACEHOLDER, json.dumps(RELAY_SECRET))
+    html = html.replace(BUILD_PLACEHOLDER, json.dumps(_client_build_id()))
     # no-store so iOS Safari cannot serve a stale capture page after the page
     # is updated; without it a reload silently keeps the old resolution/logic.
     return web.Response(text=html, content_type="text/html",

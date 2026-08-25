@@ -171,7 +171,8 @@ class IPadLink:
                        "coalesced": 0, "sender_stats": None,
                        "unexpected_media_tracks": 0, "frame_acks_tx": 0,
                        "frame_ack_errors": 0, "capture_profile_generation": 0,
-                       "capture_profile": None}
+                       "capture_profile": None, "client_build": None,
+                       "client_ua": None, "client_caps": None}
 
         self._thread: Optional[threading.Thread] = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
@@ -688,6 +689,28 @@ class IPadLink:
             # (fallback). Surfaced in diagnostics so an rPPG quality regression
             # is attributable rather than mysterious.
             self._set(clock_source=payload.get("clock_source"))
+            return
+        if payload.get("type") == "client_version":
+            # Build stamp the page reports on connect (see ipad.html CLIENT_BUILD).
+            # Surfaced in diagnostics so a refresh can be confirmed to have picked
+            # up the current code rather than a Safari-cached older page.
+            build = payload.get("build")
+            ua = payload.get("ua")
+            caps = payload.get("caps")
+            safe_caps = None
+            if isinstance(caps, dict):
+                safe_caps = {}
+                for key, value in list(caps.items())[:16]:
+                    if not isinstance(key, str) or len(key) > 32:
+                        continue
+                    if isinstance(value, bool) or value is None:
+                        safe_caps[key] = value
+                    elif isinstance(value, int) and -1 <= value <= 1000:
+                        safe_caps[key] = value
+            self._set(
+                client_build=str(build)[:64] if isinstance(build, str) else None,
+                client_ua=str(ua)[:256] if isinstance(ua, str) else None,
+                client_caps=safe_caps)
             return
         if payload.get("type") == "camera_tuning":
             # Whether the iPad managed to lock exposure/white balance. Surfaced

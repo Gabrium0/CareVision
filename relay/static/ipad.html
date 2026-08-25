@@ -372,6 +372,10 @@
   // useless to derive a valid sig without the human-relayed 6-digit code,
   // which this page never learns except by the user typing it in.
   const RELAY_SECRET = __RELAY_SECRET_JSON__;
+  // Build stamp the relay injects from a hash of the served page + policy.js.
+  // Reported to the laptop on connect so a refresh can be proven to have picked
+  // up the current code (see IPadLink.status().client_build).
+  const CLIENT_BUILD = __CLIENT_BUILD_JSON__;
   // Both the laptop and this page must land on the same `exp` without
   // talking to each other first, so exp is quantized to a fixed wall-clock
   // window (PAIR_WINDOW_SECONDS) rather than "now plus a TTL". Anyone
@@ -398,6 +402,25 @@
   const CAPTURE_WINDOW_MS = 2000;
 
   function esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+  // Probe the on-device capabilities the offload phases need. Reported to the
+  // laptop so feasibility (MediaPipe Tasks needs WASM SIMD; WebGPU needs a
+  // recent Safari) is a measured fact rather than a UA guess.
+  function probeCaps(){
+    const caps = {};
+    const set = (k, fn) => { try{ caps[k] = fn(); }catch(_){ caps[k] = false; } };
+    set('rvfc', () => 'requestVideoFrameCallback' in HTMLVideoElement.prototype);
+    set('wasm', () => typeof WebAssembly === 'object' && typeof WebAssembly.instantiate === 'function');
+    // Standard 34-byte SIMD-detection module; validate() is synchronous.
+    set('wasm_simd', () => typeof WebAssembly === 'object' && WebAssembly.validate(new Uint8Array(
+      [0,97,115,109,1,0,0,0,1,5,1,96,0,1,123,3,2,1,0,10,10,1,8,0,65,0,253,15,253,98,11])));
+    set('wasm_threads', () => typeof SharedArrayBuffer === 'function');
+    set('webgl2', () => !!document.createElement('canvas').getContext('webgl2'));
+    set('webgpu', () => 'gpu' in navigator);
+    set('offscreen_canvas', () => typeof OffscreenCanvas !== 'undefined');
+    set('safari_major', () => { const m = navigator.userAgent.match(/Version\/(\d+)/); return m ? parseInt(m[1], 10) : null; });
+    return caps;
+  }
 
   function getRoom(){
     const parts = location.pathname.split('/').filter(Boolean);
@@ -1316,6 +1339,8 @@
     controlChannel.onopen = () => {
       if(peer !== pc || controlChannel !== dcControl) return;
       setDc('open'); showMain();
+      try{ controlChannel.send(JSON.stringify({type:'client_version',
+        build: CLIENT_BUILD, ua: navigator.userAgent, caps: probeCaps()})); }catch(_){}
       sendCameraTuningReport();
     };
     controlChannel.onmessage = (ev) => {
