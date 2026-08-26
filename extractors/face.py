@@ -31,6 +31,13 @@ class FaceExtractor:
         self._smoother = (OneEuroArray(mincutoff=1.5, beta=0.05)
                           if self._smooth_enabled else None)
         self.input_width = max(320, int(input_width))
+        # MediaPipe's VIDEO mode rejects any detect_for_video call whose timestamp
+        # is not strictly greater than the previous one. ctx.timestamp is float
+        # seconds kept monotonic only by a 0.1ms nudge (CaptureClock), which
+        # collapses to equal/lower integer milliseconds during iPad reconnect
+        # resync bursts. Track the last ms we fed the landmarker and force a
+        # strict increase so a resync can never crash the shared worker.
+        self._last_ts_ms: int | None = None
         if not _MODEL.exists():
             raise FileNotFoundError(
                 f"Missing {_MODEL}. Download face_landmarker.task from "
@@ -54,6 +61,9 @@ class FaceExtractor:
         rgb = np.ascontiguousarray(source[:, :, ::-1])
         mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
         ts_ms = int(ctx.timestamp * 1000)
+        if self._last_ts_ms is not None and ts_ms <= self._last_ts_ms:
+            ts_ms = self._last_ts_ms + 1
+        self._last_ts_ms = ts_ms
         out = self.landmarker.detect_for_video(mp_img, ts_ms)
         if not out.face_landmarks:
             return
@@ -94,6 +104,9 @@ class FaceExtractor:
         """Discard subject-bound smoothing after a camera/source switch."""
         self._smoother = (OneEuroArray(mincutoff=1.5, beta=0.05)
                           if self._smooth_enabled else None)
+        # _last_ts_ms is intentionally NOT reset: reset() keeps the same
+        # self.landmarker, whose internal timestamp clock persists across a
+        # source switch, so our strict-increase guard must persist with it.
 
     def close(self) -> None:
         """Release any resources (models, threads, sockets) held here."""

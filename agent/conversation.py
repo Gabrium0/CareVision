@@ -349,13 +349,24 @@ class TopicQueue:
                 continue
             severity = {"info": 0, "notice": 1, "warning": 2}.get(item.severity, 0)
             private = item.visibility == Visibility.AGENT_ONLY.value
-            prompt = ("Gently ask whether the person wants to discuss this uncertain "
-                      "observation; do not state it as fact."
+            # Turn an observation into ONE warm, specific question TO the person,
+            # never a robotic "By the way, <label> would you like to talk about
+            # that?". A behavioural cue (e.g. frequent face touching) should sound
+            # like caring concern ("Is your face feeling itchy or sore?"), and a
+            # low-confidence one must never be named as fact.
+            prompt = ("Gently turn what you have noticed into ONE warm, caring "
+                      "question about how the person feels right now, spoken to them "
+                      "as 'you'. Do not state the observation as fact or name it, and "
+                      "never say 'would you like to talk about that'."
                       if private else
-                      "Gently mention this new observation and invite the person to respond.")
-            fallback = ("By the way, I noticed something that may be worth checking together — "
-                        "would you like to talk about it?" if private else
-                        f"By the way, {item.message[:160]} Would you like to talk about that?")
+                      "Turn what you have noticed into ONE warm, specific, caring "
+                      "question spoken to the person as 'you' — e.g. if they keep "
+                      "touching their face, kindly ask whether it feels itchy or sore. "
+                      "Do not state the observation as a label and never say 'would "
+                      "you like to talk about that'.")
+            # Fallback (used only if the model output is rejected): a gentle,
+            # non-naming check-in rather than reading the raw observation aloud.
+            fallback = "By the way, how are you feeling right now — is anything bothering you?"
             self._topics.append(TopicCandidate(
                 id=f"topic:{topic_id}:{int(now * 1000)}", context_id=item.id,
                 signature=topic_id, prompt=prompt, fallback=fallback,

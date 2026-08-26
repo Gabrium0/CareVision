@@ -16,6 +16,12 @@ Shape of the thing:
 * Frames land in a depth-2 drop-oldest slot. `IPadCamera`'s reader thread pops
   from it and does the JPEG decode, so decoding never serializes against packet
   receive on the event loop.
+* **Audio rides RTP tracks in both directions.** The paired page offers its
+  microphone sendonly plus a recvonly slot for agent speech; we answer the
+  first audio m-line ``sendrecv`` (one media section carries both ways). Decoded
+  mic frames are downmixed to the shared 16 kHz bus (`core.ipad_audio`), and
+  TTS chunks written through `send_audio` leave on a real-time-paced Opus
+  track. Video m-lines stay rejected exactly as before.
 """
 from __future__ import annotations
 
@@ -28,8 +34,10 @@ import math
 import threading
 import time
 from collections import deque
+from fractions import Fraction
 from typing import Callable, Optional
 
+from .ipad_audio import to_mono_16k
 from .ipad_camera import FRAME_HEADER_SIZE, unpack_frame_header
 
 # Free STUN, used only as a safety net: on a laptop hotspot both peers are on
@@ -147,6 +155,7 @@ class IPadLink:
                  secret: Optional[str] = None, code: Optional[str] = None,
                  stun: tuple = (), transport: str = "datachannel",
                  pair_ttl: float = 600.0,
+                 audio_bus=None,
                  on_control: Optional[Callable[[dict, Callable], None]] = None):
         if not relay_url or not room or not secret or not code:
             raise RuntimeError(
@@ -160,6 +169,9 @@ class IPadLink:
         self._code = code
         self._stun = tuple(stun) or DEFAULT_STUN
         self._on_control = on_control
+        # Late-bindable on purpose (see IPadCamera.attach_audio_bus): main.py
+        # wires the shared bus after the camera exists but before it opens.
+        self.audio_bus = audio_bus
 
         self._frames: deque[tuple[dict, bytes]] = deque(maxlen=2)
         self._partial: dict[int, dict[int, bytes]] = {}   # seq -> {chunk_index: bytes}
@@ -172,7 +184,9 @@ class IPadLink:
                        "unexpected_media_tracks": 0, "frame_acks_tx": 0,
                        "frame_ack_errors": 0, "capture_profile_generation": 0,
                        "capture_profile": None, "client_build": None,
-                       "client_ua": None, "client_caps": None}
+                       "client_ua": None, "client_caps": None,
+                       "audio_mic": False, "audio_out": False,
+                       "audio_rx_blocks": 0, "audio_tx_chunks": 0}
 
         self._thread: Optional[threading.Thread] = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
@@ -182,6 +196,7 @@ class IPadLink:
         self._last_seq: Optional[int] = None
         self._unexpected_tracks: list = []
         self._media_drain_tasks: set[asyncio.Task] = set()
+        self._audio_source = None
 
     # ---- thread-facing API (called from the pipeline's threads) ----------
 
@@ -242,6 +257,22 @@ class IPadLink:
     def set_control_handler(self, handler) -> None:
         """Swap the control callback on a live link (see IPadCamera's docstring)."""
         self._on_control = handler
+
+    def send_audio(self, samples, rate: int = 16000, channels: int = 1) -> None:
+        """Queue one chunk of agent speech toward the paired device.
+
+        Safe from any thread; silently dropped when no peer has negotiated the
+        outbound audio track yet. Chunks may arrive at any native TTS rate —
+        they are converted to the paced 16 kHz stream here.
+        """
+        source = self._audio_source
+        if source is None:
+            return
+        block = to_mono_16k(samples, rate, channels)
+        if block.size == 0:
+            return
+        if source.write(block):
+            self._bump("audio_tx_chunks")
 
     def status(self) -> dict:
         """Return a thread-safe diagnostics snapshot with nested telemetry copied."""
@@ -357,8 +388,13 @@ class IPadLink:
         task.add_done_callback(self._media_drain_tasks.discard)
 
     @staticmethod
-    async def _deactivate_media_transceivers(pc) -> None:
-        """Reject offered RTP media while leaving the SCTP data channels intact."""
+    async def _deactivate_media_transceivers(pc, keep_audio: bool = False) -> None:
+        """Reject offered RTP media while leaving the SCTP data channels intact.
+
+        With ``keep_audio``, audio m-lines are skipped here — `_answer_offer`
+        gives them explicit directions (mic inbound, agent speech outbound)
+        and only video is shut down.
+        """
         get_transceivers = getattr(pc, "getTransceivers", None)
         if not callable(get_transceivers):
             return
@@ -367,6 +403,8 @@ class IPadLink:
         except Exception:  # noqa: BLE001 - optional aiortc API variation
             return
         for transceiver in transceivers:
+            if keep_audio and getattr(transceiver, "kind", "") == "audio":
+                continue
             inactive = False
             try:
                 transceiver.direction = "inactive"
@@ -400,6 +438,33 @@ class IPadLink:
                     stop()
                 except Exception:  # noqa: BLE001
                     pass
+
+    async def _consume_remote_audio(self, pc, track) -> None:
+        """Decode the device microphone onto the shared bus while this peer lives.
+
+        Runs on the link's event loop; one Opus frame (~20 ms) per iteration is
+        a numpy downmix plus a non-blocking bus publish, so frame receive is
+        never starved.
+        """
+        try:
+            while self._pc is pc:
+                frame = await track.recv()
+                arr = frame.to_ndarray()
+                layout = getattr(frame, "layout", None)
+                channels = len(getattr(layout, "channels", ()) or ())
+                rate = int(getattr(frame, "sample_rate", 48000) or 48000)
+                block = to_mono_16k(arr, rate, channels)
+                if block.size == 0:
+                    continue
+                bus = self.audio_bus
+                if bus is not None:
+                    bus.publish(block, time.time())
+                self._bump("audio_rx_blocks")
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - track end / renegotiation noise
+            self._set(error=f"device mic: {type(exc).__name__}: {exc}",
+                      audio_mic=False)
 
     def _run(self) -> None:
         loop = asyncio.new_event_loop()
@@ -526,6 +591,7 @@ class IPadLink:
                             RTCPeerConnection, RTCSessionDescription)
 
         await self._teardown()          # a new offer means the iPad reloaded
+        out_track = self._build_agent_audio_track()
         config = RTCConfiguration(iceServers=[RTCIceServer(urls=list(self._stun))])
         pc = RTCPeerConnection(configuration=config)
         self._pc = pc
@@ -543,12 +609,20 @@ class IPadLink:
 
         @pc.on("track")
         def _on_track(track):
-            # Current pages send JPEGs over the ``frames`` data channel only.
-            # Older cached pages also offered their native camera track.  aiortc
-            # backs RemoteStreamTrack with an unbounded queue, so ignoring that
-            # unexpected track leaks decoded frames indefinitely.
-            print(f"[ipad] rejecting unexpected media track: "
-                  f"{getattr(track, 'kind', 'unknown')}")
+            kind = getattr(track, "kind", "unknown")
+            if kind == "audio":
+                # The paired page's microphone: decode onto the shared bus so
+                # Listener/cough detection hear the person, not the room.
+                print("[ipad] device microphone track accepted")
+                self._set(audio_mic=True, error=None)
+                task = asyncio.get_running_loop().create_task(
+                    self._consume_remote_audio(pc, track))
+                self._media_drain_tasks.add(task)
+                task.add_done_callback(self._media_drain_tasks.discard)
+                return
+            # Video stays data-channel-only: an unconsumed native track makes
+            # aiortc back it with an unbounded queue that leaks decoded frames.
+            print(f"[ipad] rejecting unexpected media track: {kind}")
             self._reject_unexpected_track(track)
 
         @pc.on("datachannel")
@@ -583,11 +657,45 @@ class IPadLink:
         print("[ipad] offer received; answering")
         await pc.setRemoteDescription(
             RTCSessionDescription(sdp=payload.get("sdp", ""), type="offer"))
-        # Reject every audio/video m-line before answer generation. RTP
-        # transceivers are separate from SCTP, so the two data channels remain
-        # negotiated. The track handler above is a version-independent safety
-        # net for the brief pre-answer window and older aiortc variants.
-        await self._deactivate_media_transceivers(pc)
+        # Audio: the page offers its mic sendonly and a *separate* recvonly slot
+        # for agent speech. Answer each audio m-line against the direction it was
+        # actually offered — attach the outbound TTS track to the slot the device
+        # offered recvonly (answer it sendonly), and receive the mic on the line
+        # the device offered sendonly (answer recvonly). Attaching the track to
+        # the mic line instead (as "first m-line wins" did) puts agent audio on a
+        # line the device has no receiver for, so Safari drops it and nothing
+        # plays. Everything else — video — is rejected before answer generation.
+        # RTP transceivers are separate from SCTP, so the data channels remain
+        # negotiated. The track handler above is a version-independent safety net.
+        offer_dirs = self._audio_offer_directions(payload.get("sdp", ""))
+        audio_transceivers = [t for t in (pc.getTransceivers() or ())
+                              if getattr(t, "kind", "") == "audio"]
+        attached = False
+        for idx, transceiver in enumerate(audio_transceivers):
+            offered = offer_dirs[idx] if idx < len(offer_dirs) else "sendrecv"
+            wants_recv = offered in ("recvonly", "sendrecv")
+            if wants_recv and out_track is not None and not attached:
+                # sendonly for the device's dedicated agent-voice slot; sendrecv
+                # when an older/combined offer carries the mic on the same line.
+                answer_dir = "sendrecv" if offered == "sendrecv" else "sendonly"
+                try:
+                    transceiver.direction = answer_dir
+                    replace = getattr(transceiver.sender, "replaceTrack", None)
+                    if callable(replace):
+                        replace(out_track)
+                    attached = True
+                    self._set(audio_out=True)
+                    continue
+                except Exception:  # noqa: BLE001 - fall back to recv-only mic
+                    self._set(audio_out=False)
+            # Device mic (offered sendonly) or any extra audio slot: receive only.
+            try:
+                transceiver.direction = "recvonly"
+            except Exception:  # noqa: BLE001 - answered by the deactivate pass
+                pass
+        if not attached:
+            self._set(audio_out=False)
+        await self._deactivate_media_transceivers(pc, keep_audio=True)
         answer = await pc.createAnswer()
         # setLocalDescription blocks here until aiortc finishes gathering ICE,
         # which is where a blocked STUN/UDP path shows up as a long stall.
@@ -597,6 +705,94 @@ class IPadLink:
         # answer already carries every candidate; we still accept the iPad's
         # trickled ones below.
         await ws.send_json({"type": "answer", "sdp": pc.localDescription.sdp})
+
+    @staticmethod
+    def _audio_offer_directions(sdp: str) -> list:
+        """Directions of each audio m-line in the remote offer, in order.
+
+        Lets the answer attach the agent track to the m-line the device offered
+        recvonly rather than to the mic line. Any m-line without an explicit
+        direction attribute defaults to sendrecv per RFC 3264.
+        """
+        directions: list[str] = []
+        in_audio = False
+        current = None
+        for line in str(sdp).splitlines():
+            if line.startswith("m="):
+                if in_audio:
+                    directions.append(current or "sendrecv")
+                in_audio = line[2:].startswith("audio")
+                current = None
+            elif in_audio and line.startswith("a="):
+                attr = line[2:].strip()
+                if attr in ("sendrecv", "sendonly", "recvonly", "inactive"):
+                    current = attr
+        if in_audio:
+            directions.append(current or "sendrecv")
+        return directions
+
+    def _build_agent_audio_track(self):
+        """Create the paced outbound speech track (aiortc/av lazy-imported).
+
+        Returns None when the WebRTC stack is too old to subclass its audio
+        track base; the link then answers mic-only and TTS keeps playing on
+        the laptop speakers instead of failing the pairing.
+        """
+        try:
+            import av                                    # noqa: PLC0415
+            from aiortc.mediastreams import AudioStreamTrack  # noqa: PLC0415
+        except Exception as exc:  # noqa: BLE001 - optional stack boundary
+            print(f"[ipad] agent-audio track unavailable ({exc}); "
+                  "device will carry microphone only")
+            return None
+
+        from .ipad_audio import PacedPcmSource
+
+        class _AgentAudioTrack(AudioStreamTrack):
+            """Drains PacedPcmSource at wall-clock pace as 16 kHz mono flt."""
+
+            kind = "audio"
+
+            def __init__(self, source):
+                super().__init__()
+                self._source = source
+                self._anchor = None
+                self._consumed = 0
+                self._pts = 0
+
+            async def recv(self):
+                while True:
+                    block = self._source.read()
+                    if block is not None:
+                        break
+                    await asyncio.sleep(0.004)
+                loop = asyncio.get_running_loop()
+                rate = self._source.sample_rate
+                now = loop.time()
+                if self._anchor is None or \
+                        now - (self._anchor + self._consumed / rate) > 1.0:
+                    # First chunk of an utterance, or the reader stalled so
+                    # long that catching up would burst stale speech.
+                    self._anchor, self._consumed = now, 0
+                delay = (self._anchor + self._consumed / rate) - now
+                if delay > 0:
+                    await asyncio.sleep(delay)
+                self._consumed += block.size
+                # aiortc's Opus encoder asserts frame.format == "s16"; the paced
+                # source holds float32 in [-1, 1], so quantize before framing or
+                # the sender dies and no agent speech ever reaches the device.
+                pcm16 = (block.clip(-1.0, 1.0) * 32767.0).astype("int16")
+                frame = av.AudioFrame.from_ndarray(
+                    pcm16.reshape(1, -1), format="s16", layout="mono")
+                frame.sample_rate = rate
+                frame.pts = self._pts
+                frame.time_base = Fraction(1, rate)
+                self._pts += block.size
+                return frame
+
+        source = PacedPcmSource()
+        self._audio_source = source
+        return _AgentAudioTrack(source)
 
     async def _add_candidate(self, payload: dict) -> None:
         if self._pc is None:
@@ -745,7 +941,11 @@ class IPadLink:
         self._last_seq = None
         with self._frames_lock:
             self._frames.clear()
-        self._set(dc="closed", sender_stats=None)
+        source, self._audio_source = self._audio_source, None
+        if source is not None:
+            source.clear()               # a new peer must never hear stale speech
+        self._set(dc="closed", sender_stats=None,
+                  audio_mic=False, audio_out=False)
         if pc is not None:
             try:
                 await pc.close()

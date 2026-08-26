@@ -298,6 +298,11 @@
     <div class="previewCap">Camera in use · tap to enlarge</div>
   </div>
 
+  <!-- Agent voice from the laptop, played on this device. Kept outside the
+       view containers like the preview so it never stops rendering/pausing;
+       `playsinline` plus the connect-button gesture satisfy iOS autoplay. -->
+  <audio id="remoteAudio" autoplay playsinline></audio>
+
   <div class="foot">
     Observational wellness monitoring, not a medical device. Readings are cues to
     look closer, not diagnoses. Reliability tiers (HIGH / MEDIUM / LOW) reflect
@@ -446,6 +451,7 @@
   const connectBtn = document.getElementById('connectBtn');
   const pairMsg = document.getElementById('pairMsg');
   const previewEl = document.getElementById('preview');
+  const remoteAudioEl = document.getElementById('remoteAudio');
   const previewWrap = document.getElementById('previewWrap');
   const liveDot = document.getElementById('liveDot');
   const liveLabel = document.getElementById('liveLabel');
@@ -484,6 +490,7 @@
 
   // ---- state ----------------------------------------------------------
   let ws = null, pc = null, dcFrames = null, dcControl = null, stream = null;
+  let micGranted = false;   // audio track present in `stream`
   let seq = 0, framesSent = 0;
   let nextFrameDueAt = 0;
   let captureGeneration = 0;
@@ -540,14 +547,27 @@
       presenting:prefs.presenting, wake:prefs.wake, tiles:prefs.tiles})); }catch(_){}
   }
 
+  // The signalling WebSocket is deliberately closed ~500ms after media is up
+  // (it only carries SDP/ICE), so it is the wrong thing to bind the pill to —
+  // doing that reads "offline" during healthy peer-to-peer streaming. Derive
+  // liveness from the frames data channel + media-path health instead.
+  function mediaHealthy(){
+    try{
+      return !!(dcFrames && dcFrames.readyState === 'open' && pc &&
+        CapturePolicy.mediaPathHealthy(dcFrames.readyState,
+          pc.connectionState, pc.iceConnectionState));
+    }catch(_){ return false; }
+  }
   function setOverallLive(on){
     liveDot.classList.toggle('live', on);
-    liveDot.classList.toggle('bad', !on && (stWs.textContent === 'closed' || stWs.textContent === 'error'));
+    liveDot.classList.toggle('bad', !on && !!pc &&
+      (pc.connectionState === 'failed' || pc.iceConnectionState === 'failed'));
     liveLabel.textContent = on ? 'live' : 'offline';
   }
-  function setWs(state){ try{ stWs.textContent = state; setOverallLive(state === 'open'); }catch(_){} }
-  function setIce(state){ try{ stIce.textContent = state; }catch(_){} }
-  function setDc(state){ try{ stDc.textContent = state; }catch(_){} }
+  function refreshLiveness(){ setOverallLive(mediaHealthy()); }
+  function setWs(state){ try{ stWs.textContent = state; refreshLiveness(); }catch(_){} }
+  function setIce(state){ try{ stIce.textContent = state; refreshLiveness(); }catch(_){} }
+  function setDc(state){ try{ stDc.textContent = state; refreshLiveness(); }catch(_){} }
   function setClock(source){ try{ clockSource = source; stClock.textContent = source; }catch(_){} }
 
   function showMain(){ pairPanel.classList.add('hidden'); appEl.classList.remove('hidden'); }
@@ -1256,6 +1276,7 @@
   // ---- bounded sender stats + status display -------------------------
   setInterval(() => {
     try{
+      refreshLiveness();   // steady-state streaming: keep the pill on media health
       finishCaptureWindow(performance.now());
       const stats = senderStatsSnapshot();
       stFps.textContent = stats.sent_fps.toFixed(1);
@@ -1368,9 +1389,10 @@
     captureGeneration++;
     // Detach handlers BEFORE closing, so tearing the old connection down does
     // not fire close/ice events that would schedule yet another reconnect.
-    if(pc){ pc.oniceconnectionstatechange = null; pc.onconnectionstatechange = null; pc.onicecandidate = null; }
+    if(pc){ pc.oniceconnectionstatechange = null; pc.onconnectionstatechange = null; pc.onicecandidate = null; pc.ontrack = null; }
     if(dcFrames){ dcFrames.onopen = dcFrames.onmessage = dcFrames.onclose = dcFrames.onerror = null; }
     if(dcControl){ dcControl.onopen = dcControl.onmessage = dcControl.onclose = dcControl.onerror = null; }
+    try{ if(remoteAudioEl) remoteAudioEl.srcObject = null; }catch(_){}
     try{ if(pc) pc.close(); }catch(_){}
     try{ if(ws && ws.readyState <= 1){ ws.onclose = null; ws.close(); } }catch(_){}
     dcFrames = dcControl = pc = null; ws = null;
@@ -1473,7 +1495,7 @@
 
       const peer = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
       pc = peer;
-      // The camera stream remains local on previewEl. Do not add a native media
+      // The camera stream remains local on previewEl. Do not add a native video
       // track: the host consumes the JPEG data channel, and an unconsumed RTP
       // track creates a second encoder plus an ever-growing receiver queue.
       // Reliable ordered delivery plus an application ACK gives us exactly one
@@ -1485,6 +1507,22 @@
       dcControl = controlChannel;
       wireDataChannels(peer, frameChannel, controlChannel);
       wirePeerConnection(peer);
+      // Agent audio rides real RTP tracks in both directions. Our microphone is
+      // offered sendonly; a separate recvonly slot receives the companion's
+      // voice, which the host merges onto its first audio m-line (sendrecv).
+      if(micGranted && stream && stream.getAudioTracks().length){
+        try{ peer.addTransceiver(stream.getAudioTracks()[0], {direction:'sendonly'}); }
+        catch(_){ /* older Safari: host still answers mic-less */ }
+      }
+      try{ peer.addTransceiver('audio', {direction:'recvonly'}); }catch(_){}
+      peer.ontrack = (ev) => {
+        if(peer !== pc || !ev.track || ev.track.kind !== 'audio') return;
+        try{
+          remoteAudioEl.srcObject = new MediaStream([ev.track]);
+          const played = remoteAudioEl.play();
+          if(played && played.catch) played.catch(() => {});
+        }catch(_){}
+      };
 
       pairMsg.textContent = 'Connecting…';
       const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -1508,20 +1546,35 @@
       return;
     }
     connectBtn.disabled = true;
-    pairMsg.textContent = 'Requesting camera…';
+    pairMsg.textContent = 'Requesting camera and microphone…';
 
     if(!stream){
+      const initialConfig = capturePolicy.getConfig();
       try{
-        const initialConfig = capturePolicy.getConfig();
         stream = await navigator.mediaDevices.getUserMedia({
           video: {width:{ideal:initialConfig.max_width}, height:{ideal:initialConfig.max_height},
             frameRate:{ideal:initialConfig.target_fps}, facingMode:'user'},
-          audio: false,
+          // Echo cancellation keeps this device's speaker (the agent's voice)
+          // out of the microphone feed; Safari defaults it on, be explicit.
+          audio: {echoCancellation:true, noiseSuppression:true},
         });
-      }catch(err){
-        pairMsg.textContent = 'Camera permission failed: ' + esc(String(err && err.message || err));
-        connectBtn.disabled = false;
-        return;
+        micGranted = true;
+      }catch(errWithAudio){
+        // A denied microphone must not kill the camera-only fallback path:
+        // degrade to today's behaviour instead of failing pairing entirely.
+        try{
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {width:{ideal:initialConfig.max_width}, height:{ideal:initialConfig.max_height},
+              frameRate:{ideal:initialConfig.target_fps}, facingMode:'user'},
+            audio: false,
+          });
+          micGranted = false;
+          pairMsg.textContent = 'Microphone unavailable — camera only.';
+        }catch(err){
+          pairMsg.textContent = 'Camera permission failed: ' + esc(String(err && err.message || err));
+          connectBtn.disabled = false;
+          return;
+        }
       }
       previewEl.srcObject = stream;
       applyTrackCaptureConfig();

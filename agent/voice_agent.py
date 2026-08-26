@@ -121,7 +121,24 @@ class VoiceAgent:
         self._active_emergencies: set[str] = set()
         self._emergency_episodes: dict[str, int] = {}
         self._pending_help_alert = False
-        self.moondream = MoondreamClient(model=model, enabled=moondream_enabled)
+        # A "gemini*" voice model routes to Gemini's OpenAI-compatible endpoint
+        # (GeminiClient duck-types MoondreamClient exactly). moondream3-preview is
+        # a small vision model whose open-conversation output degenerates into
+        # echoing the controller/context; gemini-2.5-flash produces coherent,
+        # instruction-following speech. Falls back to Moondream for any other id.
+        _m = str(model or "")
+        if _m.lower().startswith("gemini"):
+            from agent.gemini_client import GeminiClient  # noqa: PLC0415 - optional path
+            self.moondream = GeminiClient(model=_m, enabled=moondream_enabled)
+        elif _m.lower().startswith("nvidia:"):
+            # "nvidia:<model-id>" routes to NVIDIA's hosted OpenAI-compatible
+            # endpoint (higher free limits than Gemini). e.g. the id after the
+            # colon: "nvidia:meta/llama-3.3-70b-instruct".
+            from agent.nvidia_client import NvidiaClient  # noqa: PLC0415 - optional path
+            self.moondream = NvidiaClient(model=(_m.split(":", 1)[1] or None),
+                                          enabled=moondream_enabled)
+        else:
+            self.moondream = MoondreamClient(model=model, enabled=moondream_enabled)
         self.speaker = Speaker(enabled=speak, engine=tts_engine)
         self.listener = listener
         # Answer interpretation runs synchronously inside tick(), so keep it
@@ -507,6 +524,81 @@ class VoiceAgent:
         messages.append({"role": "user", "content": (
             "Conversation controller instruction (not spoken verbatim): " + instruction)})
         return messages
+
+    # Meta/echo phrases a spoken line must never contain. A weak local model
+    # sometimes parrots the controller scaffolding ("Conversation controller
+    # instruction...", "The controller should respond with...") or emits a list
+    # of stage directions instead of the line itself; speaking that reads the
+    # status out loud. Reject those and let the hand-authored fallback speak.
+    _META_MARKERS = (
+        "conversation controller", "not spoken verbatim", "controller should",
+        "controller instruction", "audio controller", "controller asked",
+        "the controller", "supporting detail", "context item",
+        "rephrase", "spoken line", "addressed to the person", "as 'you'",
+        "sensor reading", "do not describe", "do not announce",
+        # Narrating the session/context instead of speaking to the person.
+        "the conversation start", "the conversation beg", "this conversation",
+        "person arrived", "has arrived", "just arrived", "entered the room",
+        "was detected", "the system", "recent event", "observation:",
+        "would you like to talk about", "like to discuss this",
+    )
+
+    # The pipeline's capitalized subject labels. If one appears mid-line the
+    # model is reading an event/status ("By the way, Person arrived"), not speech.
+    _SUBJECT_LABELS = ("Person", "Subject", "Resident", "User", "Track", "Primary")
+
+    @classmethod
+    def _clean_spoken_line(cls, generated: str | None) -> str:
+        """Return the line only if it reads like speech, else "" to force the
+        deterministic fallback. Deterministic-disposes over the LLM proposal."""
+        if not generated:
+            return ""
+        text = " ".join(str(generated).split()).strip()
+        # Some models wrap the spoken line in quotes ("Good morning, ...");
+        # strip a wrapping pair so the person doesn't hear stray quote marks.
+        wrap_quotes = "\"'" + "".join(chr(c) for c in (0x201c, 0x201d, 0x2018, 0x2019))
+        text = text.strip(wrap_quotes).strip()
+        if not text:
+            return ""
+        low = text.lower()
+        if any(marker in low for marker in cls._META_MARKERS):
+            return ""
+        # A conversational turn is one or two sentences. Runaway length or a
+        # long repeated clause is model degeneration, not something to speak.
+        if len(text) > 320:
+            return ""
+        words = low.split()
+        for span in (6, 5, 4):
+            if len(words) >= span * 3:
+                phrase = " ".join(words[:span])
+                if low.count(phrase) >= 3:
+                    return ""
+        # A list of stage directions to the controller ("Ask about... Describe
+        # a... Offer...") is not a spoken line. Two or more sentences opening
+        # with a directive verb is the degenerate pattern.
+        directive_leads = {"ask", "describe", "offer", "invite", "make", "share",
+                           "mention", "discuss", "suggest", "provide", "gently",
+                           "respond", "acknowledge", "encourage", "prompt"}
+        sentences = [s.strip() for s in
+                     text.replace("!", ".").replace("?", ".").split(".") if s.strip()]
+        lead_hits = sum(1 for s in sentences
+                        if s.split() and s.split()[0].lower().strip(",") in directive_leads)
+        # A spoken line addresses the person as "you"; a stage direction talks
+        # ABOUT them ("ask how their day is going", "invite them to chat"). A
+        # directive-led sentence that references the person in third person is
+        # the controller's instruction leaking through, not speech.
+        third_person = any(t in f" {low} " for t in
+                           (" their ", " them ", " they ", "the person",
+                            "the user", "the resident"))
+        if lead_hits >= 2 or (lead_hits >= 1 and third_person):
+            return ""
+        # A capitalized internal subject label ("Person", "Resident", ...) is an
+        # event/status echo, never speech. Case-sensitive so "a lovely person"
+        # (lowercase) still passes.
+        tokens = [w.strip(".,!?;:'\"()") for w in text.split()]
+        if any(tok in cls._SUBJECT_LABELS for tok in tokens):
+            return ""
+        return text
 
     def _can_hear(self) -> bool:
         """True when an ASR listener exists and is currently able to hear.
@@ -1461,7 +1553,9 @@ class VoiceAgent:
             text = enforce_second_person(text, intent.fallback)
             text = strip_prior_disclosure(text, intent.fallback)
         else:
-            text = generated or intent.fallback
+            # LLM-proposes / deterministic-disposes: only speak the generation
+            # when it reads like a spoken line, else the hand-authored fallback.
+            text = self._clean_spoken_line(generated) or intent.fallback
         # Small talk and most topic fallbacks end in a question but belong to no
         # lane that tracks an answer. Judge the FINAL text (after the airlocks),
         # since a fallback substitution can turn a question into a statement.
