@@ -1,10 +1,15 @@
 # Architecture
 
 A humanoid-camera system for an elderly person living alone: it watches live
-video, runs ~33 detection modules, and turns the results into a spoken companion
+video, runs registry-discovered detection modules, and turns the results into a spoken companion
 (voice agent), caregiver alerts, an on-screen dashboard, and a web view. This
 doc explains how the pieces fit together. To *extend* it, see
 [EXTENDING.md](EXTENDING.md).
+
+For setup, flags, ports, and consent-controlled run modes, see
+[OPERATIONS.md](OPERATIONS.md). The registry and `config/modules.yaml` are the
+sources of truth for the current module set; this guide intentionally avoids a
+hard-coded count.
 
 > **Safety principle.** Health signals are *screening prompts*, never diagnoses.
 > The **caregiver-alert path is deterministic** (`alerts/`) and never depends on
@@ -28,9 +33,18 @@ doc explains how the pieces fit together. To *extend* it, see
                             ▼                        ▼               ▼               ▼
                      AdvisorEngine            AlertManager      VoiceAgent      Dashboard/Overlay
                      (agent/advisor_engine)   (alerts/)         (agent/)        (output/) + webui
-                     post-hoc advice →         deterministic     Gemini speech   window + /data
+                     post-hoc advice →         deterministic     Moondream speech window + /data
                      back into Aggregator      notifications     + TTS
 ```
+
+Before a conversational cloud request, `agent/conversation.py` turns the
+agent-only aggregator snapshot into bounded `ContextItem` records. It joins
+those records with safe event summaries, numeric history trends, workflow and
+capability state, then ranks them for the current question. `VoiceAgent` sends
+the selected records and session-only dialogue through the provider-neutral
+conversation contract. A separate topic queue ranks changed observations for
+answer-first proactive steering; allowlisted actions remain pending until a
+local deterministic confirmation gate accepts an explicit yes.
 
 Per frame (`core/pipeline.py: Pipeline.process_frame`): run each extractor,
 run due modules via the scheduler, ingest their `Result`s into the aggregator,
@@ -42,12 +56,12 @@ flowchart LR
   cam[Camera] --> ex[Extractors: face/pose/motion + smoothing]
   ex --> ctx[FrameContext]
   ctx --> sch[Scheduler]
-  sch --> mods[DetectionModules ~33]
+  sch --> mods[Registry-discovered DetectionModules]
   mods --> agg[Aggregator]
   agg --> adv[AdvisorEngine]
   adv --> agg
   agg --> alert[AlertManager -> email/SMS/webhook]
-  agg --> agent[VoiceAgent -> Gemini + TTS]
+  agg --> agent[VoiceAgent -> Moondream + TTS]
   agg --> dash[Dashboard / Overlay window]
   agg --> web[webui: / companion + /data telemetry]
 ```
@@ -72,11 +86,59 @@ The most-connected "god nodes" (per the graphify graph) are `FrameContext`,
 ## Threading model (important)
 
 The video loop in `main.py` must never block. Heavy work runs off it:
+- **Three-resolution pipeline** — capture and the bounded vitals-sampler retain
+  the original frame. Authoritative face detection defaults to 640 px; pose and
+  passive detectors receive a synchronized context
+  capped at the configured analysis width, with nearest-neighbor depth and scaled
+  pixel intrinsics/bounding boxes. Normalized landmarks remain unchanged.
+- **Capture-safe vitals lane** — camera readers only enqueue a frame reference and
+  timestamp. A dedicated sampler drops the oldest of at most two pending frames,
+  seeds optical flow from authoritative face anchors, and performs rPPG updates.
+  Physical capture, sampler rate/drops, and fast-hook p50/p95/max are independent
+  private diagnostics.
+- **Adaptive background lane** — only the latest frame is queued. Sustained
+  overload increases passive-module intervals with recovery hysteresis; safety,
+  vitals, and active guided assessments are exempt. Advisor evaluation uses its
+  own one-flight worker so history queries cannot stall detectors.
+- **Quality-first workload budget** — maximum-quality analysis retains native
+  capture ROIs and rotates due passive modules across bounded sweeps. Cadence is
+  shed before spatial detail; safety and active elicitation are budget-exempt.
+- **Native detail contexts** — normalized face/pose geometry from bounded
+  inference frames addresses the original capture. Face skin masks and LAB/HSV/
+  grayscale planes are cached once per native ROI, and aligned depth/intrinsics
+  remain available for metric arm findings.
 - **Async inference workers** — `rppg_backends/openrppg.py` (JAX) and
   `modules/clothing.py` (FashionCLIP/OWLv2) run inference on a
   `ThreadPoolExecutor` and cache the last reading via a `_pending` future; the
   DeepFace emotion backend runs in a subprocess. `compute()`/`process()` return
   the cached value immediately and pick up the result when the future is done.
+- **Cloud isolation** — Moondream generation uses the documented
+  `X-Moondream-Auth` header
+  from a one-flight worker. The voice agent polls without blocking and speaks a
+  reviewed template after a short deadline. Authorization failures (401/403) latch
+  until an explicit off/on toggle; transient failures use bounded backoff. NVIDIA skin analysis validates strict
+  JSON, retries one schema repair, and never exposes raw provider content.
+- **Latest-only authority workers** — authoritative face extraction and passive
+  detector analysis consume bounded latest-frame slots. Face inference adapts
+  from 640 to 480 pixels only during sustained overload, while full capture
+  pixels remain available to rPPG. Classical heart calculations run one-flight
+  and the critical scheduler only publishes newly completed readings.
+- **Intentional coalescing** — a busy background lane skips redundant incoming
+  frames instead of replacing a queued frame. Diagnostics distinguish these
+  cadence skips from true queue drops. Numeric history writes use a bounded
+  daemon writer and expose queue/failure health.
+- **Asynchronous longitudinal aggregates** — detector callbacks append samples
+  and read in-memory rolling snapshots only. A separate SQLite read connection
+  bootstraps registered windows; portal/export/retention queries never execute
+  on camera, sampler, geometry, or detector threads.
+- **Native runtime governance** — process-local OpenCV, TensorFlow, Torch and
+  BLAS pools are bounded before import. The JAX rPPG worker retains its separate
+  CPU affinity, and FashionCLIP explicitly owns CUDA in the parent process.
+- **Native ASR isolation on Windows** — microphone/VAD/history remain in the
+  parent, while Faster-Whisper and CTranslate2 load only in a spawned CPU worker,
+  preventing their native DLLs from colliding with CUDA PyTorch/FashionCLIP. A
+  worker-local import blocker disables CTranslate2's optional Torch probe; private
+  diagnostics expose only the worker PID and boolean runtime inventory, never DLL paths.
 - **Web server** — `webui/server.py` is a `ThreadingHTTPServer` on a daemon
   thread; `publish`/`publish_data` push to thread-safe buses read by SSE clients.
 - **Text-to-speech** — `audio/tts.py` speaks on its own worker thread so
@@ -88,28 +150,36 @@ The video loop in `main.py` must never block. Heavy work runs off it:
 |---|---|
 | `core/` | Camera, `FrameContext`, `Result`/`Severity`, registry, scheduler, pipeline, debug log. |
 | `extractors/` | Run once per frame: MediaPipe face + pose, motion energy, One-Euro landmark smoothing; landmark-index tables. |
-| `modules/` | The ~33 detectors. `modules/_util.py` = shared signal helpers (`TimedBuffer`, `bandpass`, FFT). |
+| `modules/` | Registry-discovered detectors. `modules/_util.py` contains shared signal helpers (`TimedBuffer`, `bandpass`, FFT). |
 | `modules/backends/`, `modules/rppg_backends/`, `modules/emotion_backends/` | Multi-backend implementations (heuristic + tested models) shown side by side. |
 | `output/` | `aggregator` (person state), `dashboard` (window + `to_payload` for `/data`), `overlay`, legacy `greeting_engine`. |
-| `agent/` | The Gemini voice agent: `state` (memory), `policy` (what to say), `gemini_client`, `voice_agent`, `advisor_engine`, `env`. |
+| `agent/` | The companion agent: `conversation` (structured context, topics, confirmed actions, vision cadence), `state` (session memory), `policy`, provider client, `voice_agent`, and deterministic advisors. |
 | `alerts/` | Deterministic caregiver alerting: `notifier` (channels), `manager` (confirm/dedupe/escalate). |
 | `audio/` | Offline text-to-speech. |
-| `webui/` | Stdlib web server: `/` companion text + `/data` full telemetry (SSE), pages `page.html` / `data.html`. |
+| `webui/` | Stdlib servers and pages for companion text, `/data` telemetry, `/demo`, private diagnostics, and caregiver review. |
 | `storage/` | SQLite store for longitudinal samples/baselines. |
 | `tests/` | Camera-free smoke + focused tests. |
 
 ## Entry points & config
 
-- **Run:** `python main.py` (see README for flags: `--webui`, `--no-voice`,
-  `--source`, `--headless`, `--debug-modules`, …).
+- **Run:** `python main.py`. `main.py --help` is authoritative for flags;
+  [OPERATIONS.md](OPERATIONS.md) provides safe examples.
+- **Local hot reload (optional, manual):** `python dev.py` runs a hardware-free
+  replay under a process-level hot-reload supervisor for a developer iterating
+  locally. Supervisor and child stdout share one terminal; the private live
+  acceptance endpoint is `http://127.0.0.1:8771/debug/state`. Stop it (Ctrl+C)
+  when done — don't leave it running. Agents should prefer a bounded
+  `--max-frames` run; see [AI_DEVELOPMENT.md](AI_DEVELOPMENT.md).
 - **`config/modules.yaml`** — enable/tune each module; params flow to the
   module's `__init__` via `build_enabled`. Also holds the `advice` section.
 - **`config/alerts.yaml`** — channels, confirm/cooldown/escalation, quiet hours.
-- **`.env`** — secrets only: `GEMINI_API_KEY`, SMTP/Twilio/webhook creds (see
+- **`.env`** — secrets only: `X-Moondream-Auth`, SMTP/Twilio/webhook creds (see
   `.env.example`). Never put secrets in yaml.
 
 ## Verification & docs guardrail
 
+- Follow [AI_DEVELOPMENT.md](AI_DEVELOPMENT.md) for bounded runtime verification,
+  log observation, and the `/debug/state` acceptance workflow.
 - `python tests/smoke_test.py` runs the whole pipeline on synthetic frames.
 - `interrogate -c pyproject.toml .` enforces docstring coverage (fail-under 95).
 - `graphify update .` refreshes the knowledge graph after code changes.

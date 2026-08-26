@@ -39,6 +39,16 @@ class Drowsiness(DetectionModule):
     perclos_notice = 0.15
     perclos_warning = 0.30
     microsleep_seconds = 1.2
+    # Signal-quality gates. EAR is only trustworthy on a large, near-frontal
+    # eye; on the OV2735 at 1-1.5 m the eye can be ~15 px across and the head is
+    # often turned, so a fixed 0.7 confidence over-trusts junk frames and was a
+    # major source of false "tired" prompts. `_signal_quality` maps the two
+    # things that actually corrupt EAR -- eye pixel size and head yaw -- onto a
+    # 0..1 factor the escalation confidences are scaled by, so low-quality
+    # frames fall below the conversation layer's admission floor.
+    min_eye_px = 10.0          # eye-corner span at/below this -> EAR unusable
+    good_eye_px = 24.0         # at/above this -> full spatial confidence
+    max_ear_yaw = 0.30         # |head-yaw proxy| at/above this -> EAR geometry invalid
 
     def __init__(self, **params):
         super().__init__(**params)
@@ -48,12 +58,38 @@ class Drowsiness(DetectionModule):
         self.t0 = None
         self._was_closed = False
         self._closed_since = None
+        self._blink_total = 0      # cumulative blinks since start; only ever rises
+
+    def _signal_quality(self, px) -> float:
+        """0..1 trust in this frame's EAR, from eye pixel size and head yaw.
+
+        EAR degrades when the eye spans only a few pixels (its landmarks
+        collapse into noise) or the head is turned (the vertical/horizontal
+        ratio stops meaning eyelid closure). The emitted escalation
+        confidences are multiplied by this so junk frames stay below the
+        speech-admission floor instead of raising a false drowsiness prompt.
+        """
+        eye_w = 0.5 * (np.linalg.norm(px[33] - px[133])
+                       + np.linalg.norm(px[362] - px[263]))
+        span = self.good_eye_px - self.min_eye_px
+        size_q = (eye_w - self.min_eye_px) / span if span > 0 else 1.0
+        size_q = float(np.clip(size_q, 0.0, 1.0))
+
+        edge_mid = (px[FL.LEFT_FACE_EDGE] + px[FL.RIGHT_FACE_EDGE]) / 2.0
+        face_w = np.linalg.norm(px[FL.LEFT_FACE_EDGE] - px[FL.RIGHT_FACE_EDGE]) + 1e-6
+        yaw = abs(float((px[FL.NOSE_TIP][0] - edge_mid[0]) / face_w))
+        yaw_q = float(np.clip(1.0 - yaw / self.max_ear_yaw, 0.0, 1.0))
+        return size_q * yaw_q
 
     def process(self, ctx: FrameContext):
         """Run this detector on the current frame; return Result(s) or None."""
         px = ctx.face_px()
         ear = 0.5 * (_ear(px, FL.LEFT_EYE_EAR) + _ear(px, FL.RIGHT_EYE_EAR))
-        results = [self.result("ear", round(float(ear), 3), 0.7, Severity.INFO, "", ttl=4.0)]
+        quality = self._signal_quality(px)
+        results = [
+            self.result("ear", round(float(ear), 3), 0.7, Severity.INFO, "", ttl=4.0),
+            self.result("signal_quality", round(quality, 2), 0.0, Severity.INFO, "", ttl=4.0),
+        ]
         if self.t0 is None:
             self.t0, self.baseline = ctx.timestamp, ear
         if ctx.timestamp - self.t0 < self.baseline_seconds:
@@ -73,13 +109,19 @@ class Drowsiness(DetectionModule):
         # blink onset
         if is_closed and not self._was_closed:
             self.blinks.push(ctx.timestamp, 1.0)
+            self._blink_total += 1
             self._closed_since = ctx.timestamp
+        # Monotonic lifetime counter, emitted every post-baseline frame so a demo
+        # can blink and watch it tick up (rolling blink_rate is the medical signal;
+        # this one is the easy-to-verify showcase counter).
+        results.append(self.result("blink_count_total", self._blink_total, 0.6,
+                                   Severity.INFO, "", ttl=8.0))
         if is_closed and self._closed_since is not None:
             dur = ctx.timestamp - self._closed_since
             results.append(self.result("microsleep_duration", round(float(dur), 1), 0.7, Severity.INFO, "", ttl=4.0))
             if dur > self.microsleep_seconds:
                 results.append(self.result(
-                    "microsleep", round(dur, 1), min(0.9, dur / 3),
+                    "microsleep", round(dur, 1), min(0.9, dur / 3) * quality,
                     Severity.WARNING,
                     f"Eyes closed {dur:.1f}s (possible microsleep/unresponsive)",
                     ttl=4.0))
@@ -100,7 +142,7 @@ class Drowsiness(DetectionModule):
                                      f"blink_rate={blink_rate:.0f}")
             if perclos > self.perclos_notice:
                 results.append(self.result(
-                    "perclos", round(perclos, 2), min(0.9, perclos * 3),
+                    "perclos", round(perclos, 2), min(0.9, perclos * 3) * quality,
                     Severity.NOTICE if perclos < self.perclos_warning else Severity.WARNING,
                     f"Drowsiness: eyes closed {perclos*100:.0f}% of the time",
                     ttl=10.0))

@@ -3,7 +3,29 @@ __pycache__/
 data/
 models/*.task
 models/*.onnx
+runtime-models/
+assets/skin_models/*.onnx
+
+# Piper voice models are fetched on demand, never committed:
+#   python -m audio.tts_piper --download
+assets/tts/
 tests/synthetic_clip.mp4
 .venv/
 .env
 
+# Agent and test scratch space. pytest --basetemp roots have repeatedly been
+# committed from here; the mangled Users*Temp* name is a stripped Windows path
+# produced when the sandbox denies the real %TEMP%\pytest-of-* root.
+.tmp/
+.pytest_cache/
+.ruff_cache/
+.codex-build/
+.codex-quality-*/
+.pytest-tmp-*/
+Users*AppData*Temp*/
+app.log
+
+# Local capture samples used to exercise the VLM skin path. These are webcam
+# frames of a real person; the repository is public, so they stay on disk and
+# out of history. Point tools at them with an explicit path argument.
+vlmpics/

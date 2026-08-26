@@ -1,0 +1,250 @@
+"""WebSocket signaling relay for the iPad-as-camera WebRTC link.
+
+Why this exists: an iPad in Safari can only reach `navigator.mediaDevices`
+(and therefore `getUserMedia`) from a secure context, and the laptop it needs
+to talk to has no TLS and is unreachable anyway because the WiFi AP isolates
+clients from each other. This service's only irreplaceable job is to be an
+HTTPS origin the iPad can load, plus a signaling channel free-riding on that
+same connection. Media never flows through it: once WebRTC negotiation
+completes, the iPad and laptop exchange frames peer-to-peer (they share a
+Windows Mobile Hotspot, so ICE finds a direct host candidate and no TURN
+relay is needed).
+
+Routes:
+    GET /healthz  -> "ok" (cold-start warm-up target)
+    GET /r/{room} -> static/ipad.html, with the shared secret templated in
+    GET /static/ipad_capture_policy.js -> bounded browser capture policy
+    GET /ws       -> WebSocket signaling, two members per room ("host", "ipad")
+
+Hard safety rules enforced below, not just documented: a 64KB message ceiling
+that makes relaying video physically impossible over this socket, an instant
+close on any binary frame, and no parsing/storing/logging of message bodies
+(no database, no files written) — this process only ever sees room id, role,
+and connect/disconnect events.
+"""
+from __future__ import annotations
+
+import hashlib
+import hmac
+import json
+import logging
+import os
+import time
+from pathlib import Path
+
+import aiohttp
+from aiohttp import web
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+log = logging.getLogger("relay")
+
+STATIC_DIR = Path(__file__).parent / "static"
+IPAD_HTML_PATH = STATIC_DIR / "ipad.html"
+CAPTURE_POLICY_PATH = STATIC_DIR / "ipad_capture_policy.js"
+
+# The placeholder ipad.html templates the shared secret into, so the page can
+# derive its HMAC client-side. See relay/README.md for why shipping the
+# secret to the page is safe here: it is useless without the human-relayed
+# 6-digit pairing code, which the relay itself never learns.
+SECRET_PLACEHOLDER = "__RELAY_SECRET_JSON__"
+
+# Build stamp placeholder: replaced with a short content hash of the page +
+# capture policy so a refreshed iPad can prove it is running the current code.
+BUILD_PLACEHOLDER = "__CLIENT_BUILD_JSON__"
+
+
+def _client_build_id() -> str:
+    """Short hash of the served page + policy, stable per code version.
+
+    Reproducible off-device by hashing the same two files, so the laptop can
+    assert a refreshed iPad reports the build that is actually on disk.
+    """
+    digest = hashlib.sha256()
+    digest.update(IPAD_HTML_PATH.read_bytes())
+    digest.update(CAPTURE_POLICY_PATH.read_bytes())
+    return digest.hexdigest()[:12]
+
+RELAY_SECRET = os.environ.get("RELAY_SECRET")
+if not RELAY_SECRET:
+    raise RuntimeError(
+        "RELAY_SECRET is not set. Refusing to start: this relay authenticates "
+        "every room pairing with it. Set RELAY_SECRET in the environment "
+        "(on Render: service Settings > Environment) and restart."
+    )
+
+ROLES = ("host", "ipad")
+HELLO_CLOSE_CODE = 4401       # bad/missing hello, sig mismatch, or expired
+ROLE_TAKEN_CLOSE_CODE = 4409  # second connection for an already-occupied role
+MAX_MSG_SIZE = 64 * 1024      # hard ceiling; makes relaying video impossible
+SIGNAL_HEARTBEAT_SECONDS = 30.0
+
+
+class Room:
+    """At most one `host` and one `ipad` socket, plus the pairing proof both
+    sides must present identically (same sig, same exp) before joining."""
+
+    __slots__ = ("room_id", "members", "expected_sig", "exp")
+
+    def __init__(self, room_id: str):
+        self.room_id = room_id
+        self.members: dict[str, web.WebSocketResponse] = {}
+        self.expected_sig: str | None = None
+        self.exp: int | None = None
+
+    @staticmethod
+    def peer_role(role: str) -> str:
+        return "host" if role == "ipad" else "ipad"
+
+
+rooms: dict[str, Room] = {}
+
+
+async def healthz(_request: web.Request) -> web.Response:
+    return web.Response(text="ok")
+
+
+async def serve_ipad_page(request: web.Request) -> web.Response:
+    room = request.match_info.get("room", "")
+    if not room or any(c in room for c in "/\\?#"):
+        return web.Response(status=400, text="invalid room id")
+    html = IPAD_HTML_PATH.read_text(encoding="utf-8")
+    html = html.replace(SECRET_PLACEHOLDER, json.dumps(RELAY_SECRET))
+    html = html.replace(BUILD_PLACEHOLDER, json.dumps(_client_build_id()))
+    # no-store so iOS Safari cannot serve a stale capture page after the page
+    # is updated; without it a reload silently keeps the old resolution/logic.
+    return web.Response(text=html, content_type="text/html",
+                        headers={"Cache-Control": "no-store, must-revalidate"})
+
+
+async def serve_capture_policy(_request: web.Request) -> web.Response:
+    """Serve only the dependency-free capture policy used by the iPad page."""
+    return web.Response(
+        text=CAPTURE_POLICY_PATH.read_text(encoding="utf-8"),
+        content_type="application/javascript",
+        headers={"Cache-Control": "no-store, must-revalidate"},
+    )
+
+
+def _parse_hello(raw: str) -> dict | None:
+    try:
+        msg = json.loads(raw)
+    except ValueError:
+        return None
+    if not isinstance(msg, dict) or msg.get("type") != "hello":
+        return None
+    if msg.get("role") not in ROLES:
+        return None
+    room = msg.get("room")
+    exp = msg.get("exp")
+    sig = msg.get("sig")
+    if not isinstance(room, str) or not room:
+        return None
+    if not isinstance(exp, int) or isinstance(exp, bool):
+        return None
+    if not isinstance(sig, str) or not sig:
+        return None
+    return msg
+
+
+async def ws_handler(request: web.Request) -> web.WebSocketResponse:
+    # Keep the short-lived signalling socket alive through reverse proxies
+    # while SDP/ICE is still being exchanged. Media never traverses this WS.
+    ws = web.WebSocketResponse(max_msg_size=MAX_MSG_SIZE,
+                               heartbeat=SIGNAL_HEARTBEAT_SECONDS)
+    await ws.prepare(request)
+
+    room_obj: Room | None = None
+    role: str | None = None
+
+    try:
+        first = await ws.receive()
+        if first.type is not aiohttp.WSMsgType.TEXT:
+            await ws.close(code=HELLO_CLOSE_CODE)
+            return ws
+
+        hello = _parse_hello(first.data)
+        if hello is None:
+            await ws.close(code=HELLO_CLOSE_CODE)
+            return ws
+
+        room_id = hello["room"]
+        role = hello["role"]
+        exp = hello["exp"]
+        sig = hello["sig"]
+        now = int(time.time())
+
+        if exp <= now:
+            await ws.close(code=HELLO_CLOSE_CODE)
+            return ws
+
+        room_obj = rooms.setdefault(room_id, Room(room_id))
+
+        # The relay never learns the pairing code, so it cannot recompute
+        # `sig` itself. What it CAN verify: both members of the room
+        # presented the exact same sig for the exact same exp, which is only
+        # possible if both know the shared secret and the same code — and
+        # that exp has not passed.
+        if room_obj.expected_sig is None:
+            room_obj.expected_sig = sig
+            room_obj.exp = exp
+        else:
+            if room_obj.exp != exp or not hmac.compare_digest(sig, room_obj.expected_sig):
+                await ws.close(code=HELLO_CLOSE_CODE)
+                return ws
+            if room_obj.exp <= now:
+                await ws.close(code=HELLO_CLOSE_CODE)
+                return ws
+
+        prior = room_obj.members.get(role)
+        if prior is not None and prior is not ws:
+            # Last connection wins: a reconnecting peer would otherwise race its
+            # own not-yet-cleaned-up socket and be rejected as a duplicate. Evict
+            # the stale one instead. The evicted socket's finally-block checks
+            # `members.get(role) is ws` before deleting, so replacing the entry
+            # here means it will not remove this new connection.
+            log.info("room=%s role=%s replacing stale connection", room_id, role)
+            try:
+                await prior.close(code=ROLE_TAKEN_CLOSE_CODE)
+            except Exception:  # noqa: BLE001 - a dead socket must not block the new one
+                pass
+
+        room_obj.members[role] = ws
+        log.info("room=%s role=%s connected", room_id, role)
+
+        async for msg in ws:
+            if msg.type is aiohttp.WSMsgType.TEXT:
+                peer = room_obj.members.get(room_obj.peer_role(role))
+                if peer is not None and not peer.closed:
+                    await peer.send_str(msg.data)
+            elif msg.type is aiohttp.WSMsgType.BINARY:
+                # Media can never accidentally route through here.
+                await ws.close(code=1003)
+                break
+            else:
+                break
+    finally:
+        if room_obj is not None and role is not None and room_obj.members.get(role) is ws:
+            del room_obj.members[role]
+            log.info("room=%s role=%s disconnected", room_obj.room_id, role)
+            if not room_obj.members:
+                rooms.pop(room_obj.room_id, None)
+
+    return ws
+
+
+def build_app() -> web.Application:
+    app = web.Application()
+    app.router.add_get("/healthz", healthz)
+    app.router.add_get("/r/{room}", serve_ipad_page)
+    app.router.add_get("/static/ipad_capture_policy.js", serve_capture_policy)
+    app.router.add_get("/ws", ws_handler)
+    return app
+
+
+def main() -> None:
+    port = int(os.environ.get("PORT", 10000))
+    web.run_app(build_app(), host="0.0.0.0", port=port)
+
+
+if __name__ == "__main__":
+    main()

@@ -36,6 +36,12 @@ def main():
     assert len(combined) == 1
     assert combined[0].severity == Severity.WARNING
 
+    canonical_wins = engine.evaluate([
+        R("heart_rate", "bpm", 72, conf=0.5),
+        R("heart_rate", "bpm_open_rppg", 130, conf=0.9),
+    ], now=2.5)
+    assert canonical_wins == [], "advisor should prefer trusted canonical bpm over backend debug values"
+
     loop_input = [R("vitals_advice", "recommendation", "old advice", sev=Severity.WARNING)]
     assert engine.evaluate(loop_input, now=3.0) == []
 

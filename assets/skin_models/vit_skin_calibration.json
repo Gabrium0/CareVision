@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "validated": false,
+  "model": "LaurianeMD/vit-skin-disease",
+  "model_revision": "1b4fccab2c8b83bf6964e394c40f0dcdd21b1d1c",
+  "targets": {
+    "vitiligo": {
+      "temperature": 1.0,
+      "accept_threshold": 1.0,
+      "max_normalized_entropy": 0.0,
+      "max_unknown_probability": 0.0
+    }
+  },
+  "notes": "Safe placeholder. Replace only with person-disjoint calibration results, then set validated true."
+}

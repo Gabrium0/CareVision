@@ -15,6 +15,19 @@ class Severity(Enum):
     ALERT = "alert"        # urgent (fall, unresponsiveness, stroke signs)
 
 
+class Visibility(Enum):
+    """Controls which consumers may receive a result."""
+    PUBLIC = "public"
+    AGENT_ONLY = "agent_only"
+
+
+class PersistencePolicy(Enum):
+    """Whether an observation may be retained beyond its live TTL."""
+    NONE = "none"
+    EVENT = "event"
+    BASELINE = "baseline"
+
+
 @dataclass
 class Result:
     """A single detection outcome.
@@ -26,6 +39,7 @@ class Result:
     severity:   how the aggregator/greeting engine should treat it
     message:    human-readable one-liner for overlays and logs
     ttl:        seconds this result stays valid in the aggregator
+    visibility: public by default; agent_only never reaches UI/alerts/history
     """
     module: str
     key: str
@@ -34,7 +48,16 @@ class Result:
     severity: Severity = Severity.INFO
     message: str = ""
     ttl: float = 10.0
+    visibility: Visibility = Visibility.PUBLIC
     timestamp: float = field(default_factory=time.time)
+    subject_id: str = "primary"
+    source: str = "local"
+    quality: float | None = None
+    location: str | None = None
+    evidence_window: tuple[float, float] | None = None
+    correlation_id: str | None = None
+    conversation_tags: tuple[str, ...] = ()
+    persistence: PersistencePolicy = PersistencePolicy.NONE
 
     @property
     def expired(self) -> bool:

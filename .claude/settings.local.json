@@ -2,7 +2,13 @@
   "permissions": {
     "allow": [
       "PowerShell(pip install opencv-python mediapipe --quiet 2>$null)",
-      "PowerShell(python -c \"import cv2, mediapipe; print\\(cv2.__version__, mediapipe.__version__\\)\")"
+      "PowerShell(python -c \"import cv2, mediapipe; print\\(cv2.__version__, mediapipe.__version__\\)\")",
+      "Bash(curl -s --max-time 8 \"http://127.0.0.1:8771/debug/state\" -o C:/Users/Gabriel/AppData/Local/Temp/claude/C--Users-Gabriel-Downloads-proj/e8e964fc-f5e8-4e4f-9812-9536bb2e9f21/scratchpad/debug_state.json)",
+      "Skill(artifact-design)",
+      "Skill(artifact-design:*)",
+      "mcp__plugin_ecc_chrome-devtools__new_page",
+      "mcp__plugin_ecc_chrome-devtools__take_screenshot",
+      "mcp__visualize__show_widget"
     ]
   }
 }

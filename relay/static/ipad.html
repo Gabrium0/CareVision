@@ -1,0 +1,1611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Care Monitor</title>
+<style>
+  :root {
+    --bg:#0b0d10; --panel:#14171b; --panel2:#0e1114; --fg:#f2f5f7; --dim:#8a929b;
+    --line:#262b30; --accent:#7fd0ff;
+    --info:#c4ccd4; --notice:#3fb6e6; --warning:#f2b23a; --alert:#ff5a5a; --good:#57d977;
+  }
+  * { box-sizing:border-box; -webkit-text-size-adjust:100%; -webkit-tap-highlight-color:transparent; }
+  html, body { margin:0; padding:0; background:var(--bg); color:var(--fg); }
+  body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+    font-size:17px; padding:calc(14px + env(safe-area-inset-top)) 14px 40px; }
+  h1 { font-size:22px; margin:0 0 4px; font-weight:800; }
+  h2 { font-size:16px; margin:0 0 10px; font-weight:800; letter-spacing:.2px; }
+  h3 { font-size:12px; margin:18px 0 8px; font-weight:800; text-transform:uppercase;
+    letter-spacing:.6px; color:var(--dim); }
+  .dim { color:var(--dim); }
+  .hidden { display:none !important; }
+  button { font:inherit; cursor:pointer; }
+
+  /* ---- pairing (unchanged flow) --------------------------------------- */
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:14px;
+    padding:18px; margin-bottom:16px; }
+  .panel.error { border-color:var(--alert); }
+  .panel.error h2 { color:var(--alert); }
+  label { display:block; font-size:13px; color:var(--dim); text-transform:uppercase;
+    letter-spacing:.4px; margin-bottom:8px; }
+  input#codeInput { width:100%; font:inherit; font-size:28px; letter-spacing:6px;
+    text-align:center; background:var(--panel2); color:var(--fg); border:1px solid var(--line);
+    border-radius:10px; padding:14px; min-height:64px; }
+  #connectBtn { width:100%; margin-top:12px; min-height:64px; font-size:18px; font-weight:700;
+    border-radius:10px; border:1px solid var(--accent); background:#1c2b33; color:var(--fg); }
+  #connectBtn:disabled { opacity:.5; }
+  #pairMsg { margin-top:10px; font-size:14px; min-height:1.2em; }
+
+  /* ---- app bar --------------------------------------------------------- */
+  .appbar { display:flex; align-items:center; gap:10px; padding-bottom:12px;
+    border-bottom:1px solid var(--line); margin-bottom:16px; }
+  .brand { font-weight:800; font-size:16px; display:flex; align-items:center; gap:8px;
+    white-space:nowrap; }
+  .statusdot { display:inline-flex; align-items:center; gap:7px; font-size:12px; color:var(--dim); }
+  .dot { width:10px; height:10px; border-radius:50%; background:var(--dim); }
+  .dot.live { background:var(--good); box-shadow:0 0 8px var(--good); }
+  .dot.bad { background:var(--alert); box-shadow:0 0 8px var(--alert); }
+  .spacer { flex:1 1 auto; }
+  .seg { display:inline-flex; background:var(--panel2); border:1px solid var(--line);
+    border-radius:11px; padding:3px; }
+  .seg button { border:none; background:transparent; color:var(--dim); min-height:40px;
+    padding:7px 15px; border-radius:8px; font-weight:700; font-size:14px; }
+  .seg button.on { background:var(--accent); color:#04121a; }
+  .iconbtn { min-height:44px; min-width:44px; border-radius:11px; border:1px solid var(--line);
+    background:var(--panel2); color:var(--fg); font-size:19px; line-height:1; }
+
+  /* ---- headline -------------------------------------------------------- */
+  .headline { border-radius:14px; padding:16px 18px; margin-bottom:16px; background:var(--panel);
+    border:1px solid var(--line); }
+  .headline .hkicker { font-size:12px; text-transform:uppercase; letter-spacing:.6px;
+    color:var(--dim); margin-bottom:6px; }
+  .headline .htext { font-size:21px; font-weight:700; line-height:1.3; }
+  .headline.s-notice { border-color:var(--notice); }
+  .headline.s-warning { border-color:var(--warning); background:#20190c; }
+  .headline.s-alert { border-color:var(--alert); background:#2a1213; }
+  /* Live agent-voice pill (speaking / listening), fed by the control channel */
+  .agentpill { display:inline-flex; align-items:center; gap:8px; margin:-6px 0 12px;
+    padding:7px 14px; border-radius:999px; background:var(--panel);
+    border:1px solid var(--line); color:var(--dim); font-size:13px; font-weight:600; }
+  .agentpill .pdot { width:9px; height:9px; border-radius:50%; background:var(--dim); }
+  .agentpill.speaking { color:#bfe3bf; border-color:var(--notice); }
+  .agentpill.speaking .pdot { background:#57d977; animation:dotpulse 1.1s infinite; }
+  @keyframes dotpulse { 0%,100%{opacity:.25} 50%{opacity:1} }
+
+  /* ---- vitals tiles ---------------------------------------------------- */
+  .vitals { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:14px; }
+  .vtile { position:relative; background:var(--panel); border:1px solid var(--line);
+    border-radius:18px; padding:18px 14px 16px; text-align:center; }
+  .vtile .vicon { font-size:20px; opacity:.85; }
+  .vtile .vlabel { font-size:12px; color:var(--dim); text-transform:uppercase;
+    letter-spacing:.5px; margin-top:2px; }
+  .vtile .vval { font-size:46px; font-weight:800; line-height:1.02; margin:8px 0 0; }
+  .vtile .vunit { font-size:13px; color:var(--dim); margin-top:2px; min-height:1em; }
+  .vtile .vsub { font-size:11px; color:var(--dim); margin-top:8px; min-height:1.1em; }
+  .vtile .vtier { position:absolute; top:10px; right:10px; font-size:9px; font-weight:800;
+    letter-spacing:.4px; padding:2px 6px; border-radius:6px; background:var(--panel2);
+    color:var(--dim); }
+  .vtile.s-notice { border-color:var(--notice); }
+  .vtile.s-warning { border-color:var(--warning); }
+  .vtile.s-alert { border-color:var(--alert); }
+  .vtile.s-warning .vval { color:var(--warning); }
+  .vtile.s-alert .vval { color:var(--alert); }
+  .vtile.stale .vval { color:var(--dim); }
+  .vtile .dotpulse { display:inline-block; width:7px; height:7px; border-radius:50%;
+    background:var(--good); margin-right:5px; vertical-align:middle; animation:pulse 1.8s ease-in-out infinite; }
+  .vtile.stale .dotpulse { background:var(--dim); animation:none; }
+  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:.3;} }
+
+  /* compact vitals variant for the provider view */
+  .vitals.compact .vtile { padding:12px 12px 10px; border-radius:12px; }
+  .vitals.compact .vtile .vval { font-size:30px; }
+  .vitals.compact .vtile .vicon, .vitals.compact .vtile .vsub { display:none; }
+
+  /* ---- live-demo strip -------------------------------------------------- */
+  .demostrip { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
+    gap:14px; margin-bottom:16px; }
+  .demostrip:empty { display:none; }
+  .dtile { position:relative; background:var(--panel); border:1px solid var(--line);
+    border-radius:16px; padding:16px 16px 14px; text-align:center; overflow:hidden; }
+  .dtile .dicon { font-size:26px; line-height:1; }
+  .dtile .dlabel { font-size:12px; color:var(--dim); text-transform:uppercase;
+    letter-spacing:.06em; margin-top:6px; }
+  .dtile .dval { font-size:60px; font-weight:800; line-height:1.0; margin-top:4px;
+    font-variant-numeric:tabular-nums; }
+  .dtile.label .dval { font-size:34px; text-transform:capitalize; }
+  .dtile.absent .dval { color:var(--dim); }
+  body.presenting .dtile .dval { font-size:72px; }
+  /* Flash the whole tile when its counter/label changes, so the eye is drawn to
+     exactly the tile that just reacted to the action being demoed. */
+  @keyframes dpulse { 0% { box-shadow:0 0 0 0 var(--notice); border-color:var(--notice); }
+    100% { box-shadow:0 0 0 14px transparent; border-color:var(--line); } }
+  .dtile.bump { animation:dpulse .9s ease-out; }
+  .dtile.bump .dval { color:var(--notice); }
+
+  /* ---- signal feed ----------------------------------------------------- */
+  .feed { display:flex; flex-direction:column; gap:8px; }
+  .srow { display:flex; align-items:flex-start; gap:10px; background:var(--panel);
+    border:1px solid var(--line); border-left-width:4px; border-radius:10px; padding:11px 13px; }
+  .srow.s-info { border-left-color:var(--info); }
+  .srow.s-notice { border-left-color:var(--notice); }
+  .srow.s-warning { border-left-color:var(--warning); }
+  .srow.s-alert { border-left-color:var(--alert); }
+  .srow .smsg { flex:1 1 auto; font-size:15px; line-height:1.35; }
+  .srow .smeta { font-size:11px; color:var(--dim); margin-top:3px; }
+  .srow .stier { font-size:9px; font-weight:800; color:var(--dim); border:1px solid var(--line);
+    border-radius:6px; padding:2px 6px; white-space:nowrap; }
+  .empty { color:var(--dim); font-size:14px; padding:8px 2px; }
+
+  /* ---- stat rows ------------------------------------------------------- */
+  .stats { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px; }
+  .stat { border:1px solid var(--line); border-radius:9px; padding:9px 11px; background:var(--panel2); }
+  .stat .k { color:var(--dim); font-size:10px; text-transform:uppercase; letter-spacing:.4px; }
+  .stat .v { font-size:15px; font-weight:700; margin-top:2px; }
+  .stat.s-notice .v { color:var(--notice); }
+  .stat.s-warning .v { color:var(--warning); }
+  .stat.s-alert .v { color:var(--alert); }
+
+  /* ---- camera preview -------------------------------------------------- */
+  .previewWrap { margin-top:16px; }
+  video#preview { width:100%; max-width:180px; border-radius:12px; border:1px solid var(--line);
+    background:#000; display:block; }
+  .previewWrap.big video#preview { max-width:100%; }
+  .previewCap { font-size:11px; color:var(--dim); margin-top:6px; }
+
+  /* ---- settings drawer ------------------------------------------------- */
+  .scrim { position:fixed; inset:0; background:rgba(0,0,0,.55); opacity:0; pointer-events:none;
+    transition:opacity .25s; z-index:40; }
+  .scrim.open { opacity:1; pointer-events:auto; }
+  .drawer { position:fixed; top:0; right:0; height:100%; width:min(430px,92vw); z-index:50;
+    background:var(--panel); border-left:1px solid var(--line); transform:translateX(100%);
+    transition:transform .25s ease; overflow-y:auto; padding:20px 20px 60px;
+    padding-top:calc(20px + env(safe-area-inset-top)); }
+  .drawer.open { transform:translateX(0); }
+  .drawer .drawhead { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+  .setrow { display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:12px 0; border-bottom:1px solid var(--line); }
+  .setrow .lbl { font-size:15px; }
+  .setrow .hint { font-size:12px; color:var(--dim); margin-top:2px; }
+  /* toggle switch */
+  .sw { position:relative; width:52px; height:32px; flex:0 0 auto; }
+  .sw input { opacity:0; width:0; height:0; }
+  .sw span { position:absolute; inset:0; background:var(--panel2); border:1px solid var(--line);
+    border-radius:32px; transition:.2s; }
+  .sw span:before { content:""; position:absolute; height:24px; width:24px; left:3px; top:3px;
+    background:var(--dim); border-radius:50%; transition:.2s; }
+  .sw input:checked + span { background:#12271a; border-color:var(--good); }
+  .sw input:checked + span:before { transform:translateX(20px); background:var(--good); }
+  .sw input:disabled + span { opacity:.4; }
+  .bigbtn { width:100%; min-height:52px; border-radius:11px; border:1px solid var(--accent);
+    background:#1c2b33; color:var(--fg); font-weight:700; font-size:15px; margin-top:10px; }
+  .bigbtn:disabled { opacity:.5; }
+
+  /* module toggle grid in the drawer */
+  .mgrid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .mbtn { display:flex; flex-direction:column; align-items:flex-start; justify-content:center;
+    gap:3px; min-height:60px; padding:9px 11px; text-align:left; border-radius:10px;
+    border:1px solid var(--line); background:var(--panel2); color:var(--fg); }
+  .mbtn.on { border-color:var(--good); background:#12271a; }
+  .mbtn:disabled { opacity:.45; }
+  .mbtn .mlabel { font-weight:700; font-size:13px; }
+  .mbtn .mstate { font-size:11px; color:var(--dim); }
+  .mbtn.on .mstate { color:var(--good); }
+  .mres { grid-column:1 / -1; font-size:12px; margin:-2px 2px 2px; }
+  .mres.ok { color:var(--good); }
+  .mres.err { color:var(--alert); }
+
+  /* connection diagnostics */
+  .diaggrid { display:grid; grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); gap:8px;
+    font-size:13px; }
+
+  .foot { margin-top:22px; font-size:11px; color:var(--dim); line-height:1.5;
+    border-top:1px solid var(--line); padding-top:12px; }
+
+  /* ---- presentation mode ---------------------------------------------- */
+  body.presenting #provDiagCard { display:none; }
+  /* Never display:none the preview — iOS pauses a hidden <video>, which stops
+     requestVideoFrameCallback and kills capture. Shrink it to a corner pip. */
+  body.presenting .previewWrap { position:fixed; right:12px; bottom:12px; margin:0;
+    z-index:30; opacity:.85; }
+  body.presenting .previewWrap video#preview { max-width:96px; }
+  body.presenting .previewWrap.big video#preview { max-width:60vw; }
+  body.presenting .previewCap { display:none; }
+  body.presenting .vtile .vval { font-size:54px; }
+  body.presenting .headline .htext { font-size:24px; }
+</style>
+</head>
+<body>
+
+<div id="secureError" class="panel error hidden">
+  <h2>HTTPS required</h2>
+  <p>This page must be served over HTTPS. <code>navigator.mediaDevices</code> is
+  <code>undefined</code>, which Safari does on any page that is not a secure
+  context — the browser will not expose the camera API at all here, not even
+  to ask for permission. Reload this page using its <code>https://</code>
+  URL (an <code>http://</code> address, including a raw LAN IP, will not
+  work).</p>
+</div>
+
+<div id="pairPanel" class="panel">
+  <h1>Care Monitor</h1>
+  <p class="dim" style="margin:0 0 16px;font-size:14px;">Enter the code shown on the laptop to pair this iPad.</p>
+  <label for="codeInput">Pairing code</label>
+  <input id="codeInput" inputmode="numeric" pattern="[0-9]*" maxlength="6"
+    autocomplete="off" placeholder="123456">
+  <button id="connectBtn" type="button">Connect</button>
+  <div id="pairMsg" class="dim"></div>
+</div>
+
+<div id="app" class="hidden">
+  <div class="appbar">
+    <span class="brand">🩺 Care Monitor</span>
+    <span class="statusdot"><span class="dot" id="liveDot"></span><span id="liveLabel">offline</span></span>
+    <span class="spacer"></span>
+    <div class="seg" id="viewSeg">
+      <button type="button" data-view="resident" class="on">Resident</button>
+      <button type="button" data-view="provider">Provider</button>
+    </div>
+    <button type="button" class="iconbtn" id="settingsBtn" aria-label="Settings">⚙</button>
+  </div>
+
+  <div class="headline" id="headline">
+    <div class="hkicker" id="hkicker">Status</div>
+    <div class="htext" id="htext">Connecting…</div>
+  </div>
+  <div class="agentpill hidden" id="agentpill"><span class="pdot"></span><span id="agentstate">listening</span></div>
+
+  <!-- RESIDENT VIEW -->
+  <div id="viewResident">
+    <!-- Live-demo strip: big counter/label tiles that react to a single action
+         (yawn, blink, nod, expression, gesture) so a showcase can prove a
+         detector works on the spot. Populated from telemetry.demo_tiles. -->
+    <div class="demostrip" id="demoStrip"></div>
+    <div class="vitals" id="vitalsResident"></div>
+  </div>
+
+  <!-- PROVIDER VIEW -->
+  <div id="viewProvider" class="hidden">
+    <div class="vitals compact" id="vitalsProvider"></div>
+
+    <h3>Live signals</h3>
+    <div class="feed" id="signalFeed"><div class="empty">waiting for data…</div></div>
+
+    <h3>Fatigue &amp; environment</h3>
+    <div class="stats" id="statFeed"><div class="empty">waiting for data…</div></div>
+
+    <div class="panel" id="provDiagCard" style="margin-top:18px;">
+      <h2>Connection</h2>
+      <div class="diaggrid">
+        <div class="stat"><div class="k">WS</div><div class="v" id="stWs">–</div></div>
+        <div class="stat"><div class="k">ICE</div><div class="v" id="stIce">–</div></div>
+        <div class="stat"><div class="k">DC</div><div class="v" id="stDc">–</div></div>
+        <div class="stat"><div class="k">Capture FPS</div><div class="v" id="stFps">0</div></div>
+        <div class="stat"><div class="k">Clock</div><div class="v" id="stClock">–</div></div>
+        <div class="stat"><div class="k">Frames sent</div><div class="v" id="stFrames">0</div></div>
+        <div class="stat"><div class="k">Capture</div><div class="v" id="stErr">–</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- camera preview: kept OUTSIDE the view containers and never display:none,
+       so switching to the Provider view or presentation mode cannot pause the
+       capture stream (iOS stops requestVideoFrameCallback for a hidden video). -->
+  <div class="previewWrap" id="previewWrap">
+    <video id="preview" muted playsinline autoplay></video>
+    <div class="previewCap">Camera in use · tap to enlarge</div>
+  </div>
+
+  <!-- Agent voice from the laptop, played on this device. Kept outside the
+       view containers like the preview so it never stops rendering/pausing;
+       `playsinline` plus the connect-button gesture satisfy iOS autoplay. -->
+  <audio id="remoteAudio" autoplay playsinline></audio>
+
+  <div class="foot">
+    Observational wellness monitoring, not a medical device. Readings are cues to
+    look closer, not diagnoses. Reliability tiers (HIGH / MEDIUM / LOW) reflect
+    how far each signal can be trusted.
+  </div>
+</div>
+
+<!-- settings drawer -->
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <div class="drawhead">
+    <h1 style="font-size:20px;margin:0;">Settings</h1>
+    <button type="button" class="iconbtn" id="closeDrawer" aria-label="Close">✕</button>
+  </div>
+
+  <h3>Display</h3>
+  <div class="setrow">
+    <div><div class="lbl">Default view</div><div class="hint">What this iPad opens to</div></div>
+    <div class="seg" id="viewSegDrawer">
+      <button type="button" data-view="resident" class="on">Resident</button>
+      <button type="button" data-view="provider">Provider</button>
+    </div>
+  </div>
+  <div class="setrow">
+    <div><div class="lbl">Presentation mode</div><div class="hint">Larger text, hides diagnostics &amp; preview</div></div>
+    <label class="sw"><input type="checkbox" id="presentSw"><span></span></label>
+  </div>
+  <div class="setrow">
+    <div><div class="lbl">Keep screen awake</div><div class="hint">Prevents the iPad from sleeping</div></div>
+    <label class="sw"><input type="checkbox" id="wakeSw" checked><span></span></label>
+  </div>
+
+  <h3>Vitals tiles</h3>
+  <div id="tileToggles"></div>
+
+  <h3>Live demo</h3>
+  <button type="button" class="bigbtn" id="circuitBtn">▶ Run guided demo circuit</button>
+  <div class="mres" id="circuitMsg" style="display:none;"></div>
+
+  <h3>Detectors</h3>
+  <p class="hint" style="margin:0 0 8px;">Pause or resume a detector on the paired laptop.</p>
+  <div class="mgrid" id="moduleGrid"><p class="dim">waiting for module list…</p></div>
+
+  <div class="foot" id="drawerFoot"></div>
+</aside>
+
+<canvas id="cnv" width="960" height="720" class="hidden"></canvas>
+
+<script src="/static/ipad_capture_policy.js"></script>
+<script>
+(function(){
+  'use strict';
+
+  // ---- point 1: explicit secure-context check, first thing -------------
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    document.getElementById('secureError').classList.remove('hidden');
+    document.getElementById('pairPanel').classList.add('hidden');
+    return; // deliberate: nothing else on this page can work without getUserMedia
+  }
+
+  const CapturePolicy = window.IPadCapturePolicy;
+  if(!CapturePolicy){
+    const policyError = document.getElementById('secureError');
+    policyError.textContent = 'Capture policy failed to load. Reload this page to try again.';
+    policyError.classList.remove('hidden');
+    document.getElementById('pairPanel').classList.add('hidden');
+    return;
+  }
+
+  // Secret is templated in server-side from RELAY_SECRET (relay/server.py).
+  // See relay/README.md for why shipping it to the page is safe: it is
+  // useless to derive a valid sig without the human-relayed 6-digit code,
+  // which this page never learns except by the user typing it in.
+  const RELAY_SECRET = __RELAY_SECRET_JSON__;
+  // Build stamp the relay injects from a hash of the served page + policy.js.
+  // Reported to the laptop on connect so a refresh can be proven to have picked
+  // up the current code (see IPadLink.status().client_build).
+  const CLIENT_BUILD = __CLIENT_BUILD_JSON__;
+  // Both the laptop and this page must land on the same `exp` without
+  // talking to each other first, so exp is quantized to a fixed wall-clock
+  // window (PAIR_WINDOW_SECONDS) rather than "now plus a TTL". Anyone
+  // connecting within the same window computes the identical value.
+  const PAIR_WINDOW_SECONDS = 600;
+  // 960x720 is the quality-first tier: rPPG SNR scales ~1/sqrt(skin pixels).
+  // When Safari cannot encode/send at the requested cadence, the capture policy
+  // can step down to 800x600 and 640x480 while retaining aspect/orientation.
+  let CANVAS_W = 960, CANVAS_H = 720;
+  // Admit a new logical JPEG only after the previous one has drained. A
+  // persistent queue turns current physiological samples into stale samples.
+  const BUFFERED_AMOUNT_LIMIT = 0;
+  // Stay below aiortc's negotiated 64 KiB message ceiling. Receiver ACK gating
+  // permits only one complete JPEG in flight, so a 60 KiB message cannot build
+  // a stale queue behind itself despite reliable ordered delivery.
+  const FRAME_HEADER_BYTES = 24;
+  const MAX_MESSAGE_BYTES = 60 * 1024;
+  const MAX_CHUNK_BYTES = MAX_MESSAGE_BYTES - FRAME_HEADER_BYTES;
+  const FRAME_ACK_TIMEOUT_MS = 2500;
+  // Frames allowed in flight before an ACK. >1 pipelines across the receiver's
+  // ACK round-trip (the throughput ceiling on a CPU-busy host), while bounding
+  // in-flight memory to FRAME_WINDOW * one JPEG.
+  const FRAME_WINDOW = 3;
+  const CAPTURE_WINDOW_MS = 2000;
+
+  function esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+  // Probe the on-device capabilities the offload phases need. Reported to the
+  // laptop so feasibility (MediaPipe Tasks needs WASM SIMD; WebGPU needs a
+  // recent Safari) is a measured fact rather than a UA guess.
+  function probeCaps(){
+    const caps = {};
+    const set = (k, fn) => { try{ caps[k] = fn(); }catch(_){ caps[k] = false; } };
+    set('rvfc', () => 'requestVideoFrameCallback' in HTMLVideoElement.prototype);
+    set('wasm', () => typeof WebAssembly === 'object' && typeof WebAssembly.instantiate === 'function');
+    // Standard 34-byte SIMD-detection module; validate() is synchronous.
+    set('wasm_simd', () => typeof WebAssembly === 'object' && WebAssembly.validate(new Uint8Array(
+      [0,97,115,109,1,0,0,0,1,5,1,96,0,1,123,3,2,1,0,10,10,1,8,0,65,0,253,15,253,98,11])));
+    set('wasm_threads', () => typeof SharedArrayBuffer === 'function');
+    set('webgl2', () => !!document.createElement('canvas').getContext('webgl2'));
+    set('webgpu', () => 'gpu' in navigator);
+    set('offscreen_canvas', () => typeof OffscreenCanvas !== 'undefined');
+    set('safari_major', () => { const m = navigator.userAgent.match(/Version\/(\d+)/); return m ? parseInt(m[1], 10) : null; });
+    return caps;
+  }
+
+  function getRoom(){
+    const parts = location.pathname.split('/').filter(Boolean);
+    return parts.length ? parts[parts.length - 1] : '';
+  }
+
+  async function hmacSig(secret, room, code, exp){
+    const enc = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      'raw', enc.encode(secret), {name:'HMAC', hash:'SHA-256'}, false, ['sign']);
+    const msgBuf = enc.encode(`${room}|${code}|${exp}`);
+    const sigBuf = await crypto.subtle.sign('HMAC', key, msgBuf);
+    let hex = '';
+    const bytes = new Uint8Array(sigBuf);
+    for(let i = 0; i < bytes.length; i++) hex += bytes[i].toString(16).padStart(2, '0');
+    return hex.slice(0, 32);
+  }
+
+  // ---- DOM refs -----------------------------------------------------------
+  const pairPanel = document.getElementById('pairPanel');
+  const appEl = document.getElementById('app');
+  const codeInput = document.getElementById('codeInput');
+  const connectBtn = document.getElementById('connectBtn');
+  const pairMsg = document.getElementById('pairMsg');
+  const previewEl = document.getElementById('preview');
+  const remoteAudioEl = document.getElementById('remoteAudio');
+  const previewWrap = document.getElementById('previewWrap');
+  const liveDot = document.getElementById('liveDot');
+  const liveLabel = document.getElementById('liveLabel');
+  const stWs = document.getElementById('stWs');
+  const stIce = document.getElementById('stIce');
+  const stDc = document.getElementById('stDc');
+  const stFps = document.getElementById('stFps');
+  const stClock = document.getElementById('stClock');
+  const stFrames = document.getElementById('stFrames');
+  const stErr = document.getElementById('stErr');
+  // A silent catch around the capture path hides the one thing worth knowing
+  // when "Frames sent" sticks at 0, so surface the reason on screen instead.
+  function setCapture(note){ try{ stErr.textContent = String(note).slice(0, 96); }catch(_){} }
+  const moduleGrid = document.getElementById('moduleGrid');
+  const canvas = document.getElementById('cnv');
+  const ctx = canvas.getContext('2d', {willReadFrequently:false});
+
+  // dashboard refs
+  const headlineEl = document.getElementById('headline');
+  const hkickerEl = document.getElementById('hkicker');
+  const htextEl = document.getElementById('htext');
+  const vitalsResidentEl = document.getElementById('vitalsResident');
+  const vitalsProviderEl = document.getElementById('vitalsProvider');
+  const demoStripEl = document.getElementById('demoStrip');
+  const demoPrev = {};   // id -> last rendered value, to flash a tile on change
+  const signalFeedEl = document.getElementById('signalFeed');
+  const statFeedEl = document.getElementById('statFeed');
+  const viewResidentEl = document.getElementById('viewResident');
+  const viewProviderEl = document.getElementById('viewProvider');
+  const tileTogglesEl = document.getElementById('tileToggles');
+  const circuitBtn = document.getElementById('circuitBtn');
+  const circuitMsg = document.getElementById('circuitMsg');
+  const drawerFoot = document.getElementById('drawerFoot');
+  const agentPillEl = document.getElementById('agentpill');
+  const agentStateEl = document.getElementById('agentstate');
+
+  // ---- state ----------------------------------------------------------
+  let ws = null, pc = null, dcFrames = null, dcControl = null, stream = null;
+  let micGranted = false;   // audio track present in `stream`
+  let seq = 0, framesSent = 0;
+  let nextFrameDueAt = 0;
+  let captureGeneration = 0;
+  let lastCaptureProfileKey = null;
+  let captureCanvasSyncPending = false;
+  let encodeInFlight = false;
+  const frameFlow = CapturePolicy.createFrameFlowController(FRAME_ACK_TIMEOUT_MS, FRAME_WINDOW);
+  let clockSource = null;
+  const capturePolicy = CapturePolicy.createAdaptivePolicy(CapturePolicy.DEFAULT_CONFIG);
+  let captureWindowStartedAt = performance.now();
+  let captureWindowFrames = 0;
+  let captureWindowBusySkips = 0;
+  let captureWindowBackpressureSkips = 0;
+  let captureWindowTransportWaitSkips = 0;
+  let captureWindowAckTimeouts = 0;
+  let captureWindowEncodeMs = [];
+  let captureWindowAckMs = [];
+  let lastJpegBytes = 0;
+  let lastSenderWindow = {sent_fps:0, encode_p90_ms:0, ack_p90_ms:0,
+    encode_busy_skips:0, backpressure_skips:0, transport_wait_skips:0,
+    ack_timeouts:0};
+  let lastState = null;               // last {type:'state', modules:[...]}
+  let lastTelemetry = null;           // last {type:'telemetry', ...}
+  let pendingCameraTuning = null;      // retained until/replayed on control open
+  const vitalDeadline = Object.create(null);   // vital id -> local expiry ms
+  const moduleBusy = Object.create(null);
+  const moduleResult = Object.create(null);
+  let wakeLock = null;
+
+  // ---- UI preferences (persisted) --------------------------------------
+  // Tiles listed in the order they render; each row in the settings drawer is
+  // built from this, so adding a vital to output/dashboard.py needs only a new
+  // entry here to gain a visibility switch.
+  const VITAL_META = {
+    hr:   {icon:'❤️'}, resp: {icon:'🫁'}, spo2: {icon:'🩸'}, mood: {icon:'🙂'},
+  };
+  const DEFAULT_PREFS = {view:'resident', presenting:false, wake:true,
+    tiles:{hr:true, resp:true, spo2:true, mood:true}};
+  function loadPrefs(){
+    try{
+      const raw = localStorage.getItem('careUI');
+      if(!raw) return {view:'resident', presenting:false, wake:true,
+        tiles:Object.assign({}, DEFAULT_PREFS.tiles)};
+      const p = JSON.parse(raw);
+      return {view: p.view === 'provider' ? 'provider' : 'resident',
+        presenting: !!p.presenting, wake: p.wake !== false,
+        tiles: Object.assign({}, DEFAULT_PREFS.tiles, (p.tiles||{}))};
+    }catch(_){ return {view:'resident', presenting:false, wake:true,
+      tiles:Object.assign({}, DEFAULT_PREFS.tiles)}; }
+  }
+  const prefs = loadPrefs();
+  function savePrefs(){
+    try{ localStorage.setItem('careUI', JSON.stringify({view:prefs.view,
+      presenting:prefs.presenting, wake:prefs.wake, tiles:prefs.tiles})); }catch(_){}
+  }
+
+  // The signalling WebSocket is deliberately closed ~500ms after media is up
+  // (it only carries SDP/ICE), so it is the wrong thing to bind the pill to —
+  // doing that reads "offline" during healthy peer-to-peer streaming. Derive
+  // liveness from the frames data channel + media-path health instead.
+  function mediaHealthy(){
+    try{
+      return !!(dcFrames && dcFrames.readyState === 'open' && pc &&
+        CapturePolicy.mediaPathHealthy(dcFrames.readyState,
+          pc.connectionState, pc.iceConnectionState));
+    }catch(_){ return false; }
+  }
+  function setOverallLive(on){
+    liveDot.classList.toggle('live', on);
+    liveDot.classList.toggle('bad', !on && !!pc &&
+      (pc.connectionState === 'failed' || pc.iceConnectionState === 'failed'));
+    liveLabel.textContent = on ? 'live' : 'offline';
+  }
+  function refreshLiveness(){ setOverallLive(mediaHealthy()); }
+  function setWs(state){ try{ stWs.textContent = state; refreshLiveness(); }catch(_){} }
+  function setIce(state){ try{ stIce.textContent = state; refreshLiveness(); }catch(_){} }
+  function setDc(state){ try{ stDc.textContent = state; refreshLiveness(); }catch(_){} }
+  function setClock(source){ try{ clockSource = source; stClock.textContent = source; }catch(_){} }
+
+  function showMain(){ pairPanel.classList.add('hidden'); appEl.classList.remove('hidden'); }
+  function showPairPanel(){ appEl.classList.add('hidden'); pairPanel.classList.remove('hidden'); connectBtn.disabled = false; }
+
+  // ---- view switching + settings drawer --------------------------------
+  function applyView(){
+    const resident = prefs.view !== 'provider';
+    viewResidentEl.classList.toggle('hidden', !resident);
+    viewProviderEl.classList.toggle('hidden', resident);
+    document.querySelectorAll('#viewSeg button, #viewSegDrawer button').forEach(b => {
+      b.classList.toggle('on', b.getAttribute('data-view') === prefs.view);
+    });
+    renderVitals();  // both grids share data; re-render the now-visible one
+  }
+  function setView(v){ prefs.view = (v === 'provider') ? 'provider' : 'resident'; savePrefs(); applyView(); }
+
+  document.getElementById('viewSeg').addEventListener('click', ev => {
+    const b = ev.target.closest('button[data-view]'); if(b) setView(b.getAttribute('data-view'));
+  });
+  document.getElementById('viewSegDrawer').addEventListener('click', ev => {
+    const b = ev.target.closest('button[data-view]'); if(b) setView(b.getAttribute('data-view'));
+  });
+
+  const scrim = document.getElementById('scrim');
+  const drawer = document.getElementById('drawer');
+  function openDrawer(){ drawer.classList.add('open'); scrim.classList.add('open'); drawer.setAttribute('aria-hidden','false'); }
+  function closeDrawer(){ drawer.classList.remove('open'); scrim.classList.remove('open'); drawer.setAttribute('aria-hidden','true'); }
+  document.getElementById('settingsBtn').addEventListener('click', openDrawer);
+  document.getElementById('closeDrawer').addEventListener('click', closeDrawer);
+  scrim.addEventListener('click', closeDrawer);
+
+  const presentSw = document.getElementById('presentSw');
+  presentSw.checked = prefs.presenting;
+  function applyPresenting(){ document.body.classList.toggle('presenting', prefs.presenting); }
+  presentSw.addEventListener('change', () => { prefs.presenting = presentSw.checked; savePrefs(); applyPresenting(); });
+
+  const wakeSw = document.getElementById('wakeSw');
+  wakeSw.checked = prefs.wake;
+  wakeSw.addEventListener('change', () => {
+    prefs.wake = wakeSw.checked; savePrefs();
+    if(prefs.wake) requestWakeLock(); else releaseWakeLock();
+  });
+
+  // tap the small preview to enlarge it
+  previewWrap.addEventListener('click', () => previewWrap.classList.toggle('big'));
+
+  // vitals tile visibility switches (built once from the tiles pref order)
+  function buildTileToggles(){
+    tileTogglesEl.innerHTML = '';
+    Object.keys(prefs.tiles).forEach(id => {
+      const row = document.createElement('div');
+      row.className = 'setrow';
+      row.innerHTML = `<div><div class="lbl">${esc(id.toUpperCase())}</div></div>` +
+        `<label class="sw"><input type="checkbox" data-tile="${esc(id)}"${prefs.tiles[id] ? ' checked' : ''}><span></span></label>`;
+      tileTogglesEl.appendChild(row);
+    });
+  }
+  tileTogglesEl.addEventListener('change', ev => {
+    const inp = ev.target.closest('input[data-tile]'); if(!inp) return;
+    prefs.tiles[inp.getAttribute('data-tile')] = inp.checked; savePrefs(); renderVitals();
+  });
+
+  circuitBtn.addEventListener('click', () => {
+    if(!dcControl || dcControl.readyState !== 'open'){
+      circuitMsg.style.display = 'block'; circuitMsg.className = 'mres err';
+      circuitMsg.textContent = 'Control channel not open.'; return;
+    }
+    try{
+      dcControl.send(JSON.stringify({type:'module', action:'circuit'}));
+      circuitBtn.disabled = true;
+      circuitMsg.style.display = 'block'; circuitMsg.className = 'mres';
+      circuitMsg.textContent = 'Requested…';
+    }catch(_){
+      circuitMsg.style.display = 'block'; circuitMsg.className = 'mres err';
+      circuitMsg.textContent = 'Send failed.';
+    }
+  });
+
+  // ---- dashboard rendering --------------------------------------------
+  function sevClass(sev){ return 's-' + (sev || 'info'); }
+
+  function vitalTileHTML(v, opts){
+    const id = v.id;
+    const tier = (v.reliability && v.reliability.tier) || null;
+    const stale = !v.present || (vitalDeadline[id] && Date.now() > vitalDeadline[id]);
+    const meta = VITAL_META[id] || {icon:'•'};
+    const cls = 'vtile ' + sevClass(v.severity) + (stale ? ' stale' : '');
+    const bigVal = v.present ? esc(String(v.value)) :
+      '<span style="font-size:20px;color:var(--dim);">measuring…</span>';
+    const tierHtml = tier ? `<span class="vtier">${esc(tier)}</span>` : '';
+    return `<div class="${cls}">${tierHtml}` +
+      (opts.big ? `<div class="vicon">${meta.icon}</div>` : '') +
+      `<div class="vlabel">${esc(v.label)}</div>` +
+      `<div class="vval">${bigVal}</div>` +
+      `<div class="vunit">${v.present ? esc(v.unit || '') : ''}</div>` +
+      (opts.big ? `<div class="vsub"><span class="dotpulse"></span>${stale ? 'updating…' : (v.present ? 'live' : 'starting…')}</div>` : '') +
+      `</div>`;
+  }
+
+  function renderDemoTiles(){
+    if(!demoStripEl) return;
+    const tiles = (lastTelemetry && Array.isArray(lastTelemetry.demo_tiles))
+      ? lastTelemetry.demo_tiles : [];
+    // Detect which tiles changed since the last frame BEFORE rewriting the DOM,
+    // so a freshly-created node carries the .bump class from the outset and its
+    // CSS animation plays. A count going up, or a label flipping, both bump.
+    const bumped = {};
+    tiles.forEach(t => {
+      const key = (t.value === null || t.value === undefined) ? null : String(t.value);
+      if(key !== null && key !== demoPrev[t.id] && demoPrev[t.id] !== undefined){
+        bumped[t.id] = true;
+      }
+      demoPrev[t.id] = key;
+    });
+    try{
+      demoStripEl.innerHTML = tiles.map(t => {
+        const absent = !t.present || t.value === null || t.value === undefined;
+        const kind = t.kind === 'label' ? ' label' : '';
+        const cls = 'dtile' + kind + (absent ? ' absent' : '') + (bumped[t.id] ? ' bump' : '');
+        const val = absent ? '—' : esc(String(t.value));
+        return `<div class="${cls}"><div class="dicon">${esc(t.icon || '•')}</div>` +
+          `<div class="dlabel">${esc(t.label)}</div>` +
+          `<div class="dval">${val}</div></div>`;
+      }).join('');
+    }catch(_){ /* a malformed frame must never blank the dashboard */ }
+  }
+
+  function renderVitals(){
+    if(!lastTelemetry || !Array.isArray(lastTelemetry.vitals)) return;
+    const visible = lastTelemetry.vitals.filter(v => prefs.tiles[v.id] !== false);
+    try{
+      vitalsResidentEl.innerHTML = visible.map(v => vitalTileHTML(v, {big:true})).join('') ||
+        '<div class="empty">no vitals selected — enable some in settings</div>';
+      vitalsProviderEl.innerHTML = lastTelemetry.vitals.map(v => vitalTileHTML(v, {big:false})).join('');
+    }catch(_){ /* one malformed frame must never blank the dashboard */ }
+  }
+
+  function renderHeadline(){
+    if(!lastTelemetry){ return; }
+    const signals = Array.isArray(lastTelemetry.signals) ? lastTelemetry.signals : [];
+    // Same promotion contract as the /demo big screen: a low-confidence notice
+    // can't outrank the greeting. Only a real warning/alert takes the headline.
+    const concern = signals.find(s => s && !s.internal && s.promote !== false &&
+                (s.severity === 'warning' || s.severity === 'alert'));
+    let kicker = 'Status', text = lastTelemetry.greeting || 'Watching over things.', sev = 'info';
+    if(concern){
+      kicker = 'Worth a look'; text = concern.message || text; sev = concern.severity;
+    } else if(lastTelemetry.person_present === false){
+      text = 'No one in view right now.';
+    }
+    hkickerEl.textContent = kicker;
+    htextEl.textContent = text;
+    headlineEl.className = 'headline ' + sevClass(sev);
+  }
+
+  function renderSignals(){
+    if(!lastTelemetry){ return; }
+    const signals = (lastTelemetry.signals || []).filter(s => s && !s.internal);
+    if(!signals.length){ signalFeedEl.innerHTML = '<div class="empty">nothing notable right now.</div>'; return; }
+    signalFeedEl.innerHTML = signals.map(s => {
+      const conf = (typeof s.conf === 'number') ? s.conf.toFixed(2) : '';
+      const tier = s.tier ? `<span class="stier">${esc(s.tier)}</span>` : '';
+      const sub = (s.subject_id && s.subject_id !== 'primary') ? ' · ' + esc(s.subject_id) : '';
+      return `<div class="srow ${sevClass(s.severity)}">` +
+        `<div class="smsg">${esc(s.message || s.label || '')}` +
+        `<div class="smeta">${esc(s.label || '')} · conf ${conf}${sub}</div></div>${tier}</div>`;
+    }).join('');
+  }
+
+  function renderStats(){
+    if(!lastTelemetry || !lastTelemetry.stats){ return; }
+    const rows = [];
+    (lastTelemetry.stats.clothing_weather || []).forEach(r => rows.push(r));
+    (lastTelemetry.stats.fatigue || []).forEach(r => rows.push(r));
+    const advice = lastTelemetry.stats.advice;
+    let html = rows.map(r =>
+      `<div class="stat ${sevClass(r.severity)}"><div class="k">${esc(r.label)}</div>` +
+      `<div class="v">${esc(r.value)}</div></div>`).join('');
+    if(advice){
+      html = `<div class="stat" style="grid-column:1/-1;"><div class="k">Clothing advice</div>` +
+        `<div class="v" style="font-size:14px;">${esc(advice)}</div></div>` + html;
+    }
+    statFeedEl.innerHTML = html || '<div class="empty">warming up…</div>';
+  }
+
+  function renderTelemetry(msg){
+    lastTelemetry = msg;
+    const now = Date.now();
+    (msg.vitals || []).forEach(v => {
+      if(v.present && typeof v.fresh_for === 'number'){
+        vitalDeadline[v.id] = now + Math.max(0, v.fresh_for) * 1000;
+      } else if(!v.present){
+        delete vitalDeadline[v.id];
+      }
+    });
+    renderVitals();
+    renderDemoTiles();
+    renderHeadline();
+    renderSignals();
+    renderStats();
+    renderModulesGrid();
+    updateDrawerFoot();
+  }
+
+  function updateDrawerFoot(){
+    if(!lastTelemetry) return;
+    const c = lastTelemetry.module_counts || {};
+    const perf = lastTelemetry.performance || {};
+    drawerFoot.textContent = `${c.running || 0}/${c.registered || 0} detectors active · ` +
+      `capture ${(perf.capture_fps||0)} fps · analysis ${(perf.analysis_fps||0)} fps`;
+  }
+
+  // re-evaluate freshness once a second so a vital greys to "updating…" between
+  // telemetry pushes without waiting for the next one.
+  setInterval(() => { if(lastTelemetry) renderVitals(); }, 1000);
+
+  // ---- wake lock (point 9) ----------------------------------------------
+  // Best-effort: freeze auto-exposure and white balance once they settle.
+  // Auto-exposure is the single biggest rPPG accuracy killer, and iOS Safari
+  // historically ignores these constraints — but newer builds expose some, so
+  // attempt it and report what actually stuck over the control channel.
+  function sendCameraTuningReport(){
+    if(!pendingCameraTuning || !dcControl || dcControl.readyState !== 'open') return;
+    try{ dcControl.send(JSON.stringify(pendingCameraTuning)); }catch(_){}
+  }
+
+  function tuneCamera(mediaStream){
+    setTimeout(() => {
+      try{
+        const track = mediaStream.getVideoTracks()[0];
+        if(!track || !track.applyConstraints) return;
+        const caps = (track.getCapabilities && track.getCapabilities()) || {};
+        const advanced = [];
+        if(caps.exposureMode && caps.exposureMode.indexOf('manual') >= 0){
+          advanced.push({exposureMode: 'manual'});
+        } else if(caps.exposureMode && caps.exposureMode.indexOf('continuous') >= 0){
+          advanced.push({exposureMode: 'continuous'});
+        }
+        if(caps.whiteBalanceMode && caps.whiteBalanceMode.indexOf('manual') >= 0){
+          advanced.push({whiteBalanceMode: 'manual'});
+        }
+        const supported = Object.keys(caps).filter(k => /exposure|whiteBalance|iso|focus/i.test(k));
+        const report = (locked) => {
+          const rawSettings = (track.getSettings && track.getSettings()) || {};
+          const settings = {};
+          ['width', 'height', 'frameRate', 'exposureMode', 'whiteBalanceMode',
+            'exposureTime', 'iso'].forEach((key) => {
+            const value = rawSettings[key];
+            if(typeof value === 'string' || typeof value === 'number' ||
+                typeof value === 'boolean') settings[key] = value;
+          });
+          pendingCameraTuning = {type:'camera_tuning', locked:locked,
+            capabilities:supported.slice(0, 32), settings:settings};
+          sendCameraTuningReport();
+        };
+        const constraints = captureTrackConstraints();
+        if(advanced.length) constraints.advanced = advanced;
+        track.applyConstraints(constraints).then(() => report(advanced.length ? advanced :
+          'no lockable caps; exposure/WB not adjustable on this Safari'))
+          .catch(() => report('applyConstraints rejected; caps=' + supported.join(',')));
+      }catch(_){ /* best effort only */ }
+    }, 2000);  // let auto-exposure settle before freezing it
+  }
+
+  async function requestWakeLock(){
+    if(!prefs.wake) return;
+    try{
+      wakeLock = await navigator.wakeLock.request('screen');
+    }catch(_){ /* not available everywhere; not fatal */ }
+  }
+  async function releaseWakeLock(){
+    try{ if(wakeLock){ await wakeLock.release(); wakeLock = null; } }catch(_){}
+  }
+  document.addEventListener('visibilitychange', () => {
+    resetCaptureWindow(performance.now());
+    if(document.visibilityState === 'visible' && ws) requestWakeLock();
+  });
+
+  // ---- module control UI (drawer) ----------------------------------------
+  // Sourced from telemetry.modules (richer than the legacy state message):
+  // label, per-scope enabled/toggleable, and the reason a switch is locked.
+  function moduleList(){
+    if(lastTelemetry && Array.isArray(lastTelemetry.modules)) return lastTelemetry.modules;
+    return [];
+  }
+
+  function renderModulesGrid(){
+    try{
+      const mods = moduleList().filter(m => m && !m.internal);
+      if(!mods.length){
+        moduleGrid.innerHTML = '<p class="dim">waiting for module list…</p>';
+        return;
+      }
+      moduleGrid.innerHTML = mods.map(m => {
+        const name = String(m.module || '');
+        const enabled = !!(m.enabled && m.enabled.primary);
+        const toggleable = !!(m.toggleable && m.toggleable.primary);
+        const busy = !!moduleBusy[name];
+        const res = moduleResult[name];
+        const reason = (m.toggle_reason && m.toggle_reason.primary) || '';
+        const resHtml = res ? `<div class="mres ${res.ok ? 'ok' : 'err'}">${esc(res.text)}</div>` : '';
+        const state = busy ? 'working…' : (!toggleable ? (reason ? 'locked' : 'unavailable') : (enabled ? 'On' : 'Off'));
+        return `<button type="button" class="mbtn${enabled ? ' on' : ''}" data-name="${esc(name)}" ` +
+          `${(busy || !toggleable) ? 'disabled' : ''} ${reason ? `title="${esc(reason)}"` : ''}>` +
+          `<span class="mlabel">${esc(m.label || name)}</span>` +
+          `<span class="mstate">${esc(state)}</span></button>${resHtml}`;
+      }).join('');
+    }catch(_){ /* one malformed frame must never kill the drawer */ }
+  }
+
+  moduleGrid.addEventListener('click', (ev) => {
+    const btn = ev.target.closest('.mbtn');
+    if(!btn || btn.disabled) return;
+    toggleModule(btn.getAttribute('data-name'), 'primary');
+  });
+
+  function toggleModule(name, scope){
+    if(!name || moduleBusy[name]) return; // per-button busy flag: no double-fire
+    const mod = moduleList().find(m => m && m.module === name);
+    const turningOn = !(mod && mod.enabled && mod.enabled.primary);
+    moduleBusy[name] = true;
+    renderModulesGrid();
+    try{
+      dcControl.send(JSON.stringify({type:'module', action: turningOn ? 'enable' : 'disable',
+        target: name, scope}));
+    }catch(_){
+      moduleBusy[name] = false;
+      moduleResult[name] = {ok:false, text:'Send failed — control channel not open.'};
+      renderModulesGrid();
+    }
+  }
+
+  function handleControlMessage(raw){
+    try{
+      const msg = JSON.parse(raw);
+      if(!msg || typeof msg !== 'object') return;
+      if(msg.type === 'telemetry'){
+        renderTelemetry(msg);
+      } else if(msg.type === 'state'){
+        lastState = msg;                 // legacy module mirror; telemetry is primary
+        applyHostCaptureConfig(msg);
+        if(agentPillEl && agentStateEl){
+          const agent = msg.agent || {};
+          agentPillEl.classList.remove('hidden');
+          agentPillEl.classList.toggle('speaking', !!agent.speaking);
+          agentStateEl.textContent = agent.speaking ? 'Ada is speaking' :
+            (agent.listening ? 'listening' : 'voice idle');
+        }
+      } else if(msg.type === 'module_result'){
+        const name = (msg.module && msg.module.name) || (msg.target) || null;
+        // Reset the demo-circuit button on any circuit result (it carries no target).
+        if(msg.module && msg.module.action === 'circuit'){
+          circuitBtn.disabled = false;
+          circuitMsg.style.display = 'block';
+          circuitMsg.className = 'mres' + (msg.ok ? '' : ' err');
+          circuitMsg.textContent = msg.ok ? 'Demo circuit started.' :
+            (msg.error ? String(msg.error) : 'Could not start the circuit.');
+        }
+        if(name){
+          moduleBusy[name] = false;
+          // Error ladder mirrors webui/modules.html: show body.error when
+          // present, else a generic fallback naming the transport (there is no
+          // HTTP status on a data channel).
+          moduleResult[name] = msg.ok
+            ? {ok:true, text:'Updated.'}
+            : {ok:false, text: msg.error ? String(msg.error) : 'control channel: no error detail'};
+          renderModulesGrid();
+        }
+      }
+    }catch(_){ /* malformed control message: drop, never throw */ }
+  }
+
+  // ---- capture + send loop (points 5-6) ----------------------------------
+  // Blob.prototype.arrayBuffer() is missing on some iOS WebKit builds, where it
+  // throws "blob.arrayBuffer is not a function" and silently kills every frame.
+  // FileReader has been supported since forever and reads the same bytes.
+  function blobToArrayBuffer(blob){
+    if(typeof blob.arrayBuffer === 'function') return blob.arrayBuffer();
+    return new Promise(function(resolve, reject){
+      const fr = new FileReader();
+      fr.onload = function(){ resolve(fr.result); };
+      fr.onerror = function(){ reject(fr.error || new Error('FileReader failed')); };
+      fr.readAsArrayBuffer(blob);
+    });
+  }
+
+  function percentile90(values){
+    if(!values.length) return 0;
+    const ordered = values.slice().sort((a, b) => a - b);
+    return ordered[Math.max(0, Math.ceil(ordered.length * 0.9) - 1)];
+  }
+
+  function resetCaptureWindow(now){
+    captureWindowStartedAt = now;
+    captureWindowFrames = 0;
+    captureWindowBusySkips = 0;
+    captureWindowBackpressureSkips = 0;
+    captureWindowTransportWaitSkips = 0;
+    captureWindowAckTimeouts = 0;
+    captureWindowEncodeMs = [];
+    captureWindowAckMs = [];
+  }
+
+  function captureProfileSnapshot(){
+    const size = capturePolicy.getSize();
+    return CapturePolicy.boundedCaptureProfile({
+      width: size.width,
+      height: size.height,
+      tier: capturePolicy.getTier(),
+      quality_tier: capturePolicy.getQualityTier(),
+      jpeg_quality: capturePolicy.getJpegQuality(),
+    });
+  }
+
+  function publishCaptureProfileBoundary(force){
+    const profile = captureProfileSnapshot();
+    const key = [profile.width, profile.height, profile.tier,
+      profile.quality_tier, profile.jpeg_quality].join(':');
+    if(!force && key === lastCaptureProfileKey) return true;
+    // Do not put the boundary ahead of an older JPEG whose asynchronous encode
+    // or receiver ACK is still pending. The next capture callback retries it
+    // before drawing any pixels with the new profile.
+    if(!force && (encodeInFlight || !frameFlow.canAdmit())) return false;
+    const frameChannel = dcFrames;
+    if(!frameChannel || frameChannel.readyState !== 'open'){
+      lastCaptureProfileKey = null;
+      return false;
+    }
+    try{
+      // This travels on the same reliable ordered channel as the JPEG chunks.
+      // The receiver can therefore reset temporal rPPG buffers before it
+      // admits the first frame encoded with the new spatial/quality profile.
+      frameChannel.send(JSON.stringify(profile));
+      lastCaptureProfileKey = key;
+      return true;
+    }catch(_){
+      lastCaptureProfileKey = null;
+      captureGeneration++;
+      establishing = false;
+      scheduleReconnect('capture profile boundary failed');
+      return false;
+    }
+  }
+
+  function syncCaptureCanvas(){
+    const config = capturePolicy.getConfig();
+    const sourceWidth = previewEl.videoWidth || config.max_width;
+    const sourceHeight = previewEl.videoHeight || config.max_height;
+    capturePolicy.setSource(sourceWidth, sourceHeight);
+    const size = capturePolicy.getSize();
+    // Resizing a canvas clears its backing store. Defer that mutation while
+    // Safari is asynchronously encoding the previous profile's bitmap.
+    if(encodeInFlight){
+      captureCanvasSyncPending = true;
+      return;
+    }
+    captureCanvasSyncPending = false;
+    CANVAS_W = size.width;
+    CANVAS_H = size.height;
+    if(canvas.width !== CANVAS_W) canvas.width = CANVAS_W;
+    if(canvas.height !== CANVAS_H) canvas.height = CANVAS_H;
+    publishCaptureProfileBoundary(false);
+  }
+
+  function captureTrackConstraints(){
+    const config = capturePolicy.getConfig();
+    return {
+      width: {ideal:config.max_width},
+      height: {ideal:config.max_height},
+      frameRate: {ideal:config.target_fps},
+    };
+  }
+
+  function applyTrackCaptureConfig(){
+    try{
+      const track = stream && stream.getVideoTracks()[0];
+      if(track && track.applyConstraints) track.applyConstraints(captureTrackConstraints()).catch(() => {});
+    }catch(_){ /* constraints are best-effort; canvas sizing is authoritative */ }
+  }
+
+  function applyHostCaptureConfig(message){
+    const next = CapturePolicy.configFromStateMessage(message, capturePolicy.getConfig());
+    if(!next || !capturePolicy.setConfig(next)) return;
+    nextFrameDueAt = 0;
+    resetCaptureWindow(performance.now());
+    syncCaptureCanvas();
+    applyTrackCaptureConfig();
+    const size = capturePolicy.getSize();
+    setCapture('configured ' + next.target_fps + 'fps ' + size.width + 'x' + size.height +
+      (next.adaptive_resolution ? ' auto' : ' fixed'));
+  }
+
+  function finishCaptureWindow(now){
+    const elapsed = now - captureWindowStartedAt;
+    if(elapsed < CAPTURE_WINDOW_MS) return null;
+    const sample = {
+      sent_fps: captureWindowFrames * 1000 / Math.max(1, elapsed),
+      encode_p90_ms: percentile90(captureWindowEncodeMs),
+      ack_p90_ms: percentile90(captureWindowAckMs),
+      encode_busy_skips: captureWindowBusySkips,
+      backpressure_skips: captureWindowBackpressureSkips,
+      transport_wait_skips: captureWindowTransportWaitSkips,
+      ack_timeouts: captureWindowAckTimeouts,
+    };
+    lastSenderWindow = sample;
+    resetCaptureWindow(now);
+    const change = capturePolicy.observeWindow(sample, document.hidden);
+    if(change.changed){
+      syncCaptureCanvas();
+      nextFrameDueAt = 0;
+    }
+    return sample;
+  }
+
+  function senderStatsSnapshot(){
+    const config = capturePolicy.getConfig();
+    const size = capturePolicy.getSize();
+    let buffered = 0;
+    try{ buffered = dcFrames ? dcFrames.bufferedAmount : 0; }catch(_){}
+    return CapturePolicy.boundedSenderStats({
+      sent_fps: lastSenderWindow.sent_fps,
+      target_fps: config.target_fps,
+      width: size.width,
+      height: size.height,
+      tier: capturePolicy.getTier(),
+      quality_tier: capturePolicy.getQualityTier(),
+      jpeg_quality: capturePolicy.getJpegQuality(),
+      encode_p90_ms: lastSenderWindow.encode_p90_ms,
+      jpeg_bytes: lastJpegBytes,
+      buffered_bytes: buffered,
+      encode_busy_skips: lastSenderWindow.encode_busy_skips,
+      backpressure_skips: lastSenderWindow.backpressure_skips,
+      transport_wait_skips: lastSenderWindow.transport_wait_skips,
+      ack_p90_ms: lastSenderWindow.ack_p90_ms,
+      ack_timeouts: lastSenderWindow.ack_timeouts,
+      constrained: capturePolicy.isConstrained(),
+    });
+  }
+
+  function sendFrame(mediaTime, generation){
+    if(generation !== captureGeneration) return;
+    const frameChannel = dcFrames;
+    if(!frameChannel || frameChannel.readyState !== 'open'){
+      setCapture('dc not open');
+      return;
+    }
+    const now = performance.now();
+    finishCaptureWindow(now);
+    if(generation !== captureGeneration) return;
+    const frameIntervalMs = 1000 / capturePolicy.getConfig().target_fps;
+    if(nextFrameDueAt && now < nextFrameDueAt) return;
+    if(encodeInFlight){
+      captureWindowBusySkips++;
+      return;
+    }
+    if(!frameFlow.canAdmit()){
+      captureWindowTransportWaitSkips++;
+      if(frameFlow.isTimedOut(now)){
+        captureWindowAckTimeouts++;
+        captureGeneration++;
+        establishing = false;
+        setDc('stalled');
+        scheduleReconnect('frame ack timeout');
+      }
+      return;
+    }
+    if(!publishCaptureProfileBoundary(false)) return;
+    // This is a queue-admission threshold, not a frame-size ceiling. Once a
+    // JPEG is admitted, all of its bounded chunks are enqueued synchronously.
+    if(frameChannel.bufferedAmount > BUFFERED_AMOUNT_LIMIT){
+      captureWindowBackpressureSkips++;
+      setCapture('backpressure ' + frameChannel.bufferedAmount + 'B');
+      return;
+    }
+
+    // Advance the cadence deadline rather than measuring from the last camera
+    // callback. A 24fps track can then select 20 evenly distributed frames
+    // instead of aliasing down to 12fps by skipping every other callback.
+    nextFrameDueAt = CapturePolicy.nextFrameDeadline(nextFrameDueAt, now, frameIntervalMs);
+    encodeInFlight = true;
+    const encodeStartedAt = performance.now();
+    const frameWidth = CANVAS_W;
+    const frameHeight = CANVAS_H;
+    try{
+      ctx.drawImage(previewEl, 0, 0, frameWidth, frameHeight);
+      canvas.toBlob(async (blob) => {
+        const encodeMs = performance.now() - encodeStartedAt;
+        if(captureWindowEncodeMs.length < 120) captureWindowEncodeMs.push(encodeMs);
+        let markedForAck = false;
+        try{
+          if(!blob){ setCapture('toBlob gave null'); return; }
+          if(generation !== captureGeneration || frameChannel !== dcFrames ||
+              frameChannel.readyState !== 'open') return;
+          const jpegBuf = await blobToArrayBuffer(blob);
+          if(generation !== captureGeneration || frameChannel !== dcFrames ||
+              frameChannel.readyState !== 'open') return;
+          if(frameChannel.bufferedAmount > BUFFERED_AMOUNT_LIMIT){
+            captureWindowBackpressureSkips++;
+            return;
+          }
+          // Preserve the JPEG exactly while keeping individual SCTP messages
+          // small enough to avoid association monopolization without message
+          // interleaving.
+          const total = Math.max(1, Math.ceil(jpegBuf.byteLength / MAX_CHUNK_BYTES));
+          const thisSeq = seq >>> 0;
+          seq = (seq + 1) >>> 0;
+          if(!frameFlow.markSent(thisSeq, performance.now())){
+            captureWindowTransportWaitSkips++;
+            return;
+          }
+          markedForAck = true;
+          for(let i = 0; i < total; i++){
+            const start = i * MAX_CHUNK_BYTES;
+            const end = Math.min(start + MAX_CHUNK_BYTES, jpegBuf.byteLength);
+            // 24-byte header: magic(4s) seq(u32) mediaTime(f64) w(u16) h(u16)
+            // chunk_index(u16) chunk_count(u16). Must match <4sIdHHHH in Python.
+            const header = new ArrayBuffer(24);
+            const dv = new DataView(header);
+            dv.setUint8(0, 0x49); dv.setUint8(1, 0x50); dv.setUint8(2, 0x46); dv.setUint8(3, 0x31);
+            dv.setUint32(4, thisSeq, true);
+            dv.setFloat64(8, mediaTime, true);
+            dv.setUint16(16, frameWidth, true);
+            dv.setUint16(18, frameHeight, true);
+            dv.setUint16(20, i, true);
+            dv.setUint16(22, total, true);
+            const out = new Uint8Array(24 + (end - start));
+            out.set(new Uint8Array(header), 0);
+            out.set(new Uint8Array(jpegBuf, start, end - start), 24);
+            frameChannel.send(out.buffer);
+          }
+          framesSent++;
+          lastJpegBytes = jpegBuf.byteLength;
+        }catch(err){
+          // One bad frame must never stop the loop, but it must remain visible.
+          setCapture('send: ' + (err && (err.name + ' ' + err.message) || err));
+          if(markedForAck){
+            frameFlow.reset();
+            captureWindowAckTimeouts++;
+            captureGeneration++;
+            establishing = false;
+            scheduleReconnect('frame send failed');
+          }
+        }finally{
+          encodeInFlight = false;
+          if(captureCanvasSyncPending) syncCaptureCanvas();
+        }
+      }, 'image/jpeg', capturePolicy.getJpegQuality());
+    }catch(err){
+      encodeInFlight = false;
+      setCapture('draw/encode: ' + (err && err.name || err));
+    }
+  }
+
+  function handleFrameMessage(data){
+    if(typeof data !== 'string') return;
+    try{
+      const message = JSON.parse(data);
+      if(!message || message.type !== 'frame_ack') return;
+      const ackMs = frameFlow.acknowledge(message.seq, performance.now());
+      if(ackMs === null) return;
+      captureWindowFrames++;
+      if(captureWindowAckMs.length < 120) captureWindowAckMs.push(ackMs);
+    }catch(_){ /* malformed or stale acknowledgement: ignore */ }
+  }
+
+  function startCaptureLoop(){
+    const generation = ++captureGeneration;
+    nextFrameDueAt = 0;
+    resetCaptureWindow(performance.now());
+    if(!publishCaptureProfileBoundary(true)) return;
+    setCapture('loop started');
+    if('requestVideoFrameCallback' in previewEl){
+      setClock('rvfc-mediaTime');
+      const onFrame = (_now, metadata) => {
+        if(generation !== captureGeneration) return;
+        try{ sendFrame(metadata.mediaTime, generation); }
+        catch(err){ setCapture('loop: ' + (err && err.name || err)); }
+        if(generation === captureGeneration && dcFrames && dcFrames.readyState === 'open'){
+          previewEl.requestVideoFrameCallback(onFrame);
+        }
+      };
+      previewEl.requestVideoFrameCallback(onFrame);
+    } else {
+      setClock('performance-now');
+      const tick = () => {
+        if(generation !== captureGeneration) return;
+        try{ sendFrame(performance.now() / 1000, generation); }catch(_){}
+        if(generation === captureGeneration && dcFrames && dcFrames.readyState === 'open'){
+          requestAnimationFrame(tick);
+        }
+      };
+      requestAnimationFrame(tick);
+    }
+    const reportClock = () => {
+      if(generation !== captureGeneration) return;
+      if(dcControl && dcControl.readyState === 'open'){
+        try{ dcControl.send(JSON.stringify({type:'clock_source', clock_source: clockSource})); }catch(_){}
+      } else {
+        setTimeout(reportClock, 250);
+      }
+    };
+    reportClock();
+  }
+
+  // ---- bounded sender stats + status display -------------------------
+  setInterval(() => {
+    try{
+      refreshLiveness();   // steady-state streaming: keep the pill on media health
+      finishCaptureWindow(performance.now());
+      const stats = senderStatsSnapshot();
+      stFps.textContent = stats.sent_fps.toFixed(1);
+      stFrames.textContent = String(framesSent);
+      const detail = stats.width + 'x' + stats.height + ' enc' + stats.encode_p90_ms +
+        'ms ack' + stats.ack_p90_ms + 'ms jpg' + Math.round(stats.jpeg_bytes / 1024) +
+        'KB q' + stats.jpeg_quality.toFixed(2) + ' buf' +
+        Math.round(stats.buffered_bytes / 1024) + 'KB busy' + stats.encode_busy_skips +
+        '/bp' + stats.backpressure_skips + '/wait' + stats.transport_wait_skips +
+        '/timeout' + stats.ack_timeouts;
+      setCapture((stats.constrained ? 'limited ' : '') + detail);
+      if(dcControl && dcControl.readyState === 'open'){
+        dcControl.send(JSON.stringify(stats));
+      }
+    }catch(_){}
+  }, 1000);
+
+  // ---- WebRTC + signaling (point 4) --------------------------------------
+  function wirePeerConnection(peer){
+    peer.onicecandidate = (ev) => {
+      if(peer !== pc) return;
+      if(ev.candidate && ws && ws.readyState === WebSocket.OPEN){
+        try{
+          ws.send(JSON.stringify({type:'candidate',
+            candidate: ev.candidate.toJSON ? ev.candidate.toJSON() : ev.candidate}));
+        }catch(_){}
+      }
+    };
+    peer.oniceconnectionstatechange = () => {
+      if(peer !== pc) return;
+      const s = peer.iceConnectionState;
+      setIce(s);
+      // Only 'failed' is terminal. 'disconnected' is often transient and
+      // recovers on its own; 'closed' is us tearing down. Reacting to those
+      // would re-offer mid-handshake and cause the open/close flap.
+      if(s === 'failed'){ establishing = false; scheduleReconnect('ice failed'); }
+    };
+    peer.onconnectionstatechange = () => {
+      if(peer !== pc) return;
+      if(peer.connectionState === 'failed'){
+        establishing = false;
+        scheduleReconnect('peer failed');
+      }
+    };
+  }
+
+  function wireDataChannels(peer, frameChannel, controlChannel){
+    frameChannel.binaryType = 'arraybuffer';
+    frameChannel.bufferedAmountLowThreshold = BUFFERED_AMOUNT_LIMIT;
+    frameChannel.onmessage = (ev) => {
+      if(peer === pc && frameChannel === dcFrames) handleFrameMessage(ev.data);
+    };
+    frameChannel.onopen = () => {
+      if(peer !== pc || frameChannel !== dcFrames) return;
+      establishing = false;
+      if(reconnectTimer){ clearTimeout(reconnectTimer); reconnectTimer = null; }
+      setDc('open');
+      showMain();
+      startCaptureLoop();
+      // Signalling has finished. Closing this idle tunnel socket deliberately
+      // removes it from the media lifetime; ICE/SCTP continue peer-to-peer.
+      const activeSocket = ws;
+      setTimeout(() => {
+        if(peer === pc && frameChannel === dcFrames && activeSocket &&
+            activeSocket === ws && activeSocket.readyState === WebSocket.OPEN){
+          try{ activeSocket.close(1000, 'signalling complete'); }catch(_){}
+        }
+      }, 500);
+    };
+    frameChannel.onclose = () => {
+      if(peer !== pc || frameChannel !== dcFrames) return;
+      captureGeneration++;
+      establishing = false;
+      setDc('closed');
+      scheduleReconnect('frames closed');
+    };
+    frameChannel.onerror = () => {
+      if(peer === pc && frameChannel === dcFrames) setDc('error');
+    };
+
+    controlChannel.onopen = () => {
+      if(peer !== pc || controlChannel !== dcControl) return;
+      setDc('open'); showMain();
+      try{ controlChannel.send(JSON.stringify({type:'client_version',
+        build: CLIENT_BUILD, ua: navigator.userAgent, caps: probeCaps()})); }catch(_){}
+      sendCameraTuningReport();
+    };
+    controlChannel.onmessage = (ev) => {
+      if(peer === pc && controlChannel === dcControl) handleControlMessage(ev.data);
+    };
+    controlChannel.onclose = () => {};
+    controlChannel.onerror = () => {};
+  }
+
+  // Once the code is entered and the camera granted, the page keeps trying to
+  // stay paired on its own: restarting the laptop pipeline drops the peer
+  // connection but not this WS, so on any transient drop we tear BOTH down and
+  // re-pair in the current 10-minute window. That means dev restarts need no
+  // reload and no re-typing the code.
+  let storedCode = null;          // remembered after the first successful entry
+  let wantConnected = false;      // true once the user has connected once
+  let reconnectTimer = null;
+  let establishing = false;       // single-flight: one handshake attempt at a time
+  let attemptId = 0;              // invalidates watchdogs from superseded attempts
+
+  function cleanupPeer(){
+    // Invalidates rVFC/rAF callbacks and async JPEG completions from this peer.
+    // Do not clear encodeInFlight here: a stale toBlob must settle before a new
+    // generation may start another encode.
+    captureGeneration++;
+    // Detach handlers BEFORE closing, so tearing the old connection down does
+    // not fire close/ice events that would schedule yet another reconnect.
+    if(pc){ pc.oniceconnectionstatechange = null; pc.onconnectionstatechange = null; pc.onicecandidate = null; pc.ontrack = null; }
+    if(dcFrames){ dcFrames.onopen = dcFrames.onmessage = dcFrames.onclose = dcFrames.onerror = null; }
+    if(dcControl){ dcControl.onopen = dcControl.onmessage = dcControl.onclose = dcControl.onerror = null; }
+    try{ if(remoteAudioEl) remoteAudioEl.srcObject = null; }catch(_){}
+    try{ if(pc) pc.close(); }catch(_){}
+    try{ if(ws && ws.readyState <= 1){ ws.onclose = null; ws.close(); } }catch(_){}
+    dcFrames = dcControl = pc = null; ws = null;
+    lastCaptureProfileKey = null;
+    frameFlow.reset();
+  }
+
+  function scheduleReconnect(why){
+    // Never interrupt a handshake in flight — ICE can take 10-15s, and
+    // re-offering mid-flight makes the laptop tear down the attempt that was
+    // about to succeed, which is exactly the open/close flapping loop.
+    if(!wantConnected || reconnectTimer || establishing) return;
+    setCapture('reconnecting (' + why + ')');
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      establishPeer().catch(() => scheduleReconnect('retry'));
+    }, 2000);
+  }
+
+  function wireSocket(socket, peer, frameChannel, room, code, exp, sig){
+    socket.addEventListener('open', async () => {
+      if(socket !== ws || peer !== pc) return;
+      setWs('open');
+      try{
+        socket.send(JSON.stringify({type:'hello', room, role:'ipad', exp, sig}));
+        const offer = await peer.createOffer();
+        await peer.setLocalDescription(offer);
+        if(socket !== ws || peer !== pc || socket.readyState !== WebSocket.OPEN) return;
+        socket.send(JSON.stringify({type:'offer', sdp: peer.localDescription.sdp}));
+        pairMsg.textContent = 'Waiting for the laptop to answer…';
+        // Watchdog: ICE can legitimately take 10-15s, so wait 20s before giving
+        // up. Scoped to THIS attempt via attemptId so a later attempt's success
+        // can't be torn down by an earlier watchdog firing late.
+        const myAttempt = attemptId;
+        setTimeout(() => {
+          if(myAttempt !== attemptId) return;               // superseded
+          if(peer === pc && frameChannel === dcFrames && frameChannel.readyState !== 'open'){
+            establishing = false;
+            scheduleReconnect('no answer');
+          }
+        }, 20000);
+      }catch(err){
+        establishing = false;
+        pairMsg.textContent = 'Could not start the connection: ' + esc(String(err && err.message || err));
+        scheduleReconnect('offer failed');
+      }
+    });
+    socket.addEventListener('message', (ev) => {
+      if(socket !== ws || peer !== pc) return;
+      try{
+        const msg = JSON.parse(ev.data);
+        if(!msg || typeof msg !== 'object') return;
+        if(msg.type === 'answer'){
+          peer.setRemoteDescription({type:'answer', sdp: msg.sdp}).catch(() => {});
+        } else if(msg.type === 'candidate' && msg.candidate){
+          peer.addIceCandidate(msg.candidate).catch(() => {});
+        }
+      }catch(_){ /* malformed signaling message: drop, never throw */ }
+    });
+    socket.addEventListener('close', (ev) => {
+      // Only the CURRENT socket's closure matters. When we've already moved on
+      // to a newer attempt, an evicted old socket firing close here (e.g. the
+      // relay's last-wins 4409 to the stale connection) must be ignored, or it
+      // would tear down the connection that just replaced it.
+      if(ev.target !== ws || peer !== pc) return;
+      setWs('closed');
+      establishing = false;
+      // SDP/ICE signalling is no longer needed after SCTP is established.
+      // A tunnel idle timeout must never destroy a healthy direct media path.
+      if(CapturePolicy.mediaPathHealthy(frameChannel.readyState,
+          peer.connectionState, peer.iceConnectionState)) return;
+      if(ev.code === 4401){
+        // Auth genuinely failed. With a fixed dev code this shouldn't recur, so
+        // surface it rather than loop, but keep retrying slowly in case it was a
+        // window-boundary race that the next attempt clears.
+        pairMsg.textContent = 'Pairing rejected (code/secret mismatch). Retrying…';
+        scheduleReconnect('4401');
+      } else if(ev.code === 4409){
+        pairMsg.textContent = 'Another iPad holds this room. Retrying…';
+        scheduleReconnect('4409');
+      } else if(wantConnected){
+        scheduleReconnect('ws closed');
+      }
+    });
+    socket.addEventListener('error', () => {
+      if(socket === ws && peer === pc) setWs('error');
+    });
+  }
+
+  // Build a fresh peer connection + relay socket and offer. Re-entrant: safe to
+  // call again on any drop. Reuses the already-granted camera stream.
+  async function establishPeer(){
+    establishing = true;
+    attemptId++;
+    cleanupPeer();
+    try{
+      const room = getRoom();
+      const exp = Math.ceil((Date.now() / 1000 + 1) / PAIR_WINDOW_SECONDS) * PAIR_WINDOW_SECONDS;
+      const sig = await hmacSig(RELAY_SECRET, room, storedCode, exp);
+
+      const peer = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
+      pc = peer;
+      // The camera stream remains local on previewEl. Do not add a native video
+      // track: the host consumes the JPEG data channel, and an unconsumed RTP
+      // track creates a second encoder plus an ever-growing receiver queue.
+      // Reliable ordered delivery plus an application ACK gives us exactly one
+      // complete JPEG in flight. That avoids partial-frame loss and unbounded
+      // queues while preferring q0.92 pixels; a missing ACK triggers a fresh peer.
+      const frameChannel = peer.createDataChannel('frames', {ordered:true});
+      const controlChannel = peer.createDataChannel('control'); // default reliable/ordered
+      dcFrames = frameChannel;
+      dcControl = controlChannel;
+      wireDataChannels(peer, frameChannel, controlChannel);
+      wirePeerConnection(peer);
+      // Agent audio rides real RTP tracks in both directions. Our microphone is
+      // offered sendonly; a separate recvonly slot receives the companion's
+      // voice, which the host merges onto its first audio m-line (sendrecv).
+      if(micGranted && stream && stream.getAudioTracks().length){
+        try{ peer.addTransceiver(stream.getAudioTracks()[0], {direction:'sendonly'}); }
+        catch(_){ /* older Safari: host still answers mic-less */ }
+      }
+      try{ peer.addTransceiver('audio', {direction:'recvonly'}); }catch(_){}
+      peer.ontrack = (ev) => {
+        if(peer !== pc || !ev.track || ev.track.kind !== 'audio') return;
+        try{
+          remoteAudioEl.srcObject = new MediaStream([ev.track]);
+          const played = remoteAudioEl.play();
+          if(played && played.catch) played.catch(() => {});
+        }catch(_){}
+      };
+
+      pairMsg.textContent = 'Connecting…';
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const socket = new WebSocket(proto + '//' + location.host + '/ws');
+      ws = socket;
+      wireSocket(socket, peer, frameChannel, room, storedCode, exp, sig);
+    }catch(err){
+      // scheduleReconnect deliberately rejects concurrent establishment. Clear
+      // the guard on every synchronous/awaited setup failure so callers can
+      // actually schedule the next attempt instead of wedging until reload.
+      establishing = false;
+      cleanupPeer();
+      throw err;
+    }
+  }
+
+  async function connect(){
+    const code = codeInput.value.trim();
+    if(!/^[0-9]{6}$/.test(code)){
+      pairMsg.textContent = 'Enter the 6-digit code shown on the laptop.';
+      return;
+    }
+    connectBtn.disabled = true;
+    pairMsg.textContent = 'Requesting camera and microphone…';
+
+    if(!stream){
+      const initialConfig = capturePolicy.getConfig();
+      try{
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {width:{ideal:initialConfig.max_width}, height:{ideal:initialConfig.max_height},
+            frameRate:{ideal:initialConfig.target_fps}, facingMode:'user'},
+          // Echo cancellation keeps this device's speaker (the agent's voice)
+          // out of the microphone feed; Safari defaults it on, be explicit.
+          audio: {echoCancellation:true, noiseSuppression:true},
+        });
+        micGranted = true;
+      }catch(errWithAudio){
+        // A denied microphone must not kill the camera-only fallback path:
+        // degrade to today's behaviour instead of failing pairing entirely.
+        try{
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {width:{ideal:initialConfig.max_width}, height:{ideal:initialConfig.max_height},
+              frameRate:{ideal:initialConfig.target_fps}, facingMode:'user'},
+            audio: false,
+          });
+          micGranted = false;
+          pairMsg.textContent = 'Microphone unavailable — camera only.';
+        }catch(err){
+          pairMsg.textContent = 'Camera permission failed: ' + esc(String(err && err.message || err));
+          connectBtn.disabled = false;
+          return;
+        }
+      }
+      previewEl.srcObject = stream;
+      applyTrackCaptureConfig();
+      tuneCamera(stream);
+      // Safari treats constraints as hints and rotates track geometry with the
+      // device, so policy sizing always follows the actual preview dimensions.
+      previewEl.addEventListener('loadedmetadata', syncCaptureCanvas);
+      previewEl.addEventListener('resize', syncCaptureCanvas);
+      syncCaptureCanvas();
+    }
+    requestWakeLock(); // called from a click handler, satisfying user-activation requirements
+
+    storedCode = code;
+    wantConnected = true;
+    try{
+      await establishPeer();
+    }catch(err){
+      pairMsg.textContent = 'Could not start the connection: ' + esc(String(err && err.message || err));
+      connectBtn.disabled = false;
+      scheduleReconnect('connect failed');
+    }
+  }
+
+  connectBtn.addEventListener('click', () => { connect().catch(() => {}); });
+  codeInput.addEventListener('keydown', (ev) => { if(ev.key === 'Enter') connectBtn.click(); });
+
+  // ---- initial UI state -------------------------------------------------
+  buildTileToggles();
+  applyView();
+  applyPresenting();
+})();
+</script>
+</body>
+</html>

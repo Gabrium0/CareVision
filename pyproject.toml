@@ -15,3 +15,8 @@ ignore-nested-functions = true
 exclude = ["tests", "webui/_demo.py"]
 verbose = 1
 color = true
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: optional model or hardware integration tests",
+]

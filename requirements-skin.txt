@@ -1,0 +1,7 @@
+# Optional local close-up skin classifier for A2000 development.
+# Install alongside requirements.txt and a platform-compatible PyTorch build.
+# On Jetson, install NVIDIA's JetPack-compatible PyTorch wheel instead of a
+# generic PyPI CUDA wheel; TensorRT is supplied by JetPack.
+transformers>=4.40
+Pillow>=10
+onnx>=1.16

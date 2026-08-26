@@ -1,54 +1,45 @@
-"""Gemini natural-language generation for the voice agent.
+"""Free Gemini backend that duck-types MoondreamClient for local speech testing.
 
-Turns an utterance intent + the accumulated person context into one short, warm
-spoken line. Key is read from .env (GEMINI_API_KEY / GOOGLE_API_KEY). If the
-SDK or key is missing, `available` is False and the caller uses the templated
-fallback, so the agent still speaks offline.
+Production speaks through Moondream (paid). For iterating on speech quality
+without cost, this points the identical OpenAI-compatible request machinery at
+Google's free Gemini endpoint (``gemini-2.5-flash``, 500 requests/day free).
+Because it subclasses ``MoondreamClient``, it exposes the exact same async
+surface the ``VoiceAgent`` calls (submit_response/poll_response,
+submit_generation/poll_generation, classify/select, status, close), so the agent
+cannot tell the difference — the deterministic guards and control flow under
+test are identical to production.
+
+Not wired into production; the harness swaps it onto ``agent.moondream``.
 """
 from __future__ import annotations
 
 from agent.env import gemini_api_key
+from agent.moondream_client import MoondreamClient
 
-_PERSONA = (
-    "You are a warm, calm companion robot for an elderly person who may live "
-    "alone. You speak out loud in ONE short, natural sentence (max ~25 words), "
-    "conversational and kind, never clinical or alarming. You do not give "
-    "medical diagnoses. If you mention something you noticed (like their "
-    "clothing or mood), be gentle and offer, don't instruct."
-)
+DEFAULT_MODEL = "gemini-2.5-flash"
 
 
-class GeminiClient:
-    """Gemini NLG wrapper for the voice agent, with an offline templated fallback."""
-    def __init__(self, model: str = "gemini-2.5-flash"):
-        self.model = model
-        self.available = False
-        self._client = None
-        key = gemini_api_key()
-        if not key:
-            print("[agent/gemini] no GEMINI_API_KEY in .env; using templated speech")
-            return
-        try:
-            from google import genai
-            self._client = genai.Client(api_key=key)
-            self.available = True
-            print(f"[agent/gemini] ready (model {self.model})")
-        except Exception as e:  # noqa: BLE001
-            print(f"[agent/gemini] unavailable ({type(e).__name__}: {e}); "
-                  "using templated speech")
+class GeminiClient(MoondreamClient):
+    """MoondreamClient retargeted at Gemini's OpenAI-compatible endpoint."""
 
-    def generate(self, intent: str, context: str, detail: str = "") -> str | None:
-        """Generate one short spoken line, or None if unavailable."""
-        if not self.available:
-            return None
-        prompt = (f"{_PERSONA}\n\nWhat you know right now: {context}\n\n"
-                  f"Intent: {intent}. {detail}\n\n"
-                  "Say the single line you would speak now:")
-        try:
-            resp = self._client.models.generate_content(
-                model=self.model, contents=prompt)
-            text = (getattr(resp, "text", "") or "").strip().strip('"')
-            return text.split("\n")[0][:240] if text else None
-        except Exception as e:  # noqa: BLE001
-            print(f"[agent/gemini] generation failed: {e}")
-            return None
+    endpoint = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+    # Gemini's OpenAI-compat layer expects ``max_tokens``, not the newer name.
+    token_param = "max_tokens"
+
+    def __init__(self, model: str | None = None, enabled: bool = True,
+                 timeout: float = 15.0):
+        super().__init__(model=model or DEFAULT_MODEL, enabled=enabled,
+                         timeout=timeout)
+        # Re-key onto Gemini after the base wired everything for Moondream.
+        self._key = gemini_api_key()
+        self.available = bool(self._key)
+        self._lifecycle = "configured" if self.available else "unconfigured"
+
+    def _auth_headers(self, key: str) -> dict:
+        return {"Authorization": f"Bearer {key}"}
+
+    def _payload_extra(self) -> dict:
+        # Gemini 2.5 does server-side "thinking" that consumes the token budget
+        # and truncates short spoken lines mid-sentence; disable it so a one-line
+        # check-in comes back whole.
+        return {"reasoning_effort": "none"}

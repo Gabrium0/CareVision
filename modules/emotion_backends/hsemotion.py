@@ -11,6 +11,7 @@ last label is served between runs, so polling every frame stays cheap.
 from __future__ import annotations
 
 import time
+from concurrent.futures import Future, ThreadPoolExecutor
 
 import numpy as np
 
@@ -36,6 +37,8 @@ class HSEmotionBackend(Backend):
         self._cv2 = None
         self._last = 0.0
         self._cached = None
+        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="hsemotion")
+        self._pending: Future | None = None
         try:
             import cv2
             import urllib.request  # noqa: F401  hsemotion uses urllib.request
@@ -56,20 +59,13 @@ class HSEmotionBackend(Backend):
             if crop is not None and crop.size:
                 self._crop = crop
 
-    def compute(self) -> dict | None:
-        """Return the backend's current reading dict, or None if not ready."""
-        if not self.available or self._crop is None:
-            return self._cached
-        now = time.time()
-        if now - self._last < self.infer_every:
-            return self._cached
-        self._last = now
-        rgb = self._cv2.cvtColor(self._crop, self._cv2.COLOR_BGR2RGB)
+    def _infer(self, crop) -> dict | None:
+        rgb = self._cv2.cvtColor(crop, self._cv2.COLOR_BGR2RGB)
         try:
             label, scores = self.recognizer.predict_emotions(rgb, logits=False)
         except Exception as e:  # noqa: BLE001
             print(f"[emotion/hsemotion] inference failed: {e}")
-            return self._cached
+            return None
         scores = np.asarray(scores, dtype=np.float64).ravel()
         if scores.sum() > 0:
             scores = scores / scores.sum()
@@ -80,6 +76,31 @@ class HSEmotionBackend(Backend):
             if i < len(scores):
                 val += _POS.get(lab, 0.0) * scores[i]
                 val -= _NEG.get(lab, 0.0) * scores[i]
-        self._cached = {"emotion": str(label).lower(), "confidence": round(conf, 2),
-                        "valence": round(float(np.clip(val, -1, 1)), 2)}
+        return {"emotion": str(label).lower(), "confidence": round(conf, 2),
+                "valence": round(float(np.clip(val, -1, 1)), 2)}
+
+    def compute(self) -> dict | None:
+        """Poll cached emotion and schedule latest-only inference off the caller."""
+        if not self.available or self._crop is None:
+            return self._cached
+        if self._pending is not None and self._pending.done():
+            try:
+                reading = self._pending.result()
+                if reading is not None:
+                    self._cached = reading
+            except Exception as e:  # noqa: BLE001
+                print(f"[emotion/hsemotion] inference failed: {e}")
+            self._pending = None
+        now = time.time()
+        if self._pending is None and now - self._last >= self.infer_every:
+            self._last = now
+            self._pending = self._executor.submit(self._infer, self._crop.copy())
         return self._cached
+
+    def close(self) -> None:
+        if self._pending is not None:
+            try:
+                self._pending.result(timeout=5.0)
+            except Exception:  # noqa: BLE001
+                pass
+        self._executor.shutdown(wait=False, cancel_futures=True)

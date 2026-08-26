@@ -11,8 +11,8 @@ import sys
 from pathlib import Path
 
 # Force templated fallback: hide keys AND stop .env from reloading them.
-os.environ.pop("GEMINI_API_KEY", None)
-os.environ.pop("GOOGLE_API_KEY", None)
+os.environ.pop("X-Moondream-Auth", None)
+os.environ.pop("MOONDREAM_API_KEY", None)
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import agent.env as agent_env
@@ -42,7 +42,7 @@ def R(module, key, value, sev=Severity.INFO, msg="", conf=0.6):
 
 def main():
     agent = VoiceAgent(name="Margaret", speak=False)
-    assert not agent.gemini.available, "test must run in templated (offline) mode"
+    assert not agent.moondream.available, "test must run in templated (offline) mode"
     rec = Recorder()
     mgr = AlertManager(channels=[rec], confirm_seconds=0.1,
                        cooldown_seconds=120, escalate_after=300)

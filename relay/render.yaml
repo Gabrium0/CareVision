@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: ipad-camera-relay
+    env: python
+    plan: free
+    # No rootDir: this directory is deployed as its own repository, so the
+    # relay sits at the repo root. Keeping it out of the main project repo
+    # means .env, capture samples and graphify-out/ are never pushed to a
+    # host that only needs these five files.
+    buildCommand: pip install -r requirements.txt
+    startCommand: python server.py
+    healthCheckPath: /healthz
+    envVars:
+      - key: RELAY_SECRET
+        sync: false

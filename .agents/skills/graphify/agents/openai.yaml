@@ -1,0 +1,4 @@
+interface:
+  display_name: "Graphify"
+  short_description: "Query this repository knowledge graph"
+  default_prompt: "Use $graphify to answer a question from this repository knowledge graph."

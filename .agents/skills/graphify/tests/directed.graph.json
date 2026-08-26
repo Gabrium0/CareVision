@@ -1,0 +1,12 @@
+{
+  "directed": true,
+  "multigraph": false,
+  "graph": {},
+  "nodes": [
+    {"id": "api", "label": "ApiHandler", "source_file": "src/api.js", "source_location": "L3"},
+    {"id": "queue", "label": "WorkQueue", "source_file": "src/queue.js", "source_location": "L7"}
+  ],
+  "links": [
+    {"source": {"id": "api"}, "target": {"id": "queue"}, "relation": "ENQUEUES", "confidence": "EXTRACTED"}
+  ]
+}

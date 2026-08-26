@@ -16,7 +16,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from modules._util import (low_light_factor, patch_brightness, chrom, pos,
-                           bandpass, dominant_frequency)
+                           bandpass, dominant_frequency, rppg_input_quality)
 
 
 def test_low_light_factor():
@@ -40,6 +40,17 @@ def test_patch_brightness():
     black = np.zeros((8, 8, 3), dtype=np.uint8)
     assert patch_brightness(black) < 1.0
     print("[rppg-test] patch_brightness OK")
+
+
+def test_rppg_input_quality_tracks_capture_conditions():
+    clean = rppg_input_quality(100.0, 30.0, 1.0, 1.0)
+    starved = rppg_input_quality(100.0, 6.0, 1.0, 1.0)
+    rejected = rppg_input_quality(100.0, 30.0, 0.4, 1.0)
+    dark = rppg_input_quality(20.0, 30.0, 1.0, 1.0)
+    assert clean == 1.0
+    assert 0.0 < starved < clean
+    assert rejected < clean
+    assert dark == 0.0
 
 
 def _synthetic_rgb(fs=30.0, seconds=10.0, bpm=72.0):
@@ -77,6 +88,7 @@ def main():
     """Run all helper tests."""
     test_low_light_factor()
     test_patch_brightness()
+    test_rppg_input_quality_tracks_capture_conditions()
     test_chrom_pos_recover_pulse()
     print("[rppg-test] OK")
 

@@ -1,0 +1,5 @@
+# Optional hardware dependencies; adapters self-disable when absent.
+bleak>=0.22
+pyserial>=3.5
+gpiozero>=2.0
+adafruit-circuitpython-mlx90640>=1.3

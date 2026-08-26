@@ -11,6 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
+import cv2
 import mediapipe as mp
 from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision
@@ -23,10 +24,20 @@ _MODEL = Path(__file__).resolve().parent.parent / "models" / "face_landmarker.ta
 
 class FaceExtractor:
     """MediaPipe FaceLandmarker extractor; fills ctx.face once per frame."""
-    def __init__(self, smooth: bool = True):
+    def __init__(self, smooth: bool = True, input_width: int = 960, max_subjects: int = 2):
         # One-Euro de-jitter on face landmarks steadies emotion/asymmetry/EAR;
         # face motion is low-frequency so this does not blur any measured signal.
-        self._smoother = OneEuroArray(mincutoff=1.5, beta=0.05) if smooth else None
+        self._smooth_enabled = bool(smooth)
+        self._smoother = (OneEuroArray(mincutoff=1.5, beta=0.05)
+                          if self._smooth_enabled else None)
+        self.input_width = max(320, int(input_width))
+        # MediaPipe's VIDEO mode rejects any detect_for_video call whose timestamp
+        # is not strictly greater than the previous one. ctx.timestamp is float
+        # seconds kept monotonic only by a 0.1ms nudge (CaptureClock), which
+        # collapses to equal/lower integer milliseconds during iPad reconnect
+        # resync bursts. Track the last ms we fed the landmarker and force a
+        # strict increase so a resync can never crash the shared worker.
+        self._last_ts_ms: int | None = None
         if not _MODEL.exists():
             raise FileNotFoundError(
                 f"Missing {_MODEL}. Download face_landmarker.task from "
@@ -35,7 +46,7 @@ class FaceExtractor:
         opts = vision.FaceLandmarkerOptions(
             base_options=mp_python.BaseOptions(model_asset_path=str(_MODEL)),
             running_mode=vision.RunningMode.VIDEO,
-            num_faces=1,
+            num_faces=max(1, int(max_subjects)),
             min_face_detection_confidence=0.5,
             min_tracking_confidence=0.5,
         )
@@ -43,13 +54,34 @@ class FaceExtractor:
 
     def extract(self, ctx: FrameContext) -> None:
         """Extract features from the frame and populate the shared context."""
-        rgb = np.ascontiguousarray(ctx.frame[:, :, ::-1])
+        source = ctx.frame
+        if ctx.w > self.input_width:
+            scale = self.input_width / ctx.w
+            source = cv2.resize(ctx.frame, (self.input_width, max(1, int(ctx.h * scale))))
+        rgb = np.ascontiguousarray(source[:, :, ::-1])
         mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
         ts_ms = int(ctx.timestamp * 1000)
+        if self._last_ts_ms is not None and ts_ms <= self._last_ts_ms:
+            ts_ms = self._last_ts_ms + 1
+        self._last_ts_ms = ts_ms
         out = self.landmarker.detect_for_video(mp_img, ts_ms)
         if not out.face_landmarks:
             return
-        lm = out.face_landmarks[0]
+        ctx.extras["face_count"] = len(out.face_landmarks)
+        ctx.extras["faces"] = []
+        for raw in out.face_landmarks:
+            raw_pts = np.array([[p.x, p.y, p.z] for p in raw], dtype=np.float32)
+            raw_px = raw_pts[:, :2] * np.array([ctx.w, ctx.h])
+            ax1, ay1 = raw_px.min(axis=0).astype(int)
+            ax2, ay2 = raw_px.max(axis=0).astype(int)
+            ctx.extras["faces"].append({"bbox": (max(0, ax1), max(0, ay1),
+                                                    min(ctx.w, ax2), min(ctx.h, ay2)),
+                                         "landmarks": raw_pts})
+        # Select the closest-looking (largest image area) face, but preserve
+        # the count so the showcase gate can reject competing guests.
+        lm = max(out.face_landmarks,
+                 key=lambda pts: (max(p.x for p in pts) - min(p.x for p in pts)) *
+                                  (max(p.y for p in pts) - min(p.y for p in pts)))
         pts = np.array([[p.x, p.y, p.z] for p in lm], dtype=np.float32)
         if self._smoother is not None:
             pts = self._smoother(pts, ctx.timestamp).astype(np.float32)
@@ -67,6 +99,14 @@ class FaceExtractor:
                             crop=ctx.frame[y1:y2, x1:x2],
                             has_iris=pts.shape[0] >= 478)
         ctx.person_present = True
+
+    def reset(self) -> None:
+        """Discard subject-bound smoothing after a camera/source switch."""
+        self._smoother = (OneEuroArray(mincutoff=1.5, beta=0.05)
+                          if self._smooth_enabled else None)
+        # _last_ts_ms is intentionally NOT reset: reset() keeps the same
+        # self.landmarker, whose internal timestamp clock persists across a
+        # source switch, so our strict-increase guard must persist with it.
 
     def close(self) -> None:
         """Release any resources (models, threads, sockets) held here."""

@@ -36,11 +36,22 @@ from .context import FrameContext
 
 class Camera:
     """Frame source abstraction over a webcam, video file, or stream."""
+    # Capture options that a runtime source switch may override per-device
+    # (see switch_to()); everything else is fixed for the Camera's lifetime.
+    _SWITCHABLE_OPTS = ("target_width", "lock", "exposure", "request_fps",
+                        "request_size", "target_brightness", "allow_gain_boost",
+                        "auto_resolution", "min_fps")
+    # Candidate capture resolutions for auto-probing, largest first.
+    _RESOLUTION_CANDIDATES = ((1920, 1080), (1280, 720), (960, 540), (640, 480))
+
     def __init__(self, source: int | str = 0, target_width: int = 960,
                  lock: bool = True, exposure: float | None = None,
                  request_fps: float = 30.0, request_size: tuple = (1280, 720),
                  settle_seconds: float = 1.5, target_brightness: float = 90.0,
-                 allow_gain_boost: bool = True):
+                 allow_gain_boost: bool = True, auto_resolution: bool = False,
+                 min_fps: float = 25.0, **_unused):
+        # **_unused swallows options meant for other backends (the ipad_* keys)
+        # so main.py can pass one opts dict to whichever backend gets built.
         self.source = source
         self.target_width = target_width
         self.lock = lock                     # lock exposure/WB/gain (webcam only)
@@ -50,6 +61,8 @@ class Camera:
         self.settle_seconds = settle_seconds
         self.target_brightness = target_brightness   # mean luminance to reach before locking
         self.allow_gain_boost = allow_gain_boost     # raise gain if exposure alone is too dark
+        self.auto_resolution = auto_resolution       # probe candidate resolutions on open (webcam only)
+        self.min_fps = min_fps               # floor below which FFT-based vitals alias
         self.cap: Optional[cv2.VideoCapture] = None
         self._fps_smooth = float(request_fps)
         self._last_t: Optional[float] = None
@@ -62,6 +75,7 @@ class Camera:
         self._latest_frame: Optional[np.ndarray] = None
         self._latest_ts: Optional[float] = None
         self._latest_index = -1
+        self._pending: Optional[tuple] = None   # queued (source, opts) switch
 
     def _is_webcam(self) -> bool:
         return isinstance(self.source, int)
@@ -71,6 +85,21 @@ class Camera:
         """Smoothed delivered fps, readable from other threads/modules."""
         return self._fps_smooth
 
+    def latest_frame(self) -> Optional[tuple[int, np.ndarray, float]]:
+        """Return the newest captured frame for a non-consuming preview."""
+        with self._latest_lock:
+            if self._latest_frame is None or self._latest_ts is None:
+                return None
+            return self._latest_index, self._latest_frame, self._latest_ts
+
+    def diagnostics(self) -> dict:
+        with self._latest_lock:
+            frame = self._latest_frame
+            resolution = ([int(frame.shape[1]), int(frame.shape[0])]
+                          if frame is not None else None)
+        return {"backend": "uvc", "resolution": resolution,
+                "depth_available": False, "requested_fps": self.request_fps}
+
     def register_fast_hook(self, hook: Callable[[np.ndarray, float], None]) -> None:
         """Register `hook(frame, timestamp)` to run on the reader thread for
         every captured frame (webcam sources only), ahead of the slower
@@ -79,9 +108,137 @@ class Camera:
         processed frame."""
         self._fast_hooks.append(hook)
 
+    def switch_to(self, source: int | str, opts: dict | None = None) -> None:
+        """Request a source switch (e.g. laptop cam <-> external OV2735).
+
+        Only *flags* the request; the actual teardown/reopen happens on the
+        frames loop before the next yield (never from a UI/keypress thread),
+        so it can't race the reader thread. `opts` may override any of
+        `_SWITCHABLE_OPTS` for the new device; unspecified keys are kept."""
+        with self._latest_lock:
+            self._pending = (source, opts or {})
+
+    def _take_pending(self) -> Optional[tuple]:
+        """Atomically fetch and clear any queued switch request."""
+        with self._latest_lock:
+            pend, self._pending = self._pending, None
+        return pend
+
+    def _start_reader(self) -> None:
+        """Start the background reader thread that owns the webcam device."""
+        self._reader_stop.clear()
+        self._reader_thread = threading.Thread(
+            target=self._reader_loop, daemon=True, name="camera-reader")
+        self._reader_thread.start()
+
+    def _stop_reader(self) -> None:
+        """Stop and join the background reader thread if one is running."""
+        self._reader_stop.set()
+        if self._reader_thread is not None:
+            self._reader_thread.join(timeout=2.0)
+            self._reader_thread = None
+
+    def _apply_opts(self, source: int | str, opts: dict) -> None:
+        """Point the camera at `source` and apply any overridden options."""
+        self.source = source
+        for k, v in opts.items():
+            if k in self._SWITCHABLE_OPTS:
+                setattr(self, k, v)
+
+    def _reset_stream_state(self) -> None:
+        """Clear per-device frame/timing state after a source switch so the
+        consumer waits for genuinely fresh frames and fps stats restart."""
+        with self._latest_lock:
+            self._latest_frame = None
+            self._latest_ts = None
+            self._latest_index = -1
+        self._last_t = None
+        self._fps_smooth = float(self.request_fps)
+        self._fps_warned = False
+
+    def _apply_switch(self, source: int | str, opts: dict) -> None:
+        """Tear down the current device and open `source`. On failure (device
+        unplugged/busy), revert to the previous source and reopen it so the
+        stream never dies -- the whole point of a manual fallback to the
+        laptop cam if the external one misbehaves. Registered fast hooks are
+        preserved, so vitals resume on the new device (the time-based rPPG
+        buffers simply refill after a brief discontinuity)."""
+        prev_source = self.source
+        prev_opts = {k: getattr(self, k) for k in self._SWITCHABLE_OPTS}
+        self._stop_reader()
+        if self.cap is not None:
+            self.cap.release()
+            self.cap = None
+        self._apply_opts(source, opts)
+        try:
+            self.open()
+        except Exception as e:  # noqa: BLE001
+            print(f"[camera] failed to open {source!r} ({e}); "
+                  f"reverting to {prev_source!r}")
+            self._apply_opts(prev_source, prev_opts)
+            self.open()   # if reopening the prior device also fails, let it raise
+        self._reset_stream_state()
+        self._start_reader()
+
+    @staticmethod
+    def list_devices(max_index: int = 8) -> list:
+        """Probe camera indices 0..max_index-1 and print (index, WxH) for each
+        that opens and delivers a frame. On Windows/DirectShow both the laptop
+        cam and the OV2735 are generic UVC devices with non-deterministic
+        indices, so this is how you tell them apart before `--source`."""
+        found = []
+        for i in range(max_index):
+            cap = cv2.VideoCapture(i, cv2.CAP_DSHOW)
+            if cap.isOpened():
+                ok, frame = cap.read()
+                if ok and frame is not None:
+                    h, w = frame.shape[:2]
+                    print(f"[camera] index {i}: {w}x{h}")
+                    found.append((i, w, h))
+            cap.release()
+        if not found:
+            print("[camera] no devices found")
+        return found
+
+    def _autoprobe_resolution(self) -> None:
+        """Try `_RESOLUTION_CANDIDATES` largest-first and lock in the largest
+        one whose delivered fps still meets `min_fps` -- the floor below
+        which the FFT-based vitals (heart rate/respiration/tremor) alias.
+        Requires MJPG (set here): many UVC webcams silently cap out around
+        640x480 on the default uncompressed YUY2 mode over USB 2.0, and MJPG
+        is what unlocks 720p/1080p on that bus. Falls back to the smallest
+        candidate if none meet the floor. Webcam sources only."""
+        cap = self.cap
+        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+        best = None
+        for w, h in self._RESOLUTION_CANDIDATES:
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, w)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
+            cap.set(cv2.CAP_PROP_FPS, self.request_fps)
+            for _ in range(2):
+                cap.read()                          # let the mode switch settle
+            fps = self._measure_fps(n=10)
+            actual = (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+                      int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
+            print(f"[camera] probe {w}x{h} -> delivered {actual[0]}x{actual[1]} "
+                  f"@ {fps:.1f}fps")
+            best = (actual, fps)
+            if fps >= self.min_fps and actual[0] > 0:
+                break
+        (bw, bh), bfps = best
+        if bw > 0:
+            self.request_size = (bw, bh)
+            self.target_width = bw
+        print(f"[camera] auto-selected {self.request_size[0]}x{self.request_size[1]} "
+              f"@ ~{bfps:.1f}fps (min_fps={self.min_fps:.0f})")
+
     def _configure(self) -> None:
         """Request resolution/fps and (optionally) lock auto controls."""
         cap = self.cap
+        if self._is_webcam():
+            # MJPG unlocks resolutions above the ~640x480 ceiling many UVC
+            # webcams default to over USB 2.0; harmless if a device ignores it.
+            cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
         w, h = self.request_size
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, w)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
@@ -200,13 +357,27 @@ class Camera:
             bright = self._measure_brightness()
 
     def open(self) -> None:
-        """Open the underlying capture source."""
+        """Open the underlying capture source. DSHOW is preferred for webcams
+        (it exposes the exposure/gain controls `_tune_exposure_and_gain` and
+        `_autoprobe_resolution` need), but some devices/indices report
+        isOpened() under one backend while never actually delivering a frame
+        (observed on real hardware: a dead/non-UVC entry at index 0 that
+        MSMF happily "opens" but can't grab from) -- so fall back across
+        backends on a failed *read*, not just a failed open."""
         if isinstance(self.source, str) and self.source.isdigit():
             self.source = int(self.source)
-        backend = cv2.CAP_DSHOW if self._is_webcam() else cv2.CAP_ANY
-        self.cap = cv2.VideoCapture(self.source, backend)
+        if self._is_webcam():
+            for backend in (cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_ANY):
+                self.cap = cv2.VideoCapture(self.source, backend)
+                if self.cap.isOpened() and self.cap.read()[0]:
+                    break
+                self.cap.release()
+        else:
+            self.cap = cv2.VideoCapture(self.source, cv2.CAP_ANY)
         if not self.cap.isOpened():
             raise RuntimeError(f"Cannot open video source: {self.source!r}")
+        if self._is_webcam() and self.auto_resolution:
+            self._autoprobe_resolution()
         self._configure()
 
     def _check_fps(self) -> None:
@@ -258,26 +429,32 @@ class Camera:
 
     def _frames_threaded(self) -> Iterator[FrameContext]:
         """Webcam path: a reader thread owns the device; yield whatever frame
-        is latest, dropping any the main loop couldn't keep up with."""
+        is latest, dropping any the main loop couldn't keep up with. Survives
+        runtime source switches requested via switch_to() -- the switch is
+        applied here (not on the reader thread), and a pending switch takes
+        priority over end-of-stream so a dead/failed device can still be
+        swapped out instead of ending the loop."""
         if self._reader_thread is None:
-            self._reader_stop.clear()
-            self._reader_thread = threading.Thread(
-                target=self._reader_loop, daemon=True, name="camera-reader")
-            self._reader_thread.start()
+            self._start_reader()
         last_seen = -1
         out_idx = 0
         while True:
-            while True:
-                with self._latest_lock:
-                    idx, frame, ts = self._latest_index, self._latest_frame, self._latest_ts
-                if idx != last_seen and frame is not None:
-                    last_seen = idx
-                    break
-                if not self._reader_thread.is_alive():
+            if self._pending is not None:
+                self._apply_switch(*self._take_pending())
+                last_seen = -1
+                continue
+            with self._latest_lock:
+                idx, frame, ts = self._latest_index, self._latest_frame, self._latest_ts
+            if idx == last_seen or frame is None:
+                if self._pending is None and not self._reader_thread.is_alive():
                     return
                 time.sleep(0.001)
-            yield FrameContext(frame=frame, timestamp=ts, frame_index=out_idx,
+                continue
+            last_seen = idx
+            ctx = FrameContext(frame=frame, timestamp=ts, frame_index=out_idx,
                                fps=self._fps_smooth)
+            ctx.extras["capture_index"] = idx
+            yield ctx
             out_idx += 1
 
     def _frames_sync(self) -> Iterator[FrameContext]:
@@ -306,10 +483,7 @@ class Camera:
 
     def release(self) -> None:
         """Release the capture device."""
-        self._reader_stop.set()
-        if self._reader_thread is not None:
-            self._reader_thread.join(timeout=2.0)
-            self._reader_thread = None
+        self._stop_reader()
         if self.cap is not None:
             self.cap.release()
             self.cap = None

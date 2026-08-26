@@ -2,5 +2,10 @@
 # Install only if you want visual clothing detection; weather/advice status rows
 # still work without this file.
 transformers>=4.40
-torch>=2.2
+# Keep the PyTorch packages on the same CPU/CUDA package index. Mismatched
+# builds can fail at import time with a missing torchvision::nms operator.
+# If torchaudio is installed elsewhere in the environment, match it to torch
+# too (torch/vision/audio 2.6.0/0.21.0/2.6.0 for this stack).
+torch==2.6.0
+torchvision==0.21.0
 Pillow>=10

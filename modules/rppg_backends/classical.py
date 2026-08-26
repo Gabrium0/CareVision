@@ -21,6 +21,14 @@ penalized when those recent picks disagree a lot (same jitter-penalty shape
 as openrppg.py). This makes the two "side by side" backends' numbers directly
 comparable instead of one being smoothed and the other raw.
 
+Two of the three sampled ROIs are the cheeks, which move with speech (jaw/
+mouth motion drags adjacent skin), injecting non-cardiac motion straight into
+the chrominance signal. update() tracks the frame-to-frame mouth-aspect-ratio
+delta (not an absolute open/closed threshold -- yawn.py's own docs note MAR
+moves for both yawning and talking, and talking's swings are faster/smaller
+than a sustained yawn) and falls back to forehead-only sampling for a frame
+when that delta suggests active mouth movement.
+
 Reliability: medium; sensitive to lighting, motion, and skin tone.
 """
 from __future__ import annotations
@@ -33,7 +41,8 @@ import numpy as np
 from core.context import FrameContext
 from modules._util import (TimedBuffer, dominant_frequency, bandpass,
                            peak_intervals, roi_patch, patch_brightness,
-                           low_light_factor, chrom, pos)
+                           low_light_factor, rppg_input_quality, chrom, pos,
+                           mouth_aspect_ratio)
 from extractors import face_landmarks as FL
 from .base import RPPGBackend
 
@@ -45,28 +54,53 @@ class ClassicalBackend(RPPGBackend):
     """Classical rPPG backend: multi-ROI skin chrominance + FFT."""
     label = "classical"
     available = True
+    required_samples = 8
 
     def __init__(self, window_seconds: float = 12.0, method: str = "chrom",
-                 smoothing_window: int = 5):
+                 smoothing_window: int = 5, talk_delta_threshold: float = 0.05):
         self.window_seconds = window_seconds
         self.method = method if method in ("chrom", "pos", "green") else "chrom"
+        self.talk_delta_threshold = talk_delta_threshold
         self.buf = TimedBuffer(window_seconds)          # values are (R,G,B) means
         self._brightness = 128.0                        # EMA of ROI luminance
         # update() (writer) and compute() (reader) can run on different
         # threads when fed via the camera's fast path (see core/pipeline.py).
         self._lock = threading.Lock()
+        self._accepted = 0
+        self._rejected_no_roi = 0
+        self._quality_events: deque[tuple[float, bool]] = deque()
+        self._last_reading: dict | None = None
         # compute() only ever runs on the heavy-loop thread (see
         # modules/heart_rate.py), so this needs no lock of its own.
         self._bpm_history: deque[float] = deque(maxlen=max(1, int(smoothing_window)))
+        # update() only ever runs on one thread at a time (the reader thread
+        # once the fast path engages, else the heavy loop) -- same
+        # single-writer assumption openrppg.py's _stable_face()/_last_bbox
+        # already relies on, so this needs no lock either.
+        self._last_mar: float | None = None
 
     def update(self, ctx: FrameContext) -> None:
         """Feed one frame's data into the backend's rolling state."""
+        roi_landmarks = _ROI_LANDMARKS
+        mar = mouth_aspect_ratio(ctx)
+        if mar is not None:
+            if (self._last_mar is not None
+                    and abs(mar - self._last_mar) > self.talk_delta_threshold):
+                # Rapid mouth movement (talking) -- cheeks are moving, so
+                # drop them for this sample rather than let non-cardiac
+                # motion dilute the chrominance signal.
+                roi_landmarks = (FL.FOREHEAD_TOP,)
+            self._last_mar = mar
         pixels = []
-        for idx in _ROI_LANDMARKS:
+        for idx in roi_landmarks:
             patch = roi_patch(ctx, idx, radius_frac=0.10)
             if patch is not None and patch.size:
                 pixels.append(patch.reshape(-1, 3))
         if not pixels:
+            with self._lock:
+                self._rejected_no_roi += 1
+                self._quality_events.append((ctx.timestamp, False))
+                self._prune_quality_events(ctx.timestamp)
             return
         px = np.concatenate(pixels, axis=0).astype(np.float64)   # BGR
         # store as (R, G, B) so chrom/pos get channels in the expected order
@@ -75,6 +109,58 @@ class ClassicalBackend(RPPGBackend):
         with self._lock:
             self.buf.push(ctx.timestamp, rgb_mean)
             self._brightness = 0.9 * self._brightness + 0.1 * bright
+            self._accepted += 1
+            self._quality_events.append((ctx.timestamp, True))
+            self._prune_quality_events(ctx.timestamp)
+
+    def _prune_quality_events(self, now: float) -> None:
+        while self._quality_events and now - self._quality_events[0][0] > self.window_seconds:
+            self._quality_events.popleft()
+
+    def diagnostics(self) -> dict:
+        """Return a thread-safe snapshot without copying raw signal samples."""
+        with self._lock:
+            samples = len(self.buf)
+            span = self.buf.span()
+            brightness = self._brightness
+            latest = dict(self._last_reading) if self._last_reading else None
+            accepted = self._accepted
+            rejected = self._rejected_no_roi
+            rolling = list(self._quality_events)
+        required = 6.0
+        sample_progress = min(1.0, samples / self.required_samples)
+        time_progress = min(1.0, span / required)
+        ready = samples >= self.required_samples and span >= required
+        sample_hz = ((samples - 1) / span if samples > 1 and span > 0 else 0.0)
+        rolling_accepted = sum(accepted for _, accepted in rolling)
+        rolling_total = len(rolling)
+        return {
+            "name": self.label, "available": True,
+            "samples": samples, "buffered_seconds": round(span, 1),
+            "required_seconds": required,
+            "required_samples": self.required_samples,
+            "sample_progress": round(sample_progress, 3),
+            "effective_sample_hz": round(sample_hz, 2),
+            "progress": round(min(time_progress, sample_progress), 3),
+            "ready": ready,
+            "status": ("ready" if ready else
+                       f"warming up: {samples}/{self.required_samples} samples, "
+                       f"{span:.0f}/{required:.0f}s"),
+            "accepted": accepted, "rejected": {"no_roi": rejected},
+            "rolling_acceptance_ratio": round(rolling_accepted / rolling_total, 3)
+            if rolling_total else 0.0,
+            "inference_latency_ms": 0.0, "latest": latest,
+            "brightness": round(brightness, 1),
+        }
+
+    def reset(self) -> None:
+        with self._lock:
+            self.buf.t.clear()
+            self.buf.v.clear()
+            self._last_reading = None
+            self._bpm_history.clear()
+            self._last_mar = None
+            self._quality_events.clear()
 
     def _snapshot(self):
         """Thread-safe copy of the buffer + brightness for compute() to use."""
@@ -130,10 +216,24 @@ class ClassicalBackend(RPPGBackend):
             conf *= max(0.5, 1.0 - jitter / 20.0)
         conf = round(max(0.0, min(1.0, conf)), 2)
 
-        out = {"bpm": round(bpm, 1), "confidence": conf}
+        intervals = np.diff(t)
+        mean_interval = float(np.mean(intervals)) if len(intervals) else 0.0
+        regularity = (max(0.0, 1.0 - float(np.std(intervals)) / mean_interval)
+                      if mean_interval > 0 else 0.0)
+        with self._lock:
+            rolling = list(self._quality_events)
+        acceptance = (sum(accepted for _, accepted in rolling) / len(rolling)
+                      if rolling else 0.0)
+        effective_hz = ((len(t) - 1) / span if len(t) > 1 and span > 0 else 0.0)
+        quality = round(rppg_input_quality(brightness, effective_hz,
+                                           acceptance, regularity), 2)
+
+        out = {"bpm": round(bpm, 1), "confidence": conf, "quality": quality}
         rr = peak_intervals(filt, fs, min_distance_s=0.4)
         if len(rr) >= 4:
             rr_ms = rr * 1000.0
             out["hrv_rmssd_ms"] = round(float(np.sqrt(np.mean(np.diff(rr_ms) ** 2))), 1)
             out["hrv_sdnn_ms"] = round(float(np.std(rr_ms)), 1)
+        with self._lock:
+            self._last_reading = dict(out)
         return out

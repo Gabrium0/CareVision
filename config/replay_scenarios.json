@@ -1,0 +1,666 @@
+{
+  "dev_hot_reload": {
+    "duration": 86400,
+    "fps": 12,
+    "realtime": true,
+    "events": [
+      {
+        "at": 0.1,
+        "module": "presence",
+        "key": "present",
+        "value": true,
+        "message": "Hot-reload development fixture"
+      }
+    ]
+  },
+  "healthy_greeting": {
+    "duration": 3,
+    "events": [
+      {
+        "at": 0.1,
+        "module": "presence",
+        "key": "present",
+        "value": true,
+        "message": "Person present"
+      }
+    ]
+  },
+  "sit_to_stand": {
+    "duration": 45,
+    "pose_profile": "sit_to_stand",
+    "events": [
+      {
+        "at": 0.1,
+        "module": "assessment_request",
+        "key": "protocol",
+        "value": "sit_to_stand",
+        "message": "Start sit-to-stand replay"
+      },
+      {
+        "at": 22,
+        "type": "answer",
+        "text": "No discomfort"
+      },
+      {
+        "at": 32,
+        "type": "answer",
+        "text": "No recent change"
+      },
+      {
+        "at": 42,
+        "type": "answer",
+        "text": "No warning signs"
+      }
+    ]
+  },
+  "timed_up_and_go": {
+    "duration": 34,
+    "pose_profile": "timed_up_and_go",
+    "events": [
+      {
+        "at": 0.1,
+        "module": "assessment_request",
+        "key": "protocol",
+        "value": "timed_up_and_go",
+        "message": "Start Timed Up and Go replay"
+      }
+    ]
+  },
+  "tremor_arm_drift": {
+    "duration": 14,
+    "pose_profile": "arm_drift",
+    "events": [
+      {
+        "at": 0.1,
+        "module": "assessment_request",
+        "key": "protocol",
+        "value": "arm_drift",
+        "message": "Start arm-drift replay"
+      }
+    ]
+  },
+  "finger_tapping": {
+    "duration": 14,
+    "pose_profile": "finger_tapping",
+    "events": [
+      {
+        "at": 0.1,
+        "module": "assessment_request",
+        "key": "protocol",
+        "value": "finger_tapping",
+        "message": "Start finger-tapping replay"
+      }
+    ]
+  },
+  "balance": {
+    "duration": 19,
+    "pose_profile": "balance",
+    "events": [
+      {
+        "at": 0.1,
+        "module": "assessment_request",
+        "key": "protocol",
+        "value": "balance",
+        "message": "Start balance replay"
+      }
+    ]
+  },
+  "guided_gait": {
+    "duration": 24,
+    "pose_profile": "guided_gait",
+    "events": [
+      {
+        "at": 0.1,
+        "module": "assessment_request",
+        "key": "protocol",
+        "value": "guided_gait",
+        "message": "Start gait replay"
+      }
+    ]
+  },
+  "facial_movement": {
+    "duration": 14,
+    "face_profile": "facial_movement",
+    "events": [
+      {
+        "at": 0.1,
+        "module": "assessment_request",
+        "key": "protocol",
+        "value": "facial_movement",
+        "message": "Start facial movement replay"
+      }
+    ]
+  },
+  "read_aloud": {
+    "duration": 24,
+    "events": [
+      {
+        "at": 0.1,
+        "module": "assessment_request",
+        "key": "protocol",
+        "value": "read_aloud",
+        "message": "Start read-aloud replay"
+      },
+      {
+        "at": 2,
+        "type": "answer",
+        "text": "The quick brown fox jumps over the lazy dog",
+        "metrics": {
+          "duration": 3.2,
+          "words_per_minute": 169,
+          "pauses": 0,
+          "baseline_change": 0.02,
+          "quality": 0.95
+        }
+      }
+    ]
+  },
+  "guided_breathing": {
+    "duration": 24,
+    "pose_profile": "guided_breathing",
+    "events": [
+      {
+        "at": 0.1,
+        "module": "assessment_request",
+        "key": "protocol",
+        "value": "guided_breathing",
+        "message": "Start breathing replay"
+      }
+    ]
+  },
+  "cough_followup": {
+    "duration": 5,
+    "events": [
+      {
+        "at": 0.1,
+        "type": "audio",
+        "synthetic": "cough",
+        "seed": 1
+      },
+      {
+        "at": 1.2,
+        "type": "audio",
+        "synthetic": "cough",
+        "seed": 2
+      },
+      {
+        "at": 1.3,
+        "module": "sound_event",
+        "key": "cough_episode",
+        "value": {
+          "count": 2,
+          "started_at": 0.1,
+          "ended_at": 1.2
+        },
+        "confidence": 0.9,
+        "message": "Detected 2 cough-like bursts"
+      },
+      {
+        "at": 2,
+        "type": "answer",
+        "text": "Yes I feel unwell"
+      }
+    ]
+  },
+  "near_fall_recovery": {
+    "duration": 5,
+    "pose_profile": "near_fall",
+    "events": []
+  },
+  "skin_closeup": {
+    "duration": 5,
+    "events": [
+      {
+        "at": 0.1,
+        "module": "skin_vision",
+        "key": "feature",
+        "value": "visible skin color change",
+        "message": "Skin close-up fixture"
+      }
+    ]
+  },
+  "meal_hydration": {
+    "duration": 5,
+    "events": [
+      {
+        "at": 0.1,
+        "module": "scene_vision",
+        "key": "activities",
+        "value": [
+          "drinking",
+          "eating"
+        ],
+        "message": "Meal and drink visible"
+      }
+    ]
+  },
+  "kitchen_spill": {
+    "duration": 5,
+    "events": [
+      {
+        "at": 0.1,
+        "module": "scene_vision",
+        "key": "hazards",
+        "value": [
+          "possible floor spill"
+        ],
+        "severity": "notice",
+        "location": "kitchen",
+        "message": "Possible floor spill"
+      }
+    ]
+  },
+  "visitor": {
+    "duration": 8,
+    "pose_profile": "balance",
+    "people": 2,
+    "events": [
+      {
+        "at": 0.1,
+        "module": "multi_person",
+        "key": "scenario",
+        "value": "visitor",
+        "message": "Anonymous visitor enters beside the primary person",
+        "subject_id": "track-2"
+      }
+    ]
+  },
+  "wearable_thermal": {
+    "duration": 5,
+    "events": [
+      {
+        "at": 0.1,
+        "type": "sensor",
+        "key": "heart_rate_bpm",
+        "value": 72,
+        "unit": "bpm"
+      },
+      {
+        "at": 0.2,
+        "type": "sensor",
+        "key": "skin_temperature_c",
+        "value": 36.7,
+        "unit": "C"
+      }
+    ]
+  },
+  "client_demo": {
+    "duration": 50,
+    "events": [
+      {
+        "at": 0.1,
+        "module": "presence",
+        "key": "present",
+        "value": true,
+        "message": "Person present"
+      },
+      {
+        "at": 2,
+        "module": "heart_rate",
+        "key": "bpm",
+        "value": 71,
+        "confidence": 0.82,
+        "message": "Heart rate steady around 71 bpm"
+      },
+      {
+        "at": 6,
+        "module": "emotion",
+        "key": "label",
+        "value": "neutral",
+        "confidence": 0.7,
+        "message": "Neutral expression"
+      },
+      {
+        "at": 10,
+        "module": "facial_asymmetry",
+        "key": "regional",
+        "value": 0.04,
+        "confidence": 0.75,
+        "message": "Facial symmetry within normal range"
+      },
+      {
+        "at": 15,
+        "module": "activity_level",
+        "key": "level",
+        "value": "active",
+        "message": "Activity level: active"
+      },
+      {
+        "at": 20,
+        "type": "audio",
+        "synthetic": "cough",
+        "seed": 1
+      },
+      {
+        "at": 21.2,
+        "type": "audio",
+        "synthetic": "cough",
+        "seed": 2
+      },
+      {
+        "at": 21.3,
+        "module": "sound_event",
+        "key": "cough_episode",
+        "value": {
+          "count": 2,
+          "started_at": 20,
+          "ended_at": 21.2
+        },
+        "confidence": 0.88,
+        "message": "Detected 2 cough-like bursts"
+      },
+      {
+        "at": 26,
+        "module": "skin_color",
+        "key": "flushing",
+        "value": false,
+        "confidence": 0.6,
+        "message": "No flushing detected"
+      },
+      {
+        "at": 30,
+        "module": "drowsiness",
+        "key": "perclos",
+        "value": 0.08,
+        "confidence": 0.7,
+        "message": "Alert; no drowsiness signs"
+      },
+      {
+        "at": 35,
+        "module": "clothing_advice",
+        "key": "recommendation",
+        "value": "Dressed appropriately for the weather",
+        "message": "Dressed appropriately for the weather"
+      },
+      {
+        "at": 40,
+        "module": "grooming",
+        "key": "trend",
+        "value": "stable",
+        "message": "Grooming steady vs. recent baseline"
+      },
+      {
+        "at": 45,
+        "type": "answer",
+        "text": "Feeling fine, thanks"
+      }
+    ]
+  },
+  "topic_coverage": {
+    "duration": 122,
+    "fps": 2,
+    "realtime": false,
+    "events": [
+      {
+        "at": 0.1,
+        "module": "presence",
+        "key": "present",
+        "value": true,
+        "message": "Person present"
+      },
+      {
+        "at": 4,
+        "module": "gait",
+        "key": "gait_asymmetry",
+        "value": 0.42,
+        "confidence": 0.62,
+        "severity": "notice",
+        "message": "Asymmetric leg movement while walking"
+      },
+      {
+        "at": 9,
+        "module": "multimodal_reasoning",
+        "key": "cough_activity",
+        "value": "Repeated cough sounds, reduced activity, and a user-confirmed symptom coincided.",
+        "confidence": 0.75,
+        "severity": "notice",
+        "message": "Repeated cough sounds, reduced activity, and a user-confirmed symptom coincided."
+      },
+      {
+        "at": 14,
+        "module": "scene_vision",
+        "key": "hazards",
+        "value": [
+          "a rug edge lifting near the doorway",
+          "a cable across the walkway"
+        ],
+        "confidence": 0.7,
+        "severity": "notice",
+        "message": "Repeated visible context to check: a rug edge lifting near the doorway"
+      },
+      {
+        "at": 19,
+        "module": "skin_vision",
+        "key": "facial_appearance",
+        "value": {
+          "cues": {
+            "cheek_redness": "mild",
+            "lip_dryness": "mild"
+          },
+          "confidence": 0.72
+        },
+        "confidence": 0.72,
+        "severity": "notice",
+        "message": "Visible facial appearance cues: mild cheek redness, mild lip dryness"
+      },
+      {
+        "at": 24,
+        "module": "routine",
+        "key": "hours_since_drink",
+        "value": 5.5,
+        "confidence": 0.7,
+        "severity": "notice",
+        "message": "Hours since the last recorded drink opportunity"
+      },
+      {
+        "at": 29,
+        "module": "balance",
+        "key": "postural_sway",
+        "value": 0.081,
+        "confidence": 0.55,
+        "severity": "notice",
+        "message": "Postural sway while standing"
+      },
+      {
+        "at": 34,
+        "module": "tremor",
+        "key": "tremor_left",
+        "value": 5.2,
+        "confidence": 0.5,
+        "severity": "notice",
+        "message": "Left hand tremor ~5.2 Hz detected"
+      },
+      {
+        "at": 39,
+        "module": "tremor",
+        "key": "tremor_right",
+        "value": 5.4,
+        "confidence": 0.5,
+        "severity": "notice",
+        "message": "Right hand tremor ~5.4 Hz detected"
+      },
+      {
+        "at": 44,
+        "module": "bradykinesia",
+        "key": "movement_speed",
+        "value": 0.031,
+        "confidence": 0.45,
+        "severity": "notice",
+        "message": "Movements look slowed (screening)"
+      },
+      {
+        "at": 49,
+        "module": "wandering",
+        "key": "pacing",
+        "value": 9,
+        "confidence": 0.45,
+        "severity": "notice",
+        "message": "Repetitive pacing/wandering (9 reversals)"
+      },
+      {
+        "at": 54,
+        "module": "near_fall",
+        "key": "recovered",
+        "value": true,
+        "confidence": 0.65,
+        "quality": 0.65,
+        "severity": "notice",
+        "message": "Stumble-like movement followed by upright recovery"
+      },
+      {
+        "at": 59,
+        "module": "multimodal_reasoning",
+        "key": "stability_check",
+        "value": "A recovered stumble, support use, and reported dizziness coincided.",
+        "confidence": 0.75,
+        "severity": "notice",
+        "message": "A recovered stumble, support use, and reported dizziness coincided."
+      },
+      {
+        "at": 64,
+        "module": "multimodal_reasoning",
+        "key": "standing_change",
+        "value": "Repeated stand attempts and a slower personal sit-to-stand baseline coincided.",
+        "confidence": 0.75,
+        "severity": "notice",
+        "message": "Repeated stand attempts and a slower personal sit-to-stand baseline coincided."
+      },
+      {
+        "at": 69,
+        "module": "eye_redness",
+        "key": "sclera_redness",
+        "value": 9.4,
+        "confidence": 0.55,
+        "severity": "notice",
+        "message": "Eye redness above neutral"
+      },
+      {
+        "at": 74,
+        "module": "masked_face",
+        "key": "expressiveness",
+        "value": 0.0062,
+        "confidence": 0.68,
+        "severity": "notice",
+        "message": "Reduced facial expressiveness (screening)"
+      },
+      {
+        "at": 79,
+        "module": "eye_movement",
+        "key": "nystagmus",
+        "value": 4.8,
+        "confidence": 0.45,
+        "severity": "notice",
+        "message": "Rapid eye oscillation ~4.8 Hz (screening)"
+      },
+      {
+        "at": 84,
+        "module": "grooming",
+        "key": "hair_texture_change",
+        "value": 1.31,
+        "confidence": 0.42,
+        "severity": "notice",
+        "message": "Hair looks more textured than the usual weekly average"
+      },
+      {
+        "at": 89,
+        "module": "grooming",
+        "key": "jaw_texture_change",
+        "value": 1.28,
+        "confidence": 0.42,
+        "severity": "notice",
+        "message": "Facial hair looks more textured than the usual weekly average"
+      },
+      {
+        "at": 94,
+        "module": "activity_level",
+        "key": "activity_drop",
+        "value": 0.22,
+        "confidence": 0.5,
+        "severity": "notice",
+        "message": "Activity noticeably lower than usual today"
+      },
+      {
+        "at": 99,
+        "module": "multimodal_reasoning",
+        "key": "hydration_opportunity",
+        "value": "A drink is visible after a long interval without a recorded drink opportunity.",
+        "confidence": 0.75,
+        "severity": "notice",
+        "message": "A drink is visible after a long interval without a recorded drink opportunity."
+      },
+      {
+        "at": 104,
+        "module": "routine",
+        "key": "unusual_night_activity",
+        "value": true,
+        "confidence": 0.65,
+        "severity": "notice",
+        "message": "Activity occurred outside the person's usual observed window."
+      },
+      {
+        "at": 108,
+        "module": "routine",
+        "key": "missed_meal_opportunity",
+        "value": true,
+        "confidence": 0.6,
+        "severity": "notice",
+        "message": "No meal opportunity has been recorded during the usual interval."
+      },
+      {
+        "at": 112,
+        "module": "routine",
+        "key": "missed_drink_opportunity",
+        "value": true,
+        "confidence": 0.6,
+        "severity": "notice",
+        "message": "No drink opportunity has been recorded during the usual interval."
+      },
+      {
+        "at": 116,
+        "module": "routine",
+        "key": "daily_summary",
+        "value": [
+          "Activity occurred outside the usual window.",
+          "A quieter afternoon than usual.",
+          "One recovered stumble."
+        ],
+        "confidence": 0.7,
+        "severity": "notice",
+        "message": "Daily meaningful changes"
+      }
+    ]
+  },
+  "unclear_answers": {
+    "duration": 100,
+    "fps": 2,
+    "realtime": false,
+    "events": [
+      {
+        "at": 0.1,
+        "module": "presence",
+        "key": "present",
+        "value": true,
+        "message": "Person present"
+      },
+      {
+        "at": 4,
+        "module": "pain",
+        "key": "pain",
+        "value": true,
+        "confidence": 0.4,
+        "severity": "notice",
+        "message": "Possible discomfort in facial expression"
+      },
+      {
+        "at": 20,
+        "type": "answer",
+        "text": "hmm"
+      },
+      {
+        "at": 46,
+        "type": "answer",
+        "text": "the weather is nice today"
+      }
+    ]
+  }
+}

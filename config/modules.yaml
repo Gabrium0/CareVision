@@ -2,6 +2,39 @@
 # Each key is a registered module name; params besides `enabled` are passed
 # to the module constructor.
 
+camera:
+  location: unspecified       # living_room | kitchen | entryway | bedroom
+
+# The CLI --quality-profile selects the effective policy. Maximum keeps native
+# 1920x1080 detail crops and sheds cadence before spatial resolution.
+runtime:
+  quality_profile: maximum
+  fast_sampler_target_hz: 12.0
+  native_thread_budget: auto
+  detail_roi_caps: {maximum: 640, balanced: 480, realtime: 320}
+  background_budgets_ms: {maximum: 350, balanced: 225, realtime: 150}
+  # Modules that boot warm but toggled off (the scheduler skips them; the
+  # /modules console re-enables them instantly, no restart). Heavy,
+  # non-vital detectors live here so a live showcase stays smooth; remove
+  # or comment entries to start with the full suite running.
+  start_paused: [clothing, grooming, scene_vision, guided_assessments,
+                 age_estimation, pain, facial_asymmetry]
+
+tracking:
+  enabled: false              # opt in with --enable-multi-person
+  max_subjects: 3             # primary + up to this many secondary tracks
+  secondary_modules:          # detectors that run per-secondary-subject; kept
+                               # small and safety-leaning since cost scales
+                               # per person. Fall/unresponsive still show in
+                               # the live dashboard for a secondary subject
+                               # but never escalate to the caregiver -- see
+                               # alerts/manager.py's primary-only filter.
+    - presence
+    - fall
+    - near_fall
+    - unresponsive
+    - wandering
+
 modules:
   # --- Vitals ---
   heart_rate:
@@ -11,19 +44,55 @@ modules:
                                        # openrppg auto-disables if `rppg`/jax missing
     classical_method: chrom           # chrom | pos | green (green = legacy, for A/B)
     classical_smoothing_window: 5     # median-smooth last N raw FFT bpm picks (parity w/ openrppg)
+    classical_talk_delta_threshold: 0.05  # mouth-aspect-ratio delta that flags talking; drops cheek ROIs for that sample
     openrppg_model: null              # null = open-rppg default; try physformer/efficientphys
     openrppg_brightness_normalize: true  # lift dark face crops toward the model's training range
-    openrppg_infer_every: 5.0       # CPU-only JAX is heavy; same 30s window, fewer freezes
+    openrppg_infer_every: 20.0      # CPU-only JAX is heavy; each run is a ~3-4s
+                                    # multi-core burst that visibly dents capture
+                                    # fps, so space runs out for smooth showcases
     openrppg_min_seconds: 10.0
     openrppg_hrv_min_seconds: 30.0    # HRV/breathing need longer clean windows than HR
     openrppg_min_confidence: 0.35
     openrppg_smoothing_window: 5
     openrppg_motion_threshold: 35.0
     openrppg_face_jitter_threshold: 0.25
+    openrppg_face_reacquire_frames: 3
+    openrppg_inference_timeout_seconds: 90.0
+    openrppg_cpu_reserved_cores: auto  # reserve ~75% of logical CPUs for capture/MediaPipe
+    openrppg_result_fresh_seconds: 15.0  # never publish an old neural estimate as current
+    openrppg_cpu_inference_hz: 8.0       # bounded uniform tensor on CPU
+    openrppg_gpu_inference_hz: 20.0      # retain more temporal detail on GPU
     openrppg_async_inference: true     # keeps CPU-only Open-RPPG from freezing camera frames
+    debug_backend_values: true        # true shows raw per-backend vitals; false emits trusted canonical bpm
+    min_canonical_quality: 0.35        # low-quality backend candidates remain debug-only
   respiration:
     enabled: true
     window_seconds: 25
+  spo2:                        # contactless rPPG pulse oximetry
+    enabled: true
+    window_seconds: 20
+    ac_band: [0.7, 3.0]        # cardiac band for the pulsatile AC component
+    channels: [red, blue]      # uncompressed-source (RealSense) ratio pair
+    compressed_channels: [red, green]  # compressed-source (webcam) ratio pair; green
+                                # rides full-resolution luma under 4:2:0 subsampling.
+                                # An iPad source reports its actual chroma sampling as
+                                # `jpeg_subsampling` in camera diagnostics -- if that
+                                # says 4:4:4, the physiologically correct [red, blue]
+                                # pair becomes defensible here.
+    enabled_on_compressed: true   # INDICATIVE ONLY, NOT A MEASUREMENT. Any non-depth
+                                # source (webcam, iPad) lands on the "compressed" path,
+                                # and assets/spo2_calibration.json ships calibrated_rg:
+                                # false with placeholder A=100/B=5 -- so this produces a
+                                # plausible-looking number with near-zero confidence and
+                                # no alerts. Label it as unvalidated wherever it is shown.
+                                # Note Spo2._sample flushes the whole buffer when the
+                                # mode flips, so don't hot-swap iPad<->RealSense mid-read.
+    calibration_file: assets/spo2_calibration.json
+    min_pulse_prominence: 0.15 # require a clean concurrent pulse before reporting
+    display_min: 70
+    display_max: 100
+    warn_below: 92             # only fires when calibrated=true AND confidence high
+    debug_ratio: false         # true emits spo2_ratio for tuning / calibration capture
 
   # --- Clothing / weather recommendations ---
   weather:
@@ -45,6 +114,8 @@ modules:
     pipeline_threshold: 0.02        # owlvit detection threshold (unused for clip)
     min_confidence: 0.15            # gate on the top score
     infer_every: 8.0
+    load_timeout_seconds: 90.0      # surface stalled model downloads/initialization
+    download_if_missing: true       # cached fallbacks first; only primary may download
   clothing_advice:
     enabled: true
     cold_c: 8.0
@@ -54,11 +125,83 @@ modules:
     rain_mm_threshold: 0.1
     wind_kph_threshold: 25.0
     uv_high: 6.0
+    clothing_max_age_seconds: 30.0  # bridge the detector/advice scheduling cadences
 
   # --- Skin & face ---
   skin_color:                 # pallor / flushing / jaundice / cyanosis
     enabled: true
   rash:
+    enabled: true
+  arm_skin:                   # rash/bruise/dryness/dark spots on bare arms
+    enabled: true             # pose-driven ROIs; depth (D435i) adds mm sizing
+    rash_notice: 0.02
+    rash_warning: 0.06
+    dryness_notice: 0.04
+    min_window_samples: 3     # never report clear from an unseen/jittering arm
+  skin_vision:
+    enabled: true
+    consent: false                 # runtime --enable-cloud-skin is required
+    endpoint: https://integrate.api.nvidia.com/v1/chat/completions
+    model: meta/llama-3.2-11b-vision-instruct
+    scan_interval: 60.0
+    request_timeout: 25.0
+    max_image_dim: 1024
+    jpeg_quality: 85
+    max_inline_image_bytes: 174080
+    manual_max_attempts: 3
+    manual_attempt_timeout: 20.0
+    manual_retry_deadline: 60.0
+    preliminary_max_attempts: 3    # passive scan asks for the 20-field schema
+    preliminary_attempt_timeout: 25.0
+    preliminary_deadline: 75.0
+    preliminary_max_tokens: 520    # escalates to 700 on finish_reason=length
+    manual_retry_max_image_dim: 768
+    manual_retry_jpeg_quality: 80
+    manual_retry_max_tokens: 450
+    closeup_seconds: 10.0
+    closeup_positioning_delay: 2.0
+    min_confidence: 0.35
+    min_facial_confidence: 0.45
+    min_face_crop_size: 64
+    min_arm_crop_size: 64          # bare-arm crop panel in the preliminary scan
+    local_classifier:
+      enabled: true
+      mode: debug                  # screening requires a validated calibration file
+      backend: auto               # TensorRT on Jetson; PyTorch reference fallback
+      model: LaurianeMD/vit-skin-disease
+      revision: 1b4fccab2c8b83bf6964e394c40f0dcdd21b1d1c
+      target_labels: [vitiligo]
+      calibration_file: assets/skin_models/vit_skin_calibration.json
+      onnx_file: assets/skin_models/vit_skin.onnx
+      tensorrt_engine: runtime-models/vit_skin_orin_fp16.engine
+      download_if_missing: false  # use the export/setup tool explicitly
+      cache_dir: runtime-models/huggingface
+      load_timeout_seconds: 120.0
+      device: auto
+      min_sharpness: 25.0
+      min_brightness: 25.0
+      max_brightness: 230.0
+      max_clipped_fraction: 0.55
+  scene_vision:
+    enabled: true
+    consent: false
+    endpoint: https://integrate.api.nvidia.com/v1/chat/completions
+    model: meta/llama-3.2-11b-vision-instruct
+    scan_interval: 90.0
+    request_timeout: 25.0
+    location: unspecified
+    window_frames: 3
+    window_spacing: 0.5
+  guided_assessments:
+    enabled: true
+  replay_events:
+    enabled: true
+  multi_person:
+    enabled: false
+  routine:
+    enabled: false
+    location: unspecified
+  near_fall:
     enabled: true
   bruise:
     enabled: true
@@ -95,11 +238,11 @@ modules:
   drowsiness:                 # PERCLOS + blink rate + microsleep
     enabled: true
     perclos_window_seconds: 60.0
-    baseline_seconds: 3.0
+    baseline_seconds: 8.0       # 3s was too fragile for a stable open-eye baseline
     closed_ear_ratio: 0.60
-    perclos_notice: 0.15
-    perclos_warning: 0.30
-    microsleep_seconds: 1.2
+    perclos_notice: 0.25        # normal blinking is ~3-5% PERCLOS; 0.15 tripped on squints/downward gaze
+    perclos_warning: 0.40
+    microsleep_seconds: 3.0     # real microsleeps are 3-15s; 1.2s caught slow blinks and reading downward
   yawn:
     enabled: true
     mar_threshold: 0.60
@@ -124,6 +267,21 @@ modules:
     enabled: false            # needs per-room calibration; zones are
     zones: []                 # [{name: stove, polygon: [[x,y], ...]}] normalized 0..1
 
+  # --- Interaction (showcase conversation triggers) ---
+  attention:                  # eye contact / looking-at-robot + engagement
+    enabled: true
+  gesture:                    # MediaPipe GestureRecognizer + waving heuristic
+    enabled: true             # self-disables if models/gesture_recognizer.task missing
+
+  # --- Cold-symptom composite inputs (advice.cold combines them) ---
+  sneeze:
+    enabled: true
+  face_touch:                 # nose-wipe frequency (runny-nose behavioral proxy)
+    enabled: true
+
+  expressivity:               # flat-affect screen vs 30-day personal history
+    enabled: true
+
   # --- Emotion & cognition ---
   emotion:
     enabled: true
@@ -138,12 +296,35 @@ modules:
     enabled: true
   presence:
     enabled: true
+  grooming:                   # hair/facial-hair texture drift vs weekly baseline
+    enabled: true
+    rise_ratio: 1.5            # today's mean vs the trailing week's that flags a change
+
+  # --- Depth-only (RealSense D435i; scheduler skips these on RGB sources) ---
+  height_distance:            # metric height + distance via deprojection
+    enabled: true
 
   # --- Demographics / context ---
   age_estimation:
     enabled: true             # auto-disables if models/age_googlenet.onnx missing
   body_estimate:              # rough build proxy; low precision by nature
     enabled: true
+
+showcase:
+  enabled: true
+  conversation_min_m: 0.8
+  conversation_max_m: 1.5
+  movement_min_m: 2.5
+  movement_max_m: 3.2
+  min_face_px: 110            # measured in DELIVERED-frame pixels, so an iPad
+                              # propped across a room fails this and heart rate
+                              # never starts (heart_rate_block_reason: no_face).
+                              # Move the iPad closer rather than lowering this --
+                              # rPPG SNR falls as ~1/sqrt(skin pixels).
+  min_brightness: 45.0
+  max_brightness: 220.0
+  max_motion: 12.0
+  capture_reset_grace_seconds: 1.0
 
 advice:
   enabled: true
@@ -156,4 +337,55 @@ advice:
     bpm_low_warning: 45.0
     hrv_low: 20.0
     resp_high: 24.0
+    spo2_low: 92.0             # camera SpO2 is a trend; alerts/ owns escalation
+    spo2_warning: 88.0
     min_confidence: 0.35
+  cold:                        # cold-symptom composite (sneeze + face_touch + flushing + fatigue)
+    enabled: true
+    interval: 60.0
+    sneeze_count: 2            # sneezes/10min that trigger alone
+    face_touch_count: 4        # touches/10min that count as a signal
+  routine:
+    enabled: true
+    interval: 30.0
+    summary_hour: 20
+
+# Conversation cadence and per-topic admission tuning for agent/topics.py.
+#
+# NUMBERS AND BOOLEANS ONLY. Every line the agent can speak is hand-authored in
+# agent/topics.py, because those `fallback` strings are what gets said when the
+# language provider is down and what the safety airlocks fall back TO. Deploying
+# a site may retune *how eagerly* a topic is raised; it may never retune *what
+# is said*. TopicSpec.apply_overrides enforces that by raising on any key
+# outside {enabled, priority, min_confidence, min_quality, min_severity, gate},
+# so a typo here fails at load instead of silently doing nothing.
+conversation:
+  enabled: true
+  health_prompts_per_hour: 6   # rolling cap on spoken health check-ins
+  reply_window: 30.0           # seconds the agent waits for an answer after it
+                               # asks something no other lane tracks (small
+                               # talk, a topic fallback ending in "?")
+  category_gaps:               # min seconds between two lines in one category
+    vitals: 300
+    skin: 600
+    movement: 300
+    routine: 900
+    environment: 180
+    mood: 600
+    social: 45
+  topics:
+    # Only topics whose shipped defaults are being changed need a line here;
+    # anything absent keeps the values declared in agent/topics.py.
+    gait_asymmetry: {enabled: true, min_confidence: 0.45, priority: 52}
+
+sensors:
+  realsense_depth_imu: {enabled: false}
+  ble_heart_rate: {enabled: false}
+  pulse_oximeter: {enabled: false}
+  smart_scale: {enabled: false}
+  ble_blood_pressure: {enabled: false}
+  thermal: {enabled: false}
+  environment: {enabled: false}
+  door: {enabled: false}
+  bed_pressure: {enabled: false}
+  appliance: {enabled: false}

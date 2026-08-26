@@ -2,6 +2,8 @@
 
 Recipes for the common ways to grow this codebase. Each points at an existing
 file to copy. Read [ARCHITECTURE.md](ARCHITECTURE.md) first for the big picture.
+Read the nearest package-level `AGENTS.md` before editing, and use
+[OPERATIONS.md](OPERATIONS.md) for current run commands and consent boundaries.
 
 Golden rules:
 - Modules only **read** `FrameContext` and **return** `Result`s — no side effects
@@ -43,8 +45,11 @@ Then enable it in `config/modules.yaml`:
     enabled: true
     my_threshold: 0.4
 ```
-It is auto-discovered — no other file changes. Emit `Severity.ALERT` for
-anything a caregiver must know (fall, unresponsiveness); those flow to `alerts/`.
+It is auto-discovered, so the central registry needs no manual edit. A complete
+feature may still require focused tests, dashboard or agent-topic presentation,
+replay coverage, and documentation. Add only the layers the requested behavior
+actually needs. Emit `Severity.ALERT` for anything a caregiver must know (fall,
+unresponsiveness); those flow through deterministic policy in `alerts/`.
 
 ## 2. Add a backend (rPPG / emotion "show both")
 
@@ -102,23 +107,65 @@ Add it to `_REGISTRY` at the bottom of `notifier.py`, then list it under
 
 ## 4. Add a voice-agent conversation topic
 
-The agent decides what to say in `agent/policy.py: Policy._candidates`. Append a
-candidate `Intent` that reads the `ObservationMemory`:
+Topics are **data, not code**: add a `TopicSpec` to the `TOPICS` tuple in
+`agent/topics.py`. `Policy._candidates` walks that table, so there is no new
+branch to write and nothing to wire up.
 
 ```python
-r = mem.get("my_thing", "my_key")
-if r is not None and _ORDER[r.severity] >= _ORDER[Severity.NOTICE] and self._fresh("mything", now):
-    cands.append(Intent(
-        kind="observation", signature="mything",
-        llm_intent="Gently mention X and offer help.",
-        detail=str(r.message),
-        fallback="I noticed X — are you okay?",   # spoken if no LLM
-        priority=60))
+TopicSpec(
+    topic="my_thing", module="my_thing", key="my_key",
+    llm_intent="Gently offer help with X. Never name a cause.",
+    fallback="I noticed X — would you like a hand?",   # spoken if no LLM
+    priority=60, category="movement",
+    gate=Threshold(minimum=0.15, decimals=2)),
 ```
 
-`signature` gives no-repeat behavior; `priority` orders competing topics; Gemini
-phrases `llm_intent`+`detail`, falling back to `fallback` offline. ALERTs are
-**not** handled here — they go through `alerts/`.
+Before you write it, **open the emitting module and read its `self.result(...)`
+call**. Confirm the exact key string, the value type, the severity and the
+confidence range. A plausible-looking key that no module publishes produces a
+spec that can never fire and no error anywhere — that is exactly how one
+corroboration rule sat silent for months.
+
+What each field buys you:
+
+- `gate` — an admission test *and* a bounded rendering: `Threshold`, `IsTrue`,
+  `OneOf`, `DictField`, `DictCues`, `NonEmptyList`. Set its bounds to mirror the
+  detector's own reporting threshold, so the spec can only narrow what the
+  module already chose to publish, never re-derive a finding from a raw number.
+- `min_severity` — defaults to `NOTICE`. Only drop it to `INFO` for a signal
+  that is genuinely rare (`modules/presence.py` publishes an INFO row every
+  frame), and add the pair to `_INFO_JUSTIFIED` in `tests/topic_table_test.py`
+  with the reason. A test fails otherwise.
+- `category` — the `agent/attention.py` rate-limit bucket. `"general"` has no
+  gap and is never category-gated.
+- `corroborated_by` — **required** if a `FollowUpRule` in
+  `agent/corroboration.py::DEFAULT_RULES` prefix-matches your `(module, key)`;
+  a test enforces it. It makes the signal either *asked about* (below the
+  rule's `max_confidence`) or *mentioned* (above it), never both.
+- `health_prompt` — `None` defers to `kind`. Force `False` for anything that is
+  not a health check-in, so it does not spend the hourly check-in budget.
+
+Write `fallback` by hand and keep it warm, non-clinical, and phrased as an offer
+or a gentle question — never an assertion or a diagnosis. It is what gets spoken
+when the language provider is down, and it is what the safety airlocks in
+`agent/corroboration.py::safe_check_in` fall back *to*. `signature` gives
+no-repeat behavior; `priority` orders competing topics.
+
+Config may retune a topic but never reword it. Under `conversation.topics` in
+`config/modules.yaml` you may set `enabled`, `priority`, `min_confidence`,
+`min_quality`, `min_severity`, and a nested `gate:` mapping of numeric bounds.
+`TopicSpec.apply_overrides` raises on anything else, so a typo fails at load
+rather than silently leaving the deployed spec on its defaults.
+
+ALERTs are **not** handled here — they go through `alerts/`.
+
+Exercise a new topic end to end with the `topic_coverage` fixture in
+`config/replay_scenarios.json`:
+
+```powershell
+.venv\Scripts\python.exe main.py --source replay:topic_coverage --headless --dev-mode `
+  --no-voice --no-moondream --max-frames 600
+```
 
 ## 5. Add a dashboard / `/data` field
 
@@ -139,12 +186,15 @@ passes matching yaml keys into `__init__` (via `DetectionModule.__init__`), so
 
 ## Before you commit — verification loop
 
-```bash
-python tests/smoke_test.py                 # whole pipeline on synthetic frames
-python tests/<your_focused_test>.py        # e.g. hr_backends_test, agent_alert_test
-interrogate -c pyproject.toml .            # docstring coverage must stay >= 95%
-graphify update .                          # refresh the knowledge graph (AST-only)
+```powershell
+.venv\Scripts\python.exe tests/smoke_test.py
+.venv\Scripts\python.exe -m pytest -q tests/<your_focused_test>.py
+interrogate -c pyproject.toml .
+graphify update .
 ```
 
 Add a one-line docstring to every new public class/function — `interrogate` will
 fail the build otherwise, which is what keeps the codebase self-documenting.
+Use portable `python`/`interrogate` commands instead when the project environment
+is already active. Runtime-facing changes also require the bounded verification
+described in [AI_DEVELOPMENT.md](AI_DEVELOPMENT.md).
