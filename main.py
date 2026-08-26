@@ -304,9 +304,11 @@ def main():
                          "requiring speech recognition")
     ap.add_argument("--whisper-model", default="base",
                     help="faster-whisper model size for --listen (default base)")
-    ap.add_argument("--voice-model", default="moondream/moondream3-preview",
-                    help="Moondream model for the voice agent (key from .env; "
-                         "override via MOONDREAM_MODEL env var)")
+    ap.add_argument("--voice-model", default="nvidia:meta/llama-3.1-8b-instruct",
+                    help="Voice-agent model. 'nvidia:<id>' uses NVIDIA's hosted "
+                         "endpoint (NVIDIA_API_KEY), 'gemini*' uses Gemini "
+                         "(GEMINI_API_KEY), else Moondream (e.g. "
+                         "'moondream/moondream3-preview').")
     ap.add_argument("--no-moondream", action="store_true",
                     help="start with Moondream API calls disabled; press M to toggle")
     ap.add_argument("--enable-agent-vision", action="store_true",
@@ -374,6 +376,11 @@ def main():
     ap.add_argument("--no-ipad-toggle", action="store_true",
                     help="refuse module enable/disable from the paired iPad "
                          "(default: allowed, since control is the point)")
+    ap.add_argument("--ipad-audio", default="device",
+                    choices=("device", "both", "laptop"),
+                    help="where agent speech plays when an iPad pairs: on the "
+                         "paired device, whose microphone also becomes the "
+                         "agent's ears (default); on both; or laptop only")
     args = ap.parse_args()
     if args.ipad_transport == "video":
         ap.error("--ipad-transport video is not implemented; use "
@@ -536,7 +543,10 @@ def main():
     sound_detector = None
     microphone = None
     replay_audio = None
-    if args.listen or args.detect_cough or is_replay:
+    audio_bus = None
+    # An iPad source needs the bus even without --listen: its microphone is a
+    # second capture device feeding the same consumers (STT, cough detection).
+    if args.listen or args.detect_cough or is_replay or ipad_source:
         from audio.bus import AudioBus
         from audio.intelligence import SoundEventDetector
         audio_bus = AudioBus()
@@ -740,6 +750,27 @@ def main():
             if not args.no_ipad_toggle:
                 print("[ipad] module toggles from the paired iPad are ENABLED "
                       "(--no-ipad-toggle to refuse them)")
+
+            # Two-way voice with the paired device: its microphone feeds the
+            # same shared bus as the laptop mic, and Piper speech is routed to
+            # the device's speaker instead of (or alongside) the laptop's.
+            if args.ipad_audio != "laptop":
+                pipeline.camera.ipad_attach_audio_bus(audio_bus)
+                if not args.no_voice:
+                    if voice_agent.speaker.engine_name == "piper":
+                        def _route_speech(samples, rate):
+                            pipeline.camera.ipad_send_agent_audio(samples, rate)
+
+                        voice_agent.speaker.set_remote_sink(
+                            _route_speech,
+                            local_playback=args.ipad_audio == "both")
+                        print("[ipad] agent speech will play on the paired "
+                              f"device ({args.ipad_audio}; --ipad-audio laptop "
+                              "to keep it local)")
+                    else:
+                        print(f"[ipad] TTS engine "
+                              f"{voice_agent.speaker.engine_name!r} cannot be "
+                              "routed to the device; laptop speakers stay on")
 
     caregiver_server = None
     if args.caregiver_portal:

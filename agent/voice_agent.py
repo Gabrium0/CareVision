@@ -461,7 +461,7 @@ class VoiceAgent:
     def _dialogue_turns(self) -> list[ConversationTurn]:
         return [ConversationTurn("user" if who == "them" else "assistant",
                                  text, ts)
-                for who, text, ts in self.memory.dialogue[-12:]]
+                for who, text, ts in self.memory.dialogue[-20:]]
 
     def _turn_context(self, query: str):
         capabilities = (self._capability_source.snapshot()
@@ -597,6 +597,16 @@ class VoiceAgent:
         # (lowercase) still passes.
         tokens = [w.strip(".,!?;:'\"()") for w in text.split()]
         if any(tok in cls._SUBJECT_LABELS for tok in tokens):
+            return ""
+        # Deterministic backstop for raw sensor readings the persona forbids: a
+        # number next to a unit/metric term ("9.6 breaths per minute", "tint of
+        # 0.0", "62 bpm", "95%"). Adjacency keeps ordinary numbers ("see you at
+        # 3", "take 3 deep breaths") passing.
+        import re  # noqa: PLC0415
+        if (re.search(r"\d[\d.,]*\s*(?:%|bpm|beats?\b|breaths?\b|per\s*minute|"
+                      r"percent|degrees?|celsius|fahrenheit)", low)
+                or re.search(r"(?:tint|saturation|spo2|heart rate|breathing rate|"
+                             r"respiration)\s*(?:of|is|at|:|=)?\s*\d", low)):
             return ""
         return text
 

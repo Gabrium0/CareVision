@@ -22,7 +22,7 @@ class ObservationMemory:
     first_seen: dict = field(default_factory=dict)    # (module,key,value) -> ts
     arrived_at: float | None = None
     dialogue: list = field(default_factory=list)      # (speaker, text, ts)
-    dialogue_keep: int = 12                           # turns retained
+    dialogue_keep: int = 20                           # turns retained (user+agent combined)
 
     def person_said(self, text: str, ts: float | None = None) -> None:
         """Record something the person said (from the ASR listener)."""

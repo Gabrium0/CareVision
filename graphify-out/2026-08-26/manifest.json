@@ -70,8 +70,8 @@
     "semantic_hash": ""
   },
   "main.py": {
-    "mtime": 1787638298.2492087,
-    "ast_hash": "7b8ed088d0542f6965438a3d2afd3668",
+    "mtime": 1787642412.2346537,
+    "ast_hash": "5a29b710fe8ca7da702e356141b615f6",
     "semantic_hash": ""
   },
   "modules/__init__.py": {
@@ -1785,13 +1785,13 @@
     "semantic_hash": ""
   },
   "core/ipad_link.py": {
-    "mtime": 1787638141.0895538,
-    "ast_hash": "021ce53eb256c240db903dffc0b55893",
+    "mtime": 1787642896.2853663,
+    "ast_hash": "2820ff815d7ece3264551a70496d2e9f",
     "semantic_hash": ""
   },
   "relay/server.py": {
-    "mtime": 1787636977.8511636,
-    "ast_hash": "c155316940af2742ea8cadfcd4dcf7fb",
+    "mtime": 1787640433.6009269,
+    "ast_hash": "c8c9638b8c11cf966ea3145fe94442a3",
     "semantic_hash": ""
   },
   "scripts/show_qr.py": {
@@ -1805,8 +1805,8 @@
     "semantic_hash": ""
   },
   "tests/ipad_camera_test.py": {
-    "mtime": 1787565253.9701722,
-    "ast_hash": "d43bbdb0cd6c03cc80769885f8e85aec",
+    "mtime": 1787640271.2012331,
+    "ast_hash": "7044c8e0aef9f0ded707c2f082438dea",
     "semantic_hash": ""
   },
   "tests/ipad_clock_test.py": {
@@ -1825,8 +1825,8 @@
     "semantic_hash": ""
   },
   "tests/ipad_protocol_test.py": {
-    "mtime": 1787565253.9731746,
-    "ast_hash": "02cbf0d869af3d7ffd80cab4d46e2a30",
+    "mtime": 1787641681.7424908,
+    "ast_hash": "0a2e382c742362ce5e8b402180b47a5a",
     "semantic_hash": ""
   },
   "relay/README.md": {
@@ -1845,8 +1845,8 @@
     "semantic_hash": ""
   },
   "relay/static/ipad.html": {
-    "mtime": 1787637456.3311415,
-    "ast_hash": "abb217d84de4371815d4749e7e2315db",
+    "mtime": 1787642897.1705778,
+    "ast_hash": "5edc4e34e65f4c44cd66046db1285659",
     "semantic_hash": ""
   },
   "requirements-ipad.txt": {
@@ -1880,23 +1880,23 @@
     "semantic_hash": ""
   },
   "relay/static/ipad_capture_policy.js": {
-    "mtime": 1787637748.8292017,
-    "ast_hash": "26a1830e81f01570b41a483eed9c9d70",
+    "mtime": 1787642813.3784516,
+    "ast_hash": "4d3bce0690ddabff2e0e1233cb252224",
     "semantic_hash": ""
   },
   "tests/ipad_capture_policy_test.js": {
-    "mtime": 1787637749.7108235,
-    "ast_hash": "7675dbb630c7ba71b21740f8188307c1",
+    "mtime": 1787642815.253726,
+    "ast_hash": "622994bf1cbeadca3f6ff185a28032da",
     "semantic_hash": ""
   },
   "tests/ipad_link_defense_test.py": {
-    "mtime": 1787638150.4152586,
-    "ast_hash": "0f903a13ed6b30c0d0108d95b791e6b1",
+    "mtime": 1787642987.8913562,
+    "ast_hash": "ffa29be7a13fbd8fa930f8fda0d2cc85",
     "semantic_hash": ""
   },
   "tests/ipad_relay_asset_test.py": {
-    "mtime": 1787637513.4990547,
-    "ast_hash": "ffce796352919460b41ed7e0f31db560",
+    "mtime": 1787640434.6940317,
+    "ast_hash": "2f83223d2e7741a63f4254817cd567c5",
     "semantic_hash": ""
   },
   "tests/ipad_runtime_config_test.py": {

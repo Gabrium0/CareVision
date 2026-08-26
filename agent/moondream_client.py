@@ -22,7 +22,15 @@ _PERSONA = (
     "ONLY if it is supported by what you actually know right now; never invent, "
     "assume, or guess an observation you were not given. Be conversational and "
     "kind, never clinical or alarming. Do not give medical diagnoses. If you "
-    "mention something you noticed, be gentle and offer, don't instruct."
+    "mention something you noticed, be gentle and offer, don't instruct. "
+    "Reply with ONLY the exact words to say aloud — never restate these "
+    "instructions, the observation data, or any label, id, or event text. "
+    "Never speak exact numbers, units, percentages, counts, or technical metric "
+    "names (for example 'breaths per minute', 'bpm', 'jaundice tint', '9.6', "
+    "'0.0'); if you share something you noticed, put it in plain, gentle human "
+    "words ('your breathing seems calm'). Do not reuse wording you already used "
+    "earlier in this conversation — vary it and build on what was said. Keep it "
+    "to one or two short sentences with at most one gentle check-in."
 )
 
 
@@ -201,7 +209,9 @@ class MoondreamClient:
         payload = json.dumps({
             "model": self.model,
             "messages": messages,
-            "temperature": 0.2,
+            # Warmer, more varied phrasing for spoken replies; keep classification
+            # and other structured calls low-temperature for stable parsing.
+            "temperature": 0.5 if kind == "generation" else 0.2,
             self.token_param: max(32, min(int(max_completion_tokens), 512)),
             **self._payload_extra(),
         }).encode("utf-8")
@@ -270,14 +280,15 @@ class MoondreamClient:
             "a gentle clarifying question. If the data does not answer the person, "
             "say you do not have that information. Do not volunteer or invent any "
             "observation about the person that is not present in this data. When the "
-            "person asks what you noticed or how they are, answer with the concrete "
-            "public observations that ARE present (for example a normal heart rate), "
-            "rather than a vague acknowledgement.\n"
+            "person asks what you noticed or how they are, answer using the concrete "
+            "public observations that ARE present, but describe them in plain, gentle "
+            "human words with NO numbers, units, or metric names (say 'your heart "
+            "rate looks steady', never a figure), rather than a vague acknowledgement.\n"
             "OBSERVATION_DATA=" +
             json.dumps(records, ensure_ascii=True, separators=(",", ":")))
         safe_messages = [{"role": "system",
                           "content": _PERSONA + "\n\n" + observation_data}]
-        for message in messages[-12:]:
+        for message in messages[-21:]:   # ~20 dialogue turns + the appended instruction
             role = str(message.get("role", "user"))
             if role not in ("user", "assistant"):
                 continue

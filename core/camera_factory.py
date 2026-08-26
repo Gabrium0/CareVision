@@ -71,6 +71,7 @@ class SwitchableCamera:
         self.inner = make_backend(source, opts)
         self._hooks: list[Callable] = []
         self._ipad_control_handler: Optional[Callable] = None
+        self._ipad_audio_bus = None
         self._cross_pending: Optional[tuple] = None
         self._switch_lock = threading.Lock()
 
@@ -142,6 +143,8 @@ class SwitchableCamera:
             new.register_fast_hook(hook)
         if self._ipad_control_handler is not None and isinstance(new, IPadCamera):
             new.set_control_handler(self._ipad_control_handler)
+        if self._ipad_audio_bus is not None and isinstance(new, IPadCamera):
+            new.attach_audio_bus(self._ipad_audio_bus)
         with self._switch_lock:
             self.inner = new
 
@@ -193,3 +196,15 @@ class SwitchableCamera:
         self._ipad_control_handler = handler
         if isinstance(self.inner, IPadCamera):
             self.inner.set_control_handler(handler)
+
+    def ipad_attach_audio_bus(self, bus) -> None:
+        """Bind the shared audio bus for device-mic frames, surviving rebuilds."""
+        self._ipad_audio_bus = bus
+        if isinstance(self.inner, IPadCamera):
+            self.inner.attach_audio_bus(bus)
+
+    def ipad_send_agent_audio(self, samples, rate: int = 16000,
+                              channels: int = 1) -> None:
+        """Route agent speech to the paired device; no-op for other sources."""
+        if isinstance(self.inner, IPadCamera):
+            self.inner.send_agent_audio(samples, rate, channels)

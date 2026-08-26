@@ -192,6 +192,20 @@ iPad silently going blank. Editing `relay/static/ipad.html` only reaches the
 device once the relay serving it is restarted/redeployed (it is `no-store`, so a
 reload then picks it up).
 
+Two-way voice rides the same peer connection as RTP audio. When an iPad pairs,
+its microphone (`--ipad-audio device`, the default) publishes onto the shared
+16 kHz bus, so `--listen` transcription and cough detection hear the person at
+the iPad instead of whatever the laptop's own mic picks up — no extra flag
+beyond what those features already need. Piper speech routes to the iPad's
+speaker instead of the laptop's; `--ipad-audio both` keeps the laptop audible
+too, and `--ipad-audio laptop` opts out entirely (mic included). Only the Piper
+engine produces PCM a remote speaker can carry: if TTS falls back to the system
+voice (`pyttsx3`), speech stays on the laptop and the run prints a one-line
+notice. Safari's echo cancellation keeps the agent's own voice out of the mic
+feed, and turn-taking still mutes transcription while the agent speaks.
+`IPadLink.status()` carries `audio_mic` / `audio_out` negotiation state plus
+`audio_rx_blocks` / `audio_tx_chunks` counters for diagnostics.
+
 Network: put both devices on a Windows Mobile Hotspot (share from Ethernet so
 the laptop keeps internet for cloud features). ICE then settles on host
 candidates on the same subnet and no TURN server is needed, which also makes

@@ -70,8 +70,8 @@
     "semantic_hash": ""
   },
   "main.py": {
-    "mtime": 1787565253.8348658,
-    "ast_hash": "3318e12fd3971e057c4e2447ced05ccf",
+    "mtime": 1787722521.625078,
+    "ast_hash": "b10a1471f4830e9aab423baf6e5fbc04",
     "semantic_hash": ""
   },
   "modules/__init__.py": {
@@ -535,8 +535,8 @@
     "semantic_hash": ""
   },
   "audio/tts.py": {
-    "mtime": 1787565252.5495343,
-    "ast_hash": "32c8c8b21befb403fdcbd6a257425aa6",
+    "mtime": 1787722386.272381,
+    "ast_hash": "3a0f3cfa7afbe0a912fbd5b687c9439c",
     "semantic_hash": ""
   },
   "tests/agent_alert_test.py": {
@@ -735,8 +735,8 @@
     "semantic_hash": ""
   },
   "core/camera_factory.py": {
-    "mtime": 1787565252.556535,
-    "ast_hash": "5362fd2a11770f722dc40a455a517f89",
+    "mtime": 1787722333.3674374,
+    "ast_hash": "0c38d997649ad4640fb20223c06f4e7a",
     "semantic_hash": ""
   },
   "core/realsense_camera.py": {
@@ -1710,8 +1710,8 @@
     "semantic_hash": ""
   },
   "docs/OPERATIONS.md": {
-    "mtime": 1787565252.574546,
-    "ast_hash": "4dffdca3dbd0b2745ab7262d91df37ae",
+    "mtime": 1787722823.7397897,
+    "ast_hash": "ae5dca92fff123901986db774afe49df",
     "semantic_hash": ""
   },
   "docs/README.md": {
@@ -1780,18 +1780,18 @@
     "semantic_hash": ""
   },
   "core/ipad_camera.py": {
-    "mtime": 1787565252.5615354,
-    "ast_hash": "52daaaf40e6039e01899cb02f4ca9e81",
+    "mtime": 1787722305.3841188,
+    "ast_hash": "c3417331b1141d33a18c4e9e1aa6a551",
     "semantic_hash": ""
   },
   "core/ipad_link.py": {
-    "mtime": 1787565252.5625358,
-    "ast_hash": "06375020746224b12f49995e33536f6a",
+    "mtime": 1787722295.2784731,
+    "ast_hash": "a6965d69949756fd139d21b684801785",
     "semantic_hash": ""
   },
   "relay/server.py": {
-    "mtime": 1787565253.880925,
-    "ast_hash": "5a6aa02108bc45d62a1ce126c293cb78",
+    "mtime": 1787649779.633172,
+    "ast_hash": "929799a06ceae919ae74ea705299bc8a",
     "semantic_hash": ""
   },
   "scripts/show_qr.py": {
@@ -1800,13 +1800,13 @@
     "semantic_hash": ""
   },
   "scripts/start-showcase.ps1": {
-    "mtime": 1787565253.8954434,
-    "ast_hash": "7880167158da010d13ec3746c9c642e3",
+    "mtime": 1787634275.967228,
+    "ast_hash": "6d2bfcba7307775ef737df016b3d8d49",
     "semantic_hash": ""
   },
   "tests/ipad_camera_test.py": {
-    "mtime": 1787565253.9701722,
-    "ast_hash": "d43bbdb0cd6c03cc80769885f8e85aec",
+    "mtime": 1787640271.2012331,
+    "ast_hash": "7044c8e0aef9f0ded707c2f082438dea",
     "semantic_hash": ""
   },
   "tests/ipad_clock_test.py": {
@@ -1825,8 +1825,8 @@
     "semantic_hash": ""
   },
   "tests/ipad_protocol_test.py": {
-    "mtime": 1787565253.9731746,
-    "ast_hash": "02cbf0d869af3d7ffd80cab4d46e2a30",
+    "mtime": 1787641681.7424908,
+    "ast_hash": "0a2e382c742362ce5e8b402180b47a5a",
     "semantic_hash": ""
   },
   "relay/README.md": {
@@ -1845,8 +1845,8 @@
     "semantic_hash": ""
   },
   "relay/static/ipad.html": {
-    "mtime": 1787632857.2573442,
-    "ast_hash": "b21b99797e17d9f5679ad4db2e859ad3",
+    "mtime": 1787722466.8822618,
+    "ast_hash": "119ac1c4b3c8e4cc0feb8884d508b739",
     "semantic_hash": ""
   },
   "requirements-ipad.txt": {
@@ -1877,6 +1877,66 @@
   "scripts/llm_speech_check.py": {
     "mtime": 1787568167.6646702,
     "ast_hash": "028401ebfb62f163558ef7da8893a5cb",
+    "semantic_hash": ""
+  },
+  "relay/static/ipad_capture_policy.js": {
+    "mtime": 1787648652.3711145,
+    "ast_hash": "638d093df4437881547d99785df7b940",
+    "semantic_hash": ""
+  },
+  "tests/ipad_capture_policy_test.js": {
+    "mtime": 1787648745.1666334,
+    "ast_hash": "764d0e9f6a2e3fbd0446d380b9b4602e",
+    "semantic_hash": ""
+  },
+  "tests/ipad_link_defense_test.py": {
+    "mtime": 1787642987.8913562,
+    "ast_hash": "ffa29be7a13fbd8fa930f8fda0d2cc85",
+    "semantic_hash": ""
+  },
+  "tests/ipad_relay_asset_test.py": {
+    "mtime": 1787640434.6940317,
+    "ast_hash": "2f83223d2e7741a63f4254817cd567c5",
+    "semantic_hash": ""
+  },
+  "tests/ipad_runtime_config_test.py": {
+    "mtime": 1787638310.420625,
+    "ast_hash": "fcadb002422c03fefae26af8b9a55157",
+    "semantic_hash": ""
+  },
+  "core/ipad_audio.py": {
+    "mtime": 1787722071.2150352,
+    "ast_hash": "5753dc05aff3d448ed38e2cc230e4cfc",
+    "semantic_hash": ""
+  },
+  "scripts/rppg_reference_check.py": {
+    "mtime": 1787720699.4605489,
+    "ast_hash": "c848910fdeb88b907c878b007a502b39",
+    "semantic_hash": ""
+  },
+  "scripts/run-presentation-tests.ps1": {
+    "mtime": 1787720735.8021452,
+    "ast_hash": "a7f9644de538a2d0736f8e074c130cc1",
+    "semantic_hash": ""
+  },
+  "tests/ipad_audio_test.py": {
+    "mtime": 1787722746.773822,
+    "ast_hash": "b683aa78e9bed3da68177a61a2291516",
+    "semantic_hash": ""
+  },
+  "tests/presentation_showcase.py": {
+    "mtime": 1787720836.0275972,
+    "ast_hash": "11418bb398f1d04adb1ceaaea9712737",
+    "semantic_hash": ""
+  },
+  "tests/presentation_showcase_test.py": {
+    "mtime": 1787720882.301482,
+    "ast_hash": "8203afaef2eee02fb8e8ea5fdd1d568b",
+    "semantic_hash": ""
+  },
+  "docs/IPAD_ONDEVICE_OFFLOAD.md": {
+    "mtime": 1787650964.6094868,
+    "ast_hash": "da76bd3ca0e9e96d386f445943bb7b8e",
     "semantic_hash": ""
   }
 }

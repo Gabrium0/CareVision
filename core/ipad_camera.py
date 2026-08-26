@@ -379,6 +379,23 @@ class IPadCamera:
         if self._link is not None:
             self._link.set_control_handler(handler)
 
+    def attach_audio_bus(self, bus) -> None:
+        """Late-bind the shared audio bus for device-mic frames.
+
+        Like set_control_handler, this survives the link not existing yet:
+        options recorded here are applied to every link built by open(), and to
+        a live link immediately.
+        """
+        self._link_opts["audio_bus"] = bus
+        if self._link is not None:
+            self._link.audio_bus = bus
+
+    def send_agent_audio(self, samples, rate: int = 16000,
+                         channels: int = 1) -> None:
+        """Route one chunk of agent speech to the paired device (no-op unpiped)."""
+        if self._link is not None:
+            self._link.send_audio(samples, rate, channels)
+
     # ---- internals -------------------------------------------------------
 
     def _build_link(self):

@@ -23,6 +23,8 @@ import re
 import threading
 import time
 
+import numpy as np
+
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
 _CLAUSE_SPLIT = re.compile(r"(?<=[,;:])\s+")
 _MAX_CHUNK = 280        # characters per synthesis chunk before clause split
@@ -66,6 +68,8 @@ class Speaker:
         self.model = ""
         self._engine = None          # piper.PiperVoice or pyttsx3 engine
         self._backend = None         # audio.tts_piper.PiperBackend when piper
+        self.remote_sink = None      # callable(samples float32, rate) — device route
+        self.local_playback = True   # False mutes laptop speakers while routed
         self._q: queue.Queue[str | None] = queue.Queue()
         self._thread: threading.Thread | None = None
         if not enabled:
@@ -113,7 +117,24 @@ class Speaker:
     def status(self) -> dict:
         """Credential-safe diagnostics for the capability registry/UI."""
         return {"engine": self.engine_name, "ready": self.ready,
-                "model": self.model, "error": self.error}
+                "model": self.model, "error": self.error,
+                "remote_sink": self.remote_sink is not None,
+                "local_playback": bool(self.local_playback)}
+
+    def set_remote_sink(self, sink, local_playback: bool = False) -> None:
+        """Route synthesized speech to a remote output (e.g. the paired iPad).
+
+        ``sink(samples_float32, rate)`` is called from the TTS worker thread for
+        every synthesized chunk; it must never block (the WebRTC link's paced
+        buffer satisfies this). Only the Piper engine produces PCM a remote
+        sink can carry — system-voice fallbacks keep playing locally and say
+        so once. Turn-taking (`speaking`) still covers routed speech.
+        """
+        self.remote_sink = sink
+        self.local_playback = bool(local_playback)
+        if sink is not None and self.engine_name != "piper":
+            print(f"[tts] engine {self.engine_name!r} cannot route to a remote "
+                  "device; keeping laptop speakers on")
 
     # ----------------------------------------------------------------- worker
 
@@ -179,9 +200,6 @@ class Speaker:
         if self._backend is not None:
             first = True
             for chunk in _split_chunks(text):
-                if not first and _SENTENCE_PAUSE > 0:
-                    time.sleep(_SENTENCE_PAUSE)
-                first = False
                 samples = None
                 sample_rate = 22050
                 for audio, rate in self._backend.synthesize(self._engine, chunk):
@@ -189,6 +207,20 @@ class Speaker:
                     sample_rate = rate
                 if samples is None or len(samples) == 0:
                     continue
+                if self.remote_sink is not None:
+                    try:
+                        self.remote_sink(
+                            np.asarray(samples, dtype=np.float32), sample_rate)
+                    except Exception as exc:  # noqa: BLE001 - a dead link mutes
+                        print(f"[tts] remote sink failed ({exc}); "
+                              "falling back to laptop audio")
+                        self.local_playback = True
+                if not self.local_playback:
+                    first = False
+                    continue       # device-only: pacing happens at the far end
+                if not first and _SENTENCE_PAUSE > 0:
+                    time.sleep(_SENTENCE_PAUSE)
+                first = False
                 player.play(samples, sample_rate)
                 player.wait()
             return
@@ -208,5 +240,6 @@ class Speaker:
 
     def close(self) -> None:
         """Release any resources (models, threads, sockets) held here."""
+        self.remote_sink = None
         if self._thread is not None:
             self._q.put(None)

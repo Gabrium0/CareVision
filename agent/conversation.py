@@ -282,7 +282,7 @@ class AgentContextBroker:
             chars += size
         self._last_selected = [item.id for item in selected]
         return AgentContext(
-            items=selected, turns=turns[-12:],
+            items=selected, turns=turns[-20:],
             workflows=[_bounded(row) for row in (workflows or [])[:8]],
             capabilities=[_bounded(row) for row in (capabilities or [])[:64]],
             recent_events=[_bounded(row) for row in (recent_events or [])[-12:]],
