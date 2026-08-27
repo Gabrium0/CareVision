@@ -146,6 +146,14 @@
     <div id="picker" class="picker"></div>
   </section>
 
+  <section id="inject-wrap" style="display:none">
+    <div class="picker-head">
+      <h2>Demo triggers</h2>
+      <span class="picker-hint">Feed the agent a synthetic reading and watch it react.</span>
+    </div>
+    <div id="inject" class="picker"></div>
+  </section>
+
   <div class="cols">
     <section>
       <h2>What the system watches</h2>
@@ -178,6 +186,8 @@
   const pickerWrapEl = document.getElementById('picker-wrap');
   const pickerEl = document.getElementById('picker');
   const pickerHintEl = document.getElementById('pickerHint');
+  const injectWrapEl = document.getElementById('inject-wrap');
+  const injectEl = document.getElementById('inject');
 
   const STALE_MS = 4000;
   const FEED_CAP = 15;
@@ -223,6 +233,38 @@
     if(!btn || btn.disabled) return;
     postAssessment(btn.getAttribute('data-action'), btn.getAttribute('data-protocol'));
   });
+
+  // Demo triggers (only present when the app runs with --demo-inject). The
+  // strip stays hidden unless /inject-scenarios returns a non-empty list, so a
+  // normal run shows nothing here.
+  function initInjectStrip(){
+    fetch('/inject-scenarios', {cache:'no-store'}).then(r=>r.json()).then(function(d){
+      const items = (d && d.scenarios) || [];
+      if(!items.length) return;
+      injectEl.innerHTML = items.map(function(s){
+        return `<button class="pbtn" data-scenario="${esc(s.id)}">` +
+               `<span class="pl">${esc(s.label)}</span>` +
+               `<span class="pb">Inject and watch the agent respond</span></button>`;
+      }).join('');
+      injectWrapEl.style.display = '';
+    }).catch(()=>{});
+  }
+  injectEl.addEventListener('click', function(ev){
+    const btn = ev.target.closest('.pbtn');
+    if(!btn) return;
+    const scenario = btn.getAttribute('data-scenario');
+    // Fire-and-forget: the effect (the number, then the spoken line) arrives
+    // back through the /data-events SSE and the agent caption.
+    try{
+      fetch('/inject-control', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({scenario}),
+      }).catch(()=>{});
+    }catch(_){}
+    const label = btn.querySelector('.pl'), was = label ? label.textContent : '';
+    if(label){ label.textContent = 'Sent ✓'; setTimeout(()=>{ label.textContent = was; }, 1200); }
+  });
+  initInjectStrip();
 
   const FAMILIES = [
     { name: 'Vitals',    mods: ['heart_rate', 'respiration', 'spo2'] },

@@ -58,6 +58,7 @@ from agent.advisor_engine import AdvisorEngine
 from agent.voice_agent import VoiceAgent
 from agent.env import load_env
 from webui.server import CompanionServer
+from webui.inject import DemoInjector
 from webui.debug_server import (DebugServer, build_audio_debug_state,
                                 build_debug_payload)
 from core.capabilities import CapabilityRegistry, CapabilityStatus
@@ -343,6 +344,11 @@ def main():
     ap.add_argument("--allow-remote-toggle", action="store_true",
                     help="allow non-loopback clients to pause/resume detectors "
                          "from /modules (default: loopback only)")
+    ap.add_argument("--demo-inject", action="store_true",
+                    help="expose synthetic demo signal triggers on the /demo view "
+                         "(high heart rate, yawns, low mood, rash) so the agent's "
+                         "reaction can be shown live; showcase only -- NOT for "
+                         "unattended/production use")
     ap.add_argument("--start-blank", action="store_true",
                     help="start with every detector paused (camera + person "
                          "outline only); enable them from /modules as you go. "
@@ -611,6 +617,7 @@ def main():
         voice_agent.start_demo_circuit()
 
     web = None
+    demo_injector = DemoInjector() if args.demo_inject else None
     web_publish_executor = None
     web_publish_state = {"future": None, "last": -1e9}
     ipad_executor = None
@@ -693,12 +700,22 @@ def main():
                 raise ValueError("empty reply")
             return {"text": " ".join(str(text).split())[:400]}
 
+        def inject_handler(scenario):
+            """Web hook for the /demo showcase triggers: hold a synthetic signal
+            active for a few seconds so the agent visibly reacts. Raises
+            ValueError on an unknown scenario (rendered as HTTP 400)."""
+            return demo_injector.trigger(scenario, time.time())
+
         if args.webui:
             web = CompanionServer(port=args.webui_port, control_handler=control,
                                   primary_handler=primary_handler,
                                   assessment_handler=assessment_handler,
                                   say_handler=say_handler,
                                   module_handler=module_handler,
+                                  inject_handler=(inject_handler
+                                                  if demo_injector is not None else None),
+                                  inject_catalog=(DemoInjector.catalog
+                                                  if demo_injector is not None else None),
                                   allow_remote_module_toggle=args.allow_remote_toggle)
             web.start()
             web_publish_executor = ThreadPoolExecutor(
@@ -918,6 +935,10 @@ def main():
         auxiliary = sensor_manager.poll(ctx.timestamp)
         if sound_detector is not None:
             auxiliary.extend(sound_detector.pop_results())
+        if demo_injector is not None:
+            # Showcase-only: re-emit any held synthetic signals so they flow
+            # through the aggregator exactly like real detector output.
+            auxiliary.extend(demo_injector.drain(ctx.timestamp))
         if voice_agent.listener is not None:
             metrics = voice_agent.listener.pop_metrics()
             if metrics:

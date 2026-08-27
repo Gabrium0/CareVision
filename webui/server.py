@@ -99,6 +99,7 @@ def _is_loopback(ip: str) -> bool:
 def _make_handler(bus: UtteranceBus, data_bus: DataBus, control_handler=None,
                   primary_handler=None, assessment_handler=None,
                   say_handler=None, module_handler=None,
+                  inject_handler=None, inject_catalog=None,
                   allow_remote_module_toggle: bool = False):
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
@@ -159,6 +160,13 @@ def _make_handler(bus: UtteranceBus, data_bus: DataBus, control_handler=None,
                            extra={"Cache-Control": "no-store"})
             elif path == "/data-events":
                 self._stream_data()
+            elif path == "/inject-scenarios":
+                # Demo trigger catalog; empty unless --demo-inject is on, so the
+                # /demo page renders no strip in a normal run.
+                catalog = inject_catalog() if inject_catalog is not None else []
+                self._send(ctype="application/json",
+                           body=json.dumps({"scenarios": catalog}).encode(),
+                           extra={"Cache-Control": "no-store"})
             else:
                 self._send(code=404, body=b"not found")
 
@@ -167,7 +175,7 @@ def _make_handler(bus: UtteranceBus, data_bus: DataBus, control_handler=None,
             path = urlparse(self.path).path
             if path not in ("/replay-control", "/primary-control",
                             "/assessment-control", "/say-control",
-                            "/module-control"):
+                            "/module-control", "/inject-control"):
                 self._send(code=404, body=b"not found")
                 return
             try:
@@ -212,6 +220,13 @@ def _make_handler(bus: UtteranceBus, data_bus: DataBus, control_handler=None,
                         str(scope) if scope is not None else None)
                     self._send(ctype="application/json",
                                body=json.dumps({"ok": True, "module": result}).encode())
+                    return
+                if path == "/inject-control":
+                    if inject_handler is None:
+                        raise RuntimeError("demo injection is not enabled")
+                    result = inject_handler(str(request.get("scenario", "")))
+                    self._send(ctype="application/json",
+                               body=json.dumps({"ok": True, **result}).encode())
                     return
                 if path == "/say-control":
                     if say_handler is None:
@@ -317,6 +332,7 @@ class CompanionServer:
                  data_hz: float = 2.0, control_handler=None,
                  primary_handler=None, assessment_handler=None,
                  say_handler=None, module_handler=None,
+                 inject_handler=None, inject_catalog=None,
                  allow_remote_module_toggle: bool = False):
         self.port = port
         self.host = host
@@ -331,6 +347,8 @@ class CompanionServer:
         self.assessment_handler = assessment_handler
         self.say_handler = say_handler
         self.module_handler = module_handler
+        self.inject_handler = inject_handler
+        self.inject_catalog = inject_catalog
         self.allow_remote_module_toggle = allow_remote_module_toggle
 
     def start(self) -> None:
@@ -342,6 +360,8 @@ class CompanionServer:
                                                              self.assessment_handler,
                                                              self.say_handler,
                                                              self.module_handler,
+                                                             self.inject_handler,
+                                                             self.inject_catalog,
                                                              self.allow_remote_module_toggle))
         self._httpd.daemon_threads = True
         self._thread = threading.Thread(target=self._httpd.serve_forever,
