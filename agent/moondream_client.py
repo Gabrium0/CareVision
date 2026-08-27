@@ -70,6 +70,7 @@ class MoondreamClient:
         self._consecutive_failures = 0
         self._circuit_open_until = 0.0
         self._authorization_failed = False
+        self._model_retired = False
         self._retryable = True
         self._lifecycle = "configured" if self.available else "unconfigured"
         self._executor = ThreadPoolExecutor(max_workers=1,
@@ -115,6 +116,7 @@ class MoondreamClient:
     def _reset_authorization_latch(self) -> None:
         """Caller holds `_lock`; an explicit off/on toggle authorizes retry."""
         self._authorization_failed = False
+        self._model_retired = False
         self._retryable = True
         self._circuit_open_until = 0.0
         self._consecutive_failures = 0
@@ -154,7 +156,7 @@ class MoondreamClient:
     def _begin_request(self, kind: str) -> str | None:
         with self._lock:
             if (self._closed or not self._enabled or not self.available or not self._key
-                    or self._authorization_failed
+                    or self._authorization_failed or self._model_retired
                     or time.time() < self._circuit_open_until):
                 return None
             if kind == "generation":
@@ -164,11 +166,20 @@ class MoondreamClient:
             self._last_request_at = time.time()
             return self._key
 
-    def _record_failure(self, exc: Exception) -> None:
+    def _record_failure(self, exc: Exception, kind: str = "generation") -> str | None:
         with self._lock:
             self._failures += 1
             status = int(exc.code) if isinstance(exc, urllib.error.HTTPError) else None
             self._last_http_status = status
+            if status == 410:
+                self._model_retired = True
+                self._retryable = False
+                self._lifecycle = "model_retired"
+                self._last_error = "HTTP 410: model retired; select another with --voice-model"
+                self._consecutive_failures += 1
+                if self._consecutive_failures == 1 or self._consecutive_failures % 10 == 0:
+                    return self._last_error
+                return None
             retryable = status is None or status in (408, 425, 429) or status >= 500
             self._retryable = retryable
             label = f"HTTP {status}" if status is not None else type(exc).__name__
@@ -184,6 +195,7 @@ class MoondreamClient:
             if retryable and self._consecutive_failures >= 3:
                 delay = min(300.0, 15.0 * (2 ** (self._consecutive_failures - 3)))
                 self._circuit_open_until = time.time() + delay
+            return self._last_error
 
     def _record_success(self) -> None:
         with self._lock:

@@ -16,6 +16,7 @@
   });
   const AUTO_LONG_EDGES = Object.freeze([960, 800, 640]);
   const JPEG_QUALITIES = Object.freeze([0.92, 0.88, 0.84, 0.80, 0.76, 0.72]);
+  const UPSHIFT_HEALTHY_WINDOWS = 15;
   const MIN_DIMENSION = 160;
   const MAX_DIMENSION = 4096;
 
@@ -221,6 +222,39 @@
       constrained = false;
     }
 
+    function change(direction){
+      return {changed:direction !== null, direction:direction, tier:tier,
+        qualityTier:qualityTier, constrained:constrained};
+    }
+
+    function downshift(allowFixedQuality){
+      lowPressureWindows = 0;
+      healthyWindows = 0;
+      let direction = null;
+      if(!config.adaptive_resolution){
+        if(allowFixedQuality && qualityTier < JPEG_QUALITIES.length - 1){
+          qualityTier += 1;
+          constrained = false;
+          direction = 'down';
+        } else if(allowFixedQuality) {
+          constrained = true;
+        }
+        return change(direction);
+      }
+      if(tier < profiles.length - 1){
+        tier += 1;
+        constrained = false;
+        direction = 'down';
+      } else if(qualityTier < JPEG_QUALITIES.length - 1){
+        qualityTier += 1;
+        constrained = false;
+        direction = 'down';
+      } else {
+        constrained = true;
+      }
+      return change(direction);
+    }
+
     return {
       getConfig: function(){ return Object.assign({}, config); },
       getProfiles: function(){ return profiles.map(function(p){ return Object.assign({}, p); }); },
@@ -229,6 +263,7 @@
       getJpegQuality: function(){ return JPEG_QUALITIES[qualityTier]; },
       getSize: function(){ return Object.assign({}, profiles[tier]); },
       isConstrained: function(){ return constrained; },
+      forceDownshift: function(){ return downshift(true); },
       setConfig: function(value){
         const next = normalizeConfig(value, config);
         if(configsEqual(next, config)) return false;
@@ -275,24 +310,14 @@
         }
 
         lowPressureWindows = low ? Math.min(2, lowPressureWindows + 1) : 0;
-        healthyWindows = healthy ? Math.min(5, healthyWindows + 1) : 0;
+        healthyWindows = healthy
+          ? Math.min(UPSHIFT_HEALTHY_WINDOWS, healthyWindows + 1) : 0;
         if(healthy) constrained = false;
 
         if(lowPressureWindows >= 2){
-          lowPressureWindows = 0;
-          healthyWindows = 0;
-          if(tier < profiles.length - 1){
-            tier += 1;
-            constrained = false;
-            direction = 'down';
-          } else if(qualityTier < JPEG_QUALITIES.length - 1){
-            qualityTier += 1;
-            constrained = false;
-            direction = 'down';
-          } else {
-            constrained = true;
-          }
-        } else if(healthyWindows >= 5 && (qualityTier > 0 || tier > 0)){
+          return downshift(false);
+        } else if(healthyWindows >= UPSHIFT_HEALTHY_WINDOWS &&
+            (qualityTier > 0 || tier > 0)){
           if(qualityTier > 0) qualityTier -= 1;
           else tier -= 1;
           lowPressureWindows = 0;
@@ -300,9 +325,116 @@
           constrained = false;
           direction = 'up';
         }
-        return {changed:direction !== null, direction:direction, tier:tier,
-          qualityTier:qualityTier, constrained:constrained};
+        return change(direction);
       },
+    };
+  }
+
+  // One unhealthy episode gets a cheap in-place recovery and at most one
+  // peer rebuild.  It can be rearmed only by sustained healthy frame flow or
+  // an explicit user retry; there is deliberately no recursive retry state.
+  function createRecoveryController(healthyWindowTarget){
+    const requiredHealthy = boundedInteger(healthyWindowTarget, 2, 1, 10);
+    let ackTimeouts = 0;
+    let reconnectUsed = false;
+    let healthyWindows = 0;
+    let manualRequired = false;
+
+    function snapshot(action, rearmed){
+      return {action:action || 'none', ackTimeouts:ackTimeouts,
+        reconnectUsed:reconnectUsed, healthyWindows:healthyWindows,
+        manualRequired:manualRequired, rearmed:rearmed === true};
+    }
+
+    function reset(){
+      ackTimeouts = 0;
+      reconnectUsed = false;
+      healthyWindows = 0;
+      manualRequired = false;
+    }
+
+    return {
+      ackTimeout: function(){
+        if(manualRequired) return snapshot('manual');
+        healthyWindows = 0;
+        ackTimeouts += 1;
+        if(ackTimeouts === 1) return snapshot('recover');
+        if(!reconnectUsed){
+          reconnectUsed = true;
+          return snapshot('reconnect');
+        }
+        manualRequired = true;
+        return snapshot('manual');
+      },
+      terminalFailure: function(){
+        if(manualRequired) return snapshot('manual');
+        healthyWindows = 0;
+        if(!reconnectUsed){
+          reconnectUsed = true;
+          return snapshot('reconnect');
+        }
+        manualRequired = true;
+        return snapshot('manual');
+      },
+      reconnectFailed: function(){
+        healthyWindows = 0;
+        manualRequired = true;
+        return snapshot('manual');
+      },
+      healthyWindow: function(healthy){
+        if(manualRequired) return snapshot('manual');
+        if(!healthy){
+          healthyWindows = 0;
+          return snapshot('none');
+        }
+        if(ackTimeouts === 0 && !reconnectUsed) return snapshot('none');
+        healthyWindows += 1;
+        if(healthyWindows < requiredHealthy) return snapshot('none');
+        reset();
+        return snapshot('none', true);
+      },
+      manualRetry: function(){
+        reset();
+        return snapshot('none');
+      },
+      snapshot: function(){ return snapshot('none'); },
+    };
+  }
+
+  // HR and SpO2 may disappear from telemetry while their six-second signal
+  // windows refill.  Retain selected last-known values only in page memory so
+  // the UI can label them stale without changing freshness or wire contracts.
+  function createHeldValueCache(ids){
+    const allowed = Object.create(null);
+    (Array.isArray(ids) ? ids : []).forEach(function(id){ allowed[String(id)] = true; });
+    const held = Object.create(null);
+    return {
+      merge: function(values){
+        const seen = Object.create(null);
+        const merged = (Array.isArray(values) ? values : []).map(function(raw){
+          const value = raw && typeof raw === 'object' ? Object.assign({}, raw) : {};
+          const id = String(value.id || '');
+          seen[id] = true;
+          if(!allowed[id]) return value;
+          if(value.present && value.value !== null && value.value !== undefined){
+            held[id] = {value:value.value, unit:value.unit, label:value.label};
+            value.held = false;
+          } else if(held[id]){
+            value.value = held[id].value;
+            value.unit = held[id].unit;
+            value.label = value.label || held[id].label;
+            value.held = true;
+          }
+          return value;
+        });
+        Object.keys(held).forEach(function(id){
+          if(seen[id]) return;
+          merged.push({id:id, label:held[id].label, value:held[id].value,
+            unit:held[id].unit, present:false, held:true});
+        });
+        return merged;
+      },
+      clear: function(){ Object.keys(held).forEach(function(id){ delete held[id]; }); },
     };
   }
 
@@ -377,6 +509,7 @@
   return {
     DEFAULT_CONFIG: DEFAULT_CONFIG,
     JPEG_QUALITIES: JPEG_QUALITIES,
+    UPSHIFT_HEALTHY_WINDOWS: UPSHIFT_HEALTHY_WINDOWS,
     normalizeConfig: normalizeConfig,
     configFromStateMessage: configFromStateMessage,
     fitEven: fitEven,
@@ -385,6 +518,8 @@
     mediaPathHealthy: mediaPathHealthy,
     createFrameFlowController: createFrameFlowController,
     createAdaptivePolicy: createAdaptivePolicy,
+    createRecoveryController: createRecoveryController,
+    createHeldValueCache: createHeldValueCache,
     boundedSenderStats: boundedSenderStats,
     boundedCaptureProfile: boundedCaptureProfile,
     createCaptureProfileBoundary: createCaptureProfileBoundary,

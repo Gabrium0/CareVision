@@ -139,7 +139,7 @@ test('frame flow with a window keeps several JPEGs in flight and tracks the olde
   assert.equal(flow.markSent(5, 330), true);     // room again after two acks
 });
 
-test('adaptation steps up after five healthy latency-adequate windows', () => {
+test('adaptation waits thirty healthy seconds before stepping up', () => {
   const adaptive = policy.createAdaptivePolicy(policy.DEFAULT_CONFIG);
   adaptive.setSource(960, 720);
   const pressuredLow = {sent_fps:10, encode_p90_ms:30,
@@ -154,7 +154,9 @@ test('adaptation steps up after five healthy latency-adequate windows', () => {
   assert.equal(adaptive.getTier(), 1);
 
   const healthy = Object.assign({}, slowHealthy, {encode_p90_ms:20, ack_p90_ms:20});
-  for(let i = 0; i < 4; i++) assert.equal(adaptive.observeWindow(healthy, false).changed, false);
+  for(let i = 0; i < policy.UPSHIFT_HEALTHY_WINDOWS - 1; i++) {
+    assert.equal(adaptive.observeWindow(healthy, false).changed, false);
+  }
   assert.equal(adaptive.observeWindow(healthy, false).direction, 'up');
   assert.equal(adaptive.getTier(), 0);
 });
@@ -192,11 +194,83 @@ test('healthy ACK cadence restores JPEG quality before spatial resolution', () =
 
   const healthy = {sent_fps:20, encode_p90_ms:15, ack_p90_ms:25,
     encode_busy_skips:0, backpressure_skips:0, transport_wait_skips:20};
-  for(let i = 0; i < 5; i++) adaptive.observeWindow(healthy, false);
+  for(let i = 0; i < policy.UPSHIFT_HEALTHY_WINDOWS; i++) adaptive.observeWindow(healthy, false);
   assert.equal(adaptive.getJpegQuality(), 0.92);
   assert.deepEqual(adaptive.getSize(), {width:640, height:480});
-  for(let i = 0; i < 5; i++) adaptive.observeWindow(healthy, false);
+  for(let i = 0; i < policy.UPSHIFT_HEALTHY_WINDOWS; i++) adaptive.observeWindow(healthy, false);
   assert.deepEqual(adaptive.getSize(), {width:800, height:600});
+});
+
+test('forced recovery downshifts resolution before quality and respects fixed mode', () => {
+  const automatic = policy.createAdaptivePolicy(policy.DEFAULT_CONFIG);
+  automatic.setSource(960, 720);
+  assert.equal(automatic.forceDownshift().direction, 'down');
+  assert.deepEqual(automatic.getSize(), {width:800, height:600});
+  assert.equal(automatic.getJpegQuality(), 0.92);
+  automatic.forceDownshift();
+  automatic.forceDownshift();
+  assert.deepEqual(automatic.getSize(), {width:640, height:480});
+  assert.equal(automatic.getJpegQuality(), 0.88);
+
+  const fixed = policy.createAdaptivePolicy({target_fps:20, max_width:640,
+    max_height:480, adaptive_resolution:false});
+  assert.equal(fixed.forceDownshift().direction, 'down');
+  assert.equal(fixed.getJpegQuality(), 0.88);
+});
+
+test('recovery permits one in-place repair and exactly one reconnect per episode', () => {
+  const recovery = policy.createRecoveryController(2);
+  assert.equal(recovery.ackTimeout().action, 'recover');
+  assert.equal(recovery.ackTimeout().action, 'reconnect');
+  assert.equal(recovery.terminalFailure().action, 'manual');
+  assert.equal(recovery.snapshot().manualRequired, true);
+  assert.equal(recovery.healthyWindow(true).action, 'manual');
+});
+
+test('terminal failure reconnects once and two healthy windows rearm recovery', () => {
+  const recovery = policy.createRecoveryController(2);
+  assert.equal(recovery.healthyWindow(true).rearmed, false);
+  assert.equal(recovery.healthyWindow(true).rearmed, false);
+  assert.equal(recovery.terminalFailure().action, 'reconnect');
+  assert.equal(recovery.healthyWindow(true).rearmed, false);
+  assert.equal(recovery.healthyWindow(true).rearmed, true);
+  assert.equal(recovery.ackTimeout().action, 'recover');
+  recovery.manualRetry();
+  assert.equal(recovery.terminalFailure().action, 'reconnect');
+  assert.equal(recovery.reconnectFailed().action, 'manual');
+});
+
+test('held HR and SpO2 remain page-memory display values but never become fresh', () => {
+  const held = policy.createHeldValueCache(['hr', 'spo2']);
+  let values = held.merge([
+    {id:'hr', label:'Heart rate', present:true, value:72, unit:'bpm'},
+    {id:'spo2', label:'SpO₂', present:true, value:98, unit:'%'},
+    {id:'temperature', present:true, value:36.7, unit:'°C'},
+  ]);
+  assert.equal(values[0].held, false);
+  values = held.merge([
+    {id:'hr', label:'Heart rate', present:false, value:null, unit:'bpm'},
+    {id:'spo2', label:'SpO₂', present:false, value:null, unit:'%'},
+    {id:'temperature', present:false, value:null, unit:'°C'},
+  ]);
+  assert.deepEqual(values.slice(0, 2).map(v => [v.value, v.held, v.present]), [
+    [72, true, false], [98, true, false],
+  ]);
+  assert.equal(values[2].value, null);
+  assert.equal(values[2].held, undefined);
+  values = held.merge([]);
+  assert.deepEqual(values.map(v => [v.id, v.value, v.held, v.present]), [
+    ['hr', 72, true, false], ['spo2', 98, true, false],
+  ]);
+  held.clear();
+  assert.equal(held.merge([{id:'hr', present:false, value:null}])[0].value, null);
+
+  const source = fs.readFileSync(path.join(__dirname, '..', 'relay', 'static',
+    'ipad_capture_policy.js'), 'utf8');
+  const cacheSource = source.match(
+    /function createHeldValueCache\(ids\)\{([\s\S]*?)\r?\n  function boundedSenderStats/);
+  assert.ok(cacheSource, 'held-value cache must remain inspectable');
+  assert.doesNotMatch(cacheSource[1], /localStorage|sessionStorage|indexedDB/);
 });
 
 test('sender stats have an exact bounded scalar schema', () => {
@@ -235,25 +309,35 @@ test('deployed page keeps the required transport and single-flight contracts', (
   assert.match(html, /CapturePolicy\.createFrameFlowController\(FRAME_ACK_TIMEOUT_MS, FRAME_WINDOW\)/);
   assert.match(html, /const FRAME_ACK_TIMEOUT_MS = 2500/);
   assert.match(html, /const FRAME_WINDOW = \d+/);
-  assert.match(html, /scheduleReconnect\('frame ack timeout'\)/);
+  assert.match(html, /handleAckTimeout\('frame ack timeout'\)/);
   assert.match(html, /message\.type !== 'frame_ack'/);
   assert.match(html, /capturePolicy\.getJpegQuality\(\)/);
-  assert.match(html, /scheduleReconnect\('frames closed'\)/);
+  assert.match(html, /handleTerminalFailure\('frames closed'\)/);
   assert.match(html, /CapturePolicy\.mediaPathHealthy/);
   assert.match(html, /frameChannel\.send\(JSON\.stringify\(profile\)\)/);
   assert.match(html, /publishCaptureProfileBoundary\(true\)/);
   assert.match(html, /encodeInFlight \|\| !frameFlow\.canAdmit\(\)/);
   assert.match(html, /if\(!publishCaptureProfileBoundary\(false\)\) return;/);
-  assert.match(html, /scheduleReconnect\('capture profile boundary failed'\)/);
+  assert.match(html, /handleTerminalFailure\('capture profile boundary failed'\)/);
+  assert.match(html, />Retry capture<\/button>/);
+  assert.match(html, /CapturePolicy\.createRecoveryController\(2\)/);
+  assert.doesNotMatch(html, /scheduleReconnect/);
+  assert.doesNotMatch(html, /establishPeer\(\)\.catch\([^\n]*schedule/);
   assert.match(html, /let captureGeneration = 0/);
   assert.match(html, /let encodeInFlight = false/);
   const establish = html.match(
-    /async function establishPeer\(\)\{([\s\S]*?)\n  \}\n\n  async function connect/);
+    /async function establishPeer\(\)\{([\s\S]*?)\r?\n  \}\r?\n\r?\n  async function connect/);
   assert.ok(establish, 'establishPeer function must remain inspectable');
   assert.match(establish[1], /try\{/);
   assert.match(establish[1], /catch\(err\)\{[\s\S]*?establishing = false;[\s\S]*?throw err;/);
+  const retry = html.match(
+    /async function retryCapture\(\)\{([\s\S]*?)\r?\n  \}\r?\n\r?\n  connectBtn/);
+  assert.ok(retry, 'manual retry function must remain inspectable');
+  assert.doesNotMatch(retry[1], /getUserMedia/);
   assert.equal((html.match(/canvas\.toBlob\s*\(/g) || []).length, 1);
-  const inlineScripts = Array.from(html.matchAll(/<script>([\s\S]*?)<\/script>/g));
-  assert.equal(inlineScripts.length, 1);
-  assert.doesNotThrow(() => new Function(inlineScripts[0][1]));
+  [html.replace(/\r?\n/g, '\n'), html.replace(/\r?\n/g, '\r\n')].forEach(page => {
+    const inlineScripts = Array.from(page.matchAll(/<script>([\s\S]*?)<\/script>/g));
+    assert.equal(inlineScripts.length, 1);
+    assert.doesNotThrow(() => new Function(inlineScripts[0][1]));
+  });
 });

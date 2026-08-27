@@ -19,6 +19,8 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core.camera import Camera
+import core.camera_factory as camera_factory
+from core.camera_factory import SwitchableCamera
 from core.ipad_camera import IPadCamera, pack_frame_header
 
 
@@ -248,6 +250,55 @@ def test_bgr_channel_order():
         f"got B={b_mean:.1f} G={g_mean:.1f} R={r_mean:.1f}")
     print(f"[ipad-camera-test] BGR channel order preserved through JPEG round trip "
           f"(B={b_mean:.1f} G={g_mean:.1f} R={r_mean:.1f}) OK")
+
+
+def test_capture_reset_hooks_survive_switchable_camera_rebuild(monkeypatch):
+    class FakeBackend:
+        def __init__(self, source):
+            self.source = source
+            self.capture_hooks = []
+            self.fast_hooks = []
+            self.opened = False
+            self.released = False
+
+        @property
+        def current_fps(self):
+            return 20.0
+
+        def register_fast_hook(self, hook):
+            self.fast_hooks.append(hook)
+
+        def register_capture_reset_hook(self, hook):
+            if hook not in self.capture_hooks:
+                self.capture_hooks.append(hook)
+
+        def open(self):
+            self.opened = True
+
+        def release(self):
+            self.released = True
+
+    made = []
+
+    def make_fake(source, _opts=None):
+        backend = FakeBackend(source)
+        made.append(backend)
+        return backend
+
+    monkeypatch.setattr(camera_factory, "make_backend", make_fake)
+    camera = SwitchableCamera("old")
+    calls = []
+    hook = lambda: calls.append("reset")
+    camera.register_capture_reset_hook(hook)
+
+    camera._cross_pending = ("new", {})
+    camera._apply_cross_switch()
+
+    assert made[0].released
+    assert made[1].opened
+    assert made[1].capture_hooks == [hook]
+    made[1].capture_hooks[0]()
+    assert calls == ["reset"]
 
 
 def main():

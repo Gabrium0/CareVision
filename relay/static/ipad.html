@@ -56,6 +56,10 @@
   .seg button.on { background:var(--accent); color:#04121a; }
   .iconbtn { min-height:44px; min-width:44px; border-radius:11px; border:1px solid var(--line);
     background:var(--panel2); color:var(--fg); font-size:19px; line-height:1; }
+  .retrybtn { min-height:40px; padding:7px 12px; border-radius:9px;
+    border:1px solid var(--warning); background:#20190c; color:var(--fg);
+    font-size:12px; font-weight:800; white-space:nowrap; }
+  .retrybtn:disabled { opacity:.5; }
 
   /* ---- headline -------------------------------------------------------- */
   .headline { border-radius:14px; padding:16px 18px; margin-bottom:16px; background:var(--panel);
@@ -243,6 +247,7 @@
   <div class="appbar">
     <span class="brand">🩺 Care Monitor</span>
     <span class="statusdot"><span class="dot" id="liveDot"></span><span id="liveLabel">offline</span></span>
+    <button type="button" class="retrybtn hidden" id="retryCaptureBtn">Retry capture</button>
     <span class="spacer"></span>
     <div class="seg" id="viewSeg">
       <button type="button" data-view="resident" class="on">Resident</button>
@@ -462,6 +467,7 @@
   const stClock = document.getElementById('stClock');
   const stFrames = document.getElementById('stFrames');
   const stErr = document.getElementById('stErr');
+  const retryCaptureBtn = document.getElementById('retryCaptureBtn');
   // A silent catch around the capture path hides the one thing worth knowing
   // when "Frames sent" sticks at 0, so surface the reason on screen instead.
   function setCapture(note){ try{ stErr.textContent = String(note).slice(0, 96); }catch(_){} }
@@ -514,6 +520,7 @@
   const frameFlow = CapturePolicy.createFrameFlowController(FRAME_ACK_TIMEOUT_MS, FRAME_WINDOW);
   let clockSource = null;
   const capturePolicy = CapturePolicy.createAdaptivePolicy(CapturePolicy.DEFAULT_CONFIG);
+  const recovery = CapturePolicy.createRecoveryController(2);
   let captureWindowStartedAt = performance.now();
   let captureWindowFrames = 0;
   let captureWindowBusySkips = 0;
@@ -530,6 +537,7 @@
   let lastTelemetry = null;           // last {type:'telemetry', ...}
   let pendingCameraTuning = null;      // retained until/replayed on control open
   const vitalDeadline = Object.create(null);   // vital id -> local expiry ms
+  const heldVitals = CapturePolicy.createHeldValueCache(['hr', 'spo2']);
   const moduleBusy = Object.create(null);
   const moduleResult = Object.create(null);
   let wakeLock = null;
@@ -728,17 +736,19 @@
   function vitalTileHTML(v, opts){
     const id = v.id;
     const tier = (v.reliability && v.reliability.tier) || null;
-    const stale = !v.present || (vitalDeadline[id] && Date.now() > vitalDeadline[id]);
+    const hasValue = !!v.present || !!v.held;
+    const stale = !v.present || !!v.held || !mediaHealthy() ||
+      (vitalDeadline[id] && Date.now() > vitalDeadline[id]);
     const meta = VITAL_META[id] || {icon:'•'};
     const cls = 'vtile ' + sevClass(v.severity) + (stale ? ' stale' : '');
-    const bigVal = v.present ? esc(String(v.value)) :
+    const bigVal = hasValue ? esc(String(v.value)) :
       '<span style="font-size:20px;color:var(--dim);">measuring…</span>';
     const tierHtml = tier ? `<span class="vtier">${esc(tier)}</span>` : '';
     return `<div class="${cls}">${tierHtml}` +
       (opts.big ? `<div class="vicon">${meta.icon}</div>` : '') +
       `<div class="vlabel">${esc(v.label)}</div>` +
       `<div class="vval">${bigVal}</div>` +
-      `<div class="vunit">${v.present ? esc(v.unit || '') : ''}</div>` +
+      `<div class="vunit">${hasValue ? esc(v.unit || '') : ''}</div>` +
       (opts.big ? `<div class="vsub"><span class="dotpulse"></span>${stale ? 'updating…' : (v.present ? 'live' : 'starting…')}</div>` : '') +
       `</div>`;
   }
@@ -773,11 +783,12 @@
 
   function renderVitals(){
     if(!lastTelemetry || !Array.isArray(lastTelemetry.vitals)) return;
-    const visible = lastTelemetry.vitals.filter(v => prefs.tiles[v.id] !== false);
+    const displayVitals = heldVitals.merge(lastTelemetry.vitals);
+    const visible = displayVitals.filter(v => prefs.tiles[v.id] !== false);
     try{
       vitalsResidentEl.innerHTML = visible.map(v => vitalTileHTML(v, {big:true})).join('') ||
         '<div class="empty">no vitals selected — enable some in settings</div>';
-      vitalsProviderEl.innerHTML = lastTelemetry.vitals.map(v => vitalTileHTML(v, {big:false})).join('');
+      vitalsProviderEl.innerHTML = displayVitals.map(v => vitalTileHTML(v, {big:false})).join('');
     }catch(_){ /* one malformed frame must never blank the dashboard */ }
   }
 
@@ -1091,7 +1102,7 @@
       lastCaptureProfileKey = null;
       captureGeneration++;
       establishing = false;
-      scheduleReconnect('capture profile boundary failed');
+      handleTerminalFailure('capture profile boundary failed');
       return false;
     }
   }
@@ -1158,6 +1169,10 @@
     };
     lastSenderWindow = sample;
     resetCaptureWindow(now);
+    const config = capturePolicy.getConfig();
+    const recovered = recovery.healthyWindow(
+      sample.sent_fps >= config.target_fps * 0.85 && sample.ack_timeouts === 0);
+    if(recovered.rearmed) setCapture('capture stable; recovery rearmed');
     const change = capturePolicy.observeWindow(sample, document.hidden);
     if(change.changed){
       syncCaptureCanvas();
@@ -1211,10 +1226,8 @@
       captureWindowTransportWaitSkips++;
       if(frameFlow.isTimedOut(now)){
         captureWindowAckTimeouts++;
-        captureGeneration++;
-        establishing = false;
         setDc('stalled');
-        scheduleReconnect('frame ack timeout');
+        handleAckTimeout('frame ack timeout');
       }
       return;
     }
@@ -1292,7 +1305,7 @@
             captureWindowAckTimeouts++;
             captureGeneration++;
             establishing = false;
-            scheduleReconnect('frame send failed');
+            handleTerminalFailure('frame send failed');
           }
         }finally{
           encodeInFlight = false;
@@ -1360,6 +1373,11 @@
   setInterval(() => {
     try{
       refreshLiveness();   // steady-state streaming: keep the pill on media health
+      if(manualRecoveryRequired){
+        stFps.textContent = '0.0';
+        setCapture('paused (' + manualRecoveryReason + ')');
+        return;
+      }
       finishCaptureWindow(performance.now());
       const stats = senderStatsSnapshot();
       stFps.textContent = stats.sent_fps.toFixed(1);
@@ -1395,13 +1413,13 @@
       // Only 'failed' is terminal. 'disconnected' is often transient and
       // recovers on its own; 'closed' is us tearing down. Reacting to those
       // would re-offer mid-handshake and cause the open/close flap.
-      if(s === 'failed'){ establishing = false; scheduleReconnect('ice failed'); }
+      if(s === 'failed'){ establishing = false; handleTerminalFailure('ice failed'); }
     };
     peer.onconnectionstatechange = () => {
       if(peer !== pc) return;
       if(peer.connectionState === 'failed'){
         establishing = false;
-        scheduleReconnect('peer failed');
+        handleTerminalFailure('peer failed');
       }
     };
   }
@@ -1416,6 +1434,10 @@
       if(peer !== pc || frameChannel !== dcFrames) return;
       establishing = false;
       if(reconnectTimer){ clearTimeout(reconnectTimer); reconnectTimer = null; }
+      manualRecoveryRequired = false;
+      manualRecoveryReason = '';
+      retryCaptureBtn.disabled = false;
+      retryCaptureBtn.classList.add('hidden');
       setDc('open');
       showMain();
       startCaptureLoop();
@@ -1434,7 +1456,7 @@
       captureGeneration++;
       establishing = false;
       setDc('closed');
-      scheduleReconnect('frames closed');
+      handleTerminalFailure('frames closed');
     };
     frameChannel.onerror = () => {
       if(peer === pc && frameChannel === dcFrames) setDc('error');
@@ -1454,24 +1476,24 @@
     controlChannel.onerror = () => {};
   }
 
-  // Once the code is entered and the camera granted, the page keeps trying to
-  // stay paired on its own: restarting the laptop pipeline drops the peer
-  // connection but not this WS, so on any transient drop we tear BOTH down and
-  // re-pair in the current 10-minute window. That means dev restarts need no
-  // reload and no re-typing the code.
+  // Once paired, recovery is intentionally bounded: repair one ACK stall on the
+  // current peer, permit one peer rebuild, then require a visible user retry.
+  // This prevents a failed transport from repeatedly destroying rPPG windows.
   let storedCode = null;          // remembered after the first successful entry
   let wantConnected = false;      // true once the user has connected once
   let reconnectTimer = null;
   let establishing = false;       // single-flight: one handshake attempt at a time
   let attemptId = 0;              // invalidates watchdogs from superseded attempts
+  let manualRecoveryRequired = false;
+  let manualRecoveryReason = '';
 
   function cleanupPeer(){
     // Invalidates rVFC/rAF callbacks and async JPEG completions from this peer.
     // Do not clear encodeInFlight here: a stale toBlob must settle before a new
     // generation may start another encode.
     captureGeneration++;
-    // Detach handlers BEFORE closing, so tearing the old connection down does
-    // not fire close/ice events that would schedule yet another reconnect.
+    // Detach handlers BEFORE closing, so bounded recovery spends one decision
+    // per failure rather than reacting again to teardown-generated events.
     if(pc){ pc.oniceconnectionstatechange = null; pc.onconnectionstatechange = null; pc.onicecandidate = null; pc.ontrack = null; }
     if(dcFrames){ dcFrames.onopen = dcFrames.onmessage = dcFrames.onclose = dcFrames.onerror = null; }
     if(dcControl){ dcControl.onopen = dcControl.onmessage = dcControl.onclose = dcControl.onerror = null; }
@@ -1490,16 +1512,64 @@
     if(listenTailTimer){ clearTimeout(listenTailTimer); listenTailTimer = null; }
   }
 
-  function scheduleReconnect(why){
-    // Never interrupt a handshake in flight — ICE can take 10-15s, and
-    // re-offering mid-flight makes the laptop tear down the attempt that was
-    // about to succeed, which is exactly the open/close flapping loop.
-    if(!wantConnected || reconnectTimer || establishing) return;
-    setCapture('reconnecting (' + why + ')');
-    reconnectTimer = setTimeout(() => {
+  function requireManualRecovery(why){
+    if(reconnectTimer){ clearTimeout(reconnectTimer); reconnectTimer = null; }
+    establishing = false;
+    wantConnected = false;
+    manualRecoveryRequired = true;
+    manualRecoveryReason = String(why || 'capture stopped');
+    cleanupPeer();
+    if(appEl.classList.contains('hidden')){
+      pairMsg.textContent = 'Capture stopped (' + manualRecoveryReason + '). Select Connect to retry.';
+      connectBtn.disabled = false;
+    } else {
+      retryCaptureBtn.disabled = false;
+      retryCaptureBtn.classList.remove('hidden');
+    }
+    setCapture('paused (' + manualRecoveryReason + ')');
+    refreshLiveness();
+  }
+
+  function recoverFrameFlowInPlace(why){
+    frameFlow.reset();
+    const change = capturePolicy.forceDownshift();
+    lastCaptureProfileKey = null;
+    nextFrameDueAt = 0;
+    syncCaptureCanvas();
+    setDc('recovering');
+    setCapture('recovering in place (' + why + ')' +
+      (change.changed ? ' · lower capture profile' : ''));
+  }
+
+  function scheduleSingleReconnect(why){
+    // Tear down immediately so stale peer callbacks cannot consume the one
+    // allowed reconnect while the two-second settle timer is pending.
+    if(!wantConnected || reconnectTimer || establishing || manualRecoveryRequired) return;
+    cleanupPeer();
+    setCapture('reconnecting once (' + why + ')');
+    reconnectTimer = setTimeout(async () => {
       reconnectTimer = null;
-      establishPeer().catch(() => scheduleReconnect('retry'));
+      try{
+        await establishPeer();
+      }catch(_){
+        recovery.reconnectFailed();
+        requireManualRecovery('automatic reconnect failed');
+      }
     }, 2000);
+  }
+
+  function applyRecoveryDecision(decision, why){
+    if(decision.action === 'recover') recoverFrameFlowInPlace(why);
+    else if(decision.action === 'reconnect') scheduleSingleReconnect(why);
+    else if(decision.action === 'manual') requireManualRecovery(why);
+  }
+
+  function handleAckTimeout(why){
+    applyRecoveryDecision(recovery.ackTimeout(), why);
+  }
+
+  function handleTerminalFailure(why){
+    applyRecoveryDecision(recovery.terminalFailure(), why);
   }
 
   function wireSocket(socket, peer, frameChannel, room, code, exp, sig){
@@ -1521,13 +1591,13 @@
           if(myAttempt !== attemptId) return;               // superseded
           if(peer === pc && frameChannel === dcFrames && frameChannel.readyState !== 'open'){
             establishing = false;
-            scheduleReconnect('no answer');
+            handleTerminalFailure('no answer');
           }
         }, 20000);
       }catch(err){
         establishing = false;
         pairMsg.textContent = 'Could not start the connection: ' + esc(String(err && err.message || err));
-        scheduleReconnect('offer failed');
+        handleTerminalFailure('offer failed');
       }
     });
     socket.addEventListener('message', (ev) => {
@@ -1556,15 +1626,15 @@
           peer.connectionState, peer.iceConnectionState)) return;
       if(ev.code === 4401){
         // Auth genuinely failed. With a fixed dev code this shouldn't recur, so
-        // surface it rather than loop, but keep retrying slowly in case it was a
-        // window-boundary race that the next attempt clears.
-        pairMsg.textContent = 'Pairing rejected (code/secret mismatch). Retrying…';
-        scheduleReconnect('4401');
+        // surface it while the bounded controller decides whether its one peer
+        // rebuild remains available.
+        pairMsg.textContent = 'Pairing rejected (code/secret mismatch). Trying once more…';
+        handleTerminalFailure('4401');
       } else if(ev.code === 4409){
-        pairMsg.textContent = 'Another iPad holds this room. Retrying…';
-        scheduleReconnect('4409');
+        pairMsg.textContent = 'Another iPad holds this room. Trying once more…';
+        handleTerminalFailure('4409');
       } else if(wantConnected){
-        scheduleReconnect('ws closed');
+        handleTerminalFailure('ws closed');
       }
     });
     socket.addEventListener('error', () => {
@@ -1629,9 +1699,8 @@
       ws = socket;
       wireSocket(socket, peer, frameChannel, room, storedCode, exp, sig);
     }catch(err){
-      // scheduleReconnect deliberately rejects concurrent establishment. Clear
-      // the guard on every synchronous/awaited setup failure so callers can
-      // actually schedule the next attempt instead of wedging until reload.
+      // Clear the guard on every synchronous/awaited setup failure so the
+      // bounded recovery controller can either stop or accept a manual retry.
       establishing = false;
       cleanupPeer();
       throw err;
@@ -1689,17 +1758,39 @@
     requestWakeLock(); // called from a click handler, satisfying user-activation requirements
 
     storedCode = code;
+    recovery.manualRetry();
+    manualRecoveryRequired = false;
+    manualRecoveryReason = '';
+    retryCaptureBtn.classList.add('hidden');
     wantConnected = true;
     try{
       await establishPeer();
     }catch(err){
       pairMsg.textContent = 'Could not start the connection: ' + esc(String(err && err.message || err));
       connectBtn.disabled = false;
-      scheduleReconnect('connect failed');
+      wantConnected = false;
+    }
+  }
+
+  async function retryCapture(){
+    if(establishing || reconnectTimer || !stream || !storedCode) return;
+    recovery.manualRetry();
+    manualRecoveryRequired = false;
+    manualRecoveryReason = '';
+    wantConnected = true;
+    retryCaptureBtn.disabled = true;
+    retryCaptureBtn.classList.add('hidden');
+    setCapture('manual retry connecting');
+    try{
+      await establishPeer();
+    }catch(_){
+      recovery.reconnectFailed();
+      requireManualRecovery('manual retry failed');
     }
   }
 
   connectBtn.addEventListener('click', () => { connect().catch(() => {}); });
+  retryCaptureBtn.addEventListener('click', () => { retryCapture().catch(() => {}); });
   codeInput.addEventListener('keydown', (ev) => { if(ev.key === 'Enter') connectBtn.click(); });
 
   // ---- initial UI state -------------------------------------------------

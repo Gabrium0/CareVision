@@ -15,6 +15,7 @@ Run standalone:  python tests/pipeline_staleness_test.py
 import sys
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 
@@ -30,6 +31,7 @@ class FakeCamera:
     """Mimics Camera's register_fast_hook()/current_fps contract."""
     def __init__(self):
         self._hooks = []
+        self._capture_reset_hooks = []
         self._fps = 30.0
 
     @property
@@ -38,6 +40,9 @@ class FakeCamera:
 
     def register_fast_hook(self, hook):
         self._hooks.append(hook)
+
+    def register_capture_reset_hook(self, hook):
+        self._capture_reset_hooks.append(hook)
 
     def fire(self, frame, ts):
         for h in self._hooks:
@@ -55,12 +60,16 @@ class RecordingModule:
 
     def __init__(self):
         self.calls: list[FrameContext] = []
+        self.reset_count = 0
 
     def process(self, ctx: FrameContext):
         return None
 
     def fast_update(self, ctx: FrameContext) -> None:
         self.calls.append(ctx)
+
+    def reset_capture(self) -> None:
+        self.reset_count += 1
 
 
 class DummyAggregator:
@@ -91,6 +100,58 @@ def _wait_for_calls(module, count: int, timeout: float = 1.0):
     deadline = time.time() + timeout
     while len(module.calls) < count and time.time() < deadline:
         time.sleep(.005)
+
+
+def _capture_state(reason: str | None, ready: bool) -> dict:
+    return {
+        "stable": ready,
+        "heart_rate_ready": ready,
+        "block_reason": reason,
+        "heart_rate_block_reason": reason,
+        "guidance": "steady" if ready else "adjusting",
+    }
+
+
+def _gate_context(timestamp: float, reason: str | None, ready: bool) -> FrameContext:
+    ctx = FrameContext(_frame(), timestamp, 0, 30.0)
+    ctx.extras["showcase"] = _capture_state(reason, ready)
+    return ctx
+
+
+def _build_gated_pipeline():
+    module = RecordingModule()
+    camera = FakeCamera()
+    gate = SimpleNamespace(capture_reset_grace_seconds=1.0, max_motion=12.0)
+    pipeline = Pipeline(camera, [], Scheduler([module]), DummyAggregator(),
+                        showcase_gate=gate)
+    assert camera._capture_reset_hooks == [pipeline.reset_capture_state]
+    return pipeline, module
+
+
+def test_brief_face_loss_preserves_rppg_buffers():
+    pipeline, module = _build_gated_pipeline()
+    pipeline._update_capture_gate(_gate_context(10.0, None, True))
+    pipeline._update_capture_gate(_gate_context(10.2, "no_face", False))
+    pipeline._update_capture_gate(_gate_context(10.8, None, True))
+    assert module.reset_count == 0
+
+
+def test_prolonged_face_loss_resets_rppg_once_after_grace():
+    pipeline, module = _build_gated_pipeline()
+    pipeline._update_capture_gate(_gate_context(10.0, None, True))
+    pipeline._update_capture_gate(_gate_context(10.2, "no_face", False))
+    pipeline._update_capture_gate(_gate_context(11.1, "no_face", False))
+    assert module.reset_count == 0
+    pipeline._update_capture_gate(_gate_context(11.21, "no_face", False))
+    pipeline._update_capture_gate(_gate_context(12.5, "no_face", False))
+    assert module.reset_count == 1
+
+
+def test_multiple_people_reset_rppg_immediately():
+    pipeline, module = _build_gated_pipeline()
+    pipeline._update_capture_gate(_gate_context(10.0, None, True))
+    pipeline._update_capture_gate(_gate_context(10.01, "multiple", False))
+    assert module.reset_count == 1
 
 
 def _textured_frame(shift_x: int = 0) -> np.ndarray:

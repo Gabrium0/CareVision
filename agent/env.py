@@ -49,3 +49,9 @@ def gemini_api_key() -> str | None:
     """Return the Google Gemini API key (free tier), or None."""
     load_env()
     return os.environ.get("GEMINI_API_KEY")
+
+
+def groq_api_key() -> str | None:
+    """Return the Groq API key for cloud speech-to-text, or None."""
+    load_env()
+    return os.environ.get("GROQ_API_KEY")

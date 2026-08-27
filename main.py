@@ -130,6 +130,32 @@ def _uses_decoupled_display(display: bool, *sources) -> bool:
                 and any(supports_latest_frame(source) for source in sources))
 
 
+def resolve_microphone_mode(requested: str, ipad_source: bool,
+                            ipad_audio: str) -> str:
+    """Choose exactly one live microphone for the shared audio bus.
+
+    The iPad and laptop inputs must never publish concurrently: consumers see
+    a time-ordered block stream, not a mixer, so dual producers corrupt ASR
+    segments and create a second echo path.
+    """
+    mode = str(requested or "auto").strip().lower()
+    if mode == "off":
+        return "off"
+    if mode == "device":
+        return "device" if ipad_source else "laptop"
+    if mode == "laptop":
+        return "laptop"
+    if mode != "auto":
+        raise ValueError(f"unknown microphone mode: {requested!r}")
+    return "device" if ipad_source and ipad_audio in ("device", "both") else "laptop"
+
+
+def speech_recognition_requested(listen: bool, groq_stt: bool,
+                                 type_input: bool) -> bool:
+    """Return whether an audio listener should be attached for this run."""
+    return bool(listen or groq_stt) and not type_input
+
+
 def build_pipeline(source, config, camera_opts=None, max_staleness: float = 0.25,
                    analysis_width: int = 960, face_analysis_width: int = 640,
                    fast_path_mode: str = "tracked",
@@ -305,6 +331,13 @@ def main():
                          "requiring speech recognition")
     ap.add_argument("--whisper-model", default="base",
                     help="faster-whisper model size for --listen (default base)")
+    ap.add_argument("--groq-stt", action="store_true",
+                    help="enable listening with Groq cloud speech-to-text (implies "
+                         "--listen; Whisper via Groq API; "
+                         "requires GROQ_API_KEY in .env; pip install -r requirements-asr.txt)")
+    ap.add_argument("--groq-model", default="whisper-large-v3-turbo",
+                    help="Groq Whisper model for --groq-stt (default whisper-large-v3-turbo, "
+                         "free tier)")
     ap.add_argument("--voice-model", default="nvidia:nvidia/nemotron-3-nano-30b-a3b",
                     help="Voice-agent model. 'nvidia:<id>' uses NVIDIA's hosted "
                          "endpoint (NVIDIA_API_KEY, default; higher free limits "
@@ -388,6 +421,11 @@ def main():
                     help="where agent speech plays when an iPad pairs: on the "
                          "paired device, whose microphone also becomes the "
                          "agent's ears (default); on both; or laptop only")
+    ap.add_argument("--mic", default="auto",
+                    choices=("auto", "laptop", "device", "off"),
+                    help="single microphone feeding speech recognition: auto uses "
+                         "the paired iPad when device audio is selected, otherwise "
+                         "the laptop (default auto)")
     args = ap.parse_args()
     if args.ipad_transport == "video":
         ap.error("--ipad-transport video is not implemented; use "
@@ -425,6 +463,8 @@ def main():
     # per run and printed once; the shared secret only ever comes from .env, so
     # it never lands in shell history or the process list.
     ipad_source = is_ipad_source(args.source) or is_ipad_source(args.alt_source)
+    microphone_mode = resolve_microphone_mode(
+        args.mic, ipad_source, args.ipad_audio)
     ipad_code = None
     ipad_capture_config = None
     if ipad_source:
@@ -551,48 +591,76 @@ def main():
     microphone = None
     replay_audio = None
     audio_bus = None
+    speech_requested = speech_recognition_requested(
+        args.listen, args.groq_stt, args.type_input)
+    listener_provider = None
     # An iPad source needs the bus even without --listen: its microphone is a
     # second capture device feeding the same consumers (STT, cough detection).
-    if args.listen or args.detect_cough or is_replay or ipad_source:
+    if speech_requested or args.detect_cough or is_replay or ipad_source:
         from audio.bus import AudioBus
         from audio.intelligence import SoundEventDetector
         audio_bus = AudioBus()
-        if not is_replay:
+        if not is_replay and microphone_mode == "laptop":
             from audio.microphone import MicrophoneProducer
             microphone = MicrophoneProducer(audio_bus)
-        if args.listen and not is_replay and not args.type_input:
-            from audio.stt import Listener
-            voice_agent.listener = Listener(model_size=args.whisper_model,
-                                            speaker=voice_agent.speaker, audio_bus=audio_bus)
+        if speech_requested and not is_replay and microphone_mode != "off":
+            if args.groq_stt:
+                from audio.stt_groq import GroqListener
+                groq_listener = GroqListener(
+                    model=args.groq_model, speaker=voice_agent.speaker,
+                    audio_bus=audio_bus)
+                if groq_listener.available:
+                    voice_agent.listener = groq_listener
+                    listener_provider = "groq"
+                else:
+                    groq_listener.close()
+                    print("[stt-groq] falling back to local faster-whisper")
+            if voice_agent.listener is None:
+                from audio.stt import Listener
+                voice_agent.listener = Listener(
+                    model_size=args.whisper_model, speaker=voice_agent.speaker,
+                    audio_bus=audio_bus)
+                listener_provider = "local"
         elif is_replay:
             from audio.replay import ReplayAudioProducer, ReplayListener
             voice_agent.listener = ReplayListener()
+            listener_provider = "replay"
             replay_audio = ReplayAudioProducer(audio_bus)
-        allowed_events = {"cough"} if args.detect_cough and not args.listen else None
+        allowed_events = {"cough"} if args.detect_cough and not speech_requested else None
         sound_detector = SoundEventDetector(audio_bus, allowed_events=allowed_events)
-        microphone_ready = is_replay or bool(microphone and microphone.available)
+        microphone_ready = (is_replay or microphone_mode == "device"
+                            or bool(microphone and microphone.available))
         if microphone_ready:
             if is_replay:
                 capabilities.set("microphone", "hardware", CapabilityStatus.READY,
                                  "replay")
+            elif microphone_mode == "device":
+                capabilities.set("microphone", "hardware", CapabilityStatus.READY,
+                                 "paired iPad 16 kHz audio bus")
             shared_signals.set("microphone_ready", True)
             listener_ready = bool(voice_agent.listener is not None and
                                   getattr(voice_agent.listener, "available", False))
             if listener_ready:
-                print("[agent] listener attached — the agent can hear replies")
+                print(f"[agent] listener attached ({listener_provider}) — "
+                      "the agent can hear replies")
                 capabilities.set("speech_recognition", "model", CapabilityStatus.READY,
-                                 "listener ready")
-            elif args.listen:
-                capabilities.set("speech_recognition", "model", CapabilityStatus.FAILED,
-                                 "listener unavailable; install requirements-asr.txt")
+                                 f"{listener_provider} listener ready")
+            elif speech_requested:
+                if args.groq_stt:
+                    capabilities.set("speech_recognition", "model", CapabilityStatus.FAILED,
+                                     "Groq and local listeners unavailable; check "
+                                     "GROQ_API_KEY and requirements-asr.txt")
+                else:
+                    capabilities.set("speech_recognition", "model", CapabilityStatus.FAILED,
+                                     "listener unavailable; install requirements-asr.txt")
             if args.detect_cough:
                 print("[audio] cough episode detection enabled")
         else:
             shared_signals.set("microphone_ready", False)
             capabilities.set(
                 "speech_recognition", "model",
-                CapabilityStatus.FAILED if args.listen else CapabilityStatus.UNCONFIGURED,
-                "microphone or speech listener unavailable" if args.listen else "disabled")
+                CapabilityStatus.FAILED if speech_requested else CapabilityStatus.UNCONFIGURED,
+                "microphone or speech listener unavailable" if speech_requested else "disabled")
 
     else:
         capabilities.set("microphone", "hardware", CapabilityStatus.UNCONFIGURED, "disabled")
@@ -769,11 +837,12 @@ def main():
                 print("[ipad] module toggles from the paired iPad are ENABLED "
                       "(--no-ipad-toggle to refuse them)")
 
-            # Two-way voice with the paired device: its microphone feeds the
-            # same shared bus as the laptop mic, and Piper speech is routed to
+            # Two-way voice with the paired device: exactly one selected
+            # microphone feeds the shared bus, and Piper speech is routed to
             # the device's speaker instead of (or alongside) the laptop's.
-            if args.ipad_audio != "laptop":
+            if microphone_mode == "device":
                 pipeline.camera.ipad_attach_audio_bus(audio_bus)
+            if args.ipad_audio != "laptop":
                 if not args.no_voice:
                     if voice_agent.speaker.engine_name == "piper":
                         def _route_speech(samples, rate):
@@ -872,9 +941,9 @@ def main():
         if _screening is not None and hasattr(_screening, "provider_health"):
             system["cloud_vision"] = _screening.provider_health()
         if private:
-            audio_enabled = bool(args.listen or args.detect_cough or is_replay)
+            audio_enabled = bool(speech_requested or args.detect_cough or is_replay)
             audio_mode = ("replay" if is_replay else
-                          "cough_only" if args.detect_cough and not args.listen else
+                          "cough_only" if args.detect_cough and not speech_requested else
                           "broad_listening")
             system["audio"] = build_audio_debug_state(
                 capabilities, sound_detector, audio_enabled, audio_mode,

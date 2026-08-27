@@ -4,3 +4,6 @@
 # CTranslate2 and CUDA-enabled PyTorch bundle incompatible cudnn64_9.dll files.
 sounddevice>=0.4
 faster-whisper>=1.0
+
+# Groq API for cloud speech-to-text (--groq-stt)
+groq>=0.5.0

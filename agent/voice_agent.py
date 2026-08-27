@@ -106,6 +106,13 @@ _DEMO_STEP_GUIDANCE = {
 _RECENT_SPOKEN_MEMORY = 8
 _DUPLICATE_RATIO = 0.86
 
+_REPLY_FALLBACKS = (
+    "I'm glad you told me that.",
+    "Thank you for sharing that with me.",
+    "I hear you, and I appreciate you telling me.",
+    "Thank you for letting me know.",
+)
+
 
 def _normalize_spoken(text: str) -> str:
     """Lowercase, drop punctuation, and collapse whitespace for comparison."""
@@ -302,6 +309,7 @@ class VoiceAgent:
         # surfaced in diagnostics so a reviewer can see repeats being suppressed.
         self._recent_spoken: list[str] = []
         self.suppressed_repeats = 0
+        self._reply_fallback_idx = 0
         # Self-echo rejection: heard utterances that were really the agent's own
         # voice (dropped in _consume_heard); the count is surfaced in diagnostics.
         self._echo_drops = 0
@@ -701,6 +709,13 @@ class VoiceAgent:
         "person arrived", "has arrived", "just arrived", "entered the room",
         "was detected", "the system", "recent event", "observation:",
         "would you like to talk about", "like to discuss this",
+        # Announcing coverage gaps / citing data or quoting the person.
+        "don't have that information", "do not have that information",
+        "don't have any information", "do not have any information",
+        "have no information", "has no information",
+        "don't have access to", "do not have access to",
+        "you said", "you mentioned", "it said",
+        "according to the data", "according to the",
     )
 
     # The pipeline's capitalized subject labels. If one appears mid-line the
@@ -722,6 +737,11 @@ class VoiceAgent:
             return ""
         low = text.lower()
         if any(marker in low for marker in cls._META_MARKERS):
+            return ""
+        import re  # noqa: PLC0415
+        if re.search(r"\byou\s+(?:always|usually)\b", low):
+            return ""
+        if re.search(r",\s*(?:don't|aren't|isn't|can't|won't|didn't|haven't|hasn't)\s+you\s*\?\s*$", low):
             return ""
         # A conversational turn is one or two sentences. Runaway length or a
         # long repeated clause is model degeneration, not something to speak.
@@ -762,7 +782,6 @@ class VoiceAgent:
         # number next to a unit/metric term ("9.6 breaths per minute", "tint of
         # 0.0", "62 bpm", "95%"). Adjacency keeps ordinary numbers ("see you at
         # 3", "take 3 deep breaths") passing.
-        import re  # noqa: PLC0415
         if (re.search(r"\d[\d.,]*\s*(?:%|bpm|beats?\b|breaths?\b|per\s*minute|"
                       r"percent|degrees?|celsius|fahrenheit)", low)
                 or re.search(r"(?:tint|saturation|spo2|heart rate|breathing rate|"
@@ -1758,6 +1777,13 @@ class VoiceAgent:
         self._last_fallback_reason = "provider_unavailable"
         return self._speak_intent(intent, intent.fallback, now)
 
+    def _next_reply_fallback(self) -> str:
+        """Pick the next warm acknowledgement, never the immediately prior line."""
+        idx = getattr(self, "_reply_fallback_idx", 0)
+        line = _REPLY_FALLBACKS[idx % len(_REPLY_FALLBACKS)]
+        self._reply_fallback_idx = idx + 1
+        return line
+
     def _speak_intent(self, intent, candidate: str, now: float,
                       action=_MISSING_ACTION) -> str:
         """Apply safety wording and commit one selected intent after generation."""
@@ -1773,10 +1799,20 @@ class VoiceAgent:
             text = safe_check_in(generated, intent.fallback)
             text = enforce_second_person(text, intent.fallback)
             text = strip_prior_disclosure(text, intent.fallback)
+        elif intent.signature.startswith("steer:"):
+            cleaned = self._clean_spoken_line(generated)
+            if not cleaned or candidate == intent.fallback:
+                text = ""
+            else:
+                text = cleaned
+        elif intent.kind == "reply" and candidate == intent.fallback:
+            text = self._next_reply_fallback()
         else:
             # LLM-proposes / deterministic-disposes: only speak the generation
             # when it reads like a spoken line, else the hand-authored fallback.
             text = self._clean_spoken_line(generated) or intent.fallback
+        if not text:
+            return ""
         # No-repeat guard: never say a line we just said. A failed or
         # rate-limited generation falls back to a fixed template, so without
         # this the same line repeats; being deterministic it also catches the

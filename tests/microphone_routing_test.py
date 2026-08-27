@@ -19,7 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from main import resolve_microphone_mode
+from main import resolve_microphone_mode, speech_recognition_requested
 
 
 def test_auto_hands_the_ears_to_the_device_that_carries_the_audio():
@@ -54,3 +54,10 @@ def test_every_mode_resolves_to_exactly_one_source():
             for ipad_audio in ("device", "both", "laptop"):
                 assert resolve_microphone_mode(mic, ipad_source, ipad_audio) \
                     in ("laptop", "device", "off")
+
+
+def test_groq_flag_implies_listening_but_typed_input_still_wins():
+    assert speech_recognition_requested(False, True, False) is True
+    assert speech_recognition_requested(True, False, False) is True
+    assert speech_recognition_requested(False, False, False) is False
+    assert speech_recognition_requested(True, True, True) is False

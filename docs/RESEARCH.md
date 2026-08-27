@@ -79,8 +79,9 @@ once by three extractors, so nothing runs a detector twice:
 ## The corroboration loop (CDSS pattern)
 Low-confidence cues never surface directly. `agent/corroboration.py` turns
 them into gentle follow-up questions ("have you noticed any skin changes
-lately?"); with the microphone listener (`--listen`, `audio/stt.py`,
-faster-whisper offline) the person's answer is classified
+lately?"); with the local Faster-Whisper listener (`--listen`, `audio/stt.py`)
+or the opt-in Groq listener (`--groq-stt`, `audio/stt_groq.py`), the person's
+answer is classified
 (confirmed/denied/unclear — Moondream when available, keywords offline) and
 only **confirmed** topics produce a spoken suggestion; denials suppress the
 topic for hours. This is the boundary that keeps camera inference on the

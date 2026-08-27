@@ -70,6 +70,7 @@ class SwitchableCamera:
     def __init__(self, source, opts: dict | None = None):
         self.inner = make_backend(source, opts)
         self._hooks: list[Callable] = []
+        self._capture_reset_hooks: list[Callable[[], None]] = []
         self._ipad_control_handler: Optional[Callable] = None
         self._ipad_audio_bus = None
         self._cross_pending: Optional[tuple] = None
@@ -98,6 +99,20 @@ class SwitchableCamera:
         self._hooks.append(hook)
         self.inner.register_fast_hook(hook)
 
+    def register_capture_reset_hook(self, hook: Callable[[], None]) -> None:
+        """Register a profile-boundary reset that survives backend swaps."""
+        if hook not in self._capture_reset_hooks:
+            self._capture_reset_hooks.append(hook)
+        register = getattr(self.inner, "register_capture_reset_hook", None)
+        if register is not None:
+            register(hook)
+
+    def _attach_capture_reset_hooks(self, backend) -> None:
+        register = getattr(backend, "register_capture_reset_hook", None)
+        if register is not None:
+            for hook in self._capture_reset_hooks:
+                register(hook)
+
     def switch_to(self, source, opts: dict | None = None) -> None:
         """Same-type switches ride the backend's own path; cross-type ones
         are queued for the frames loop (never swapped from a UI thread)."""
@@ -124,6 +139,7 @@ class SwitchableCamera:
             old = self.inner
         old.release()
         new = make_backend(source, opts)
+        self._attach_capture_reset_hooks(new)
         try:
             new.open()
         except Exception as e:  # noqa: BLE001
@@ -135,6 +151,7 @@ class SwitchableCamera:
                     self.inner = old
                 for hook in self._hooks:
                     old.register_fast_hook(hook)
+                self._attach_capture_reset_hooks(old)
             except Exception as e2:  # noqa: BLE001
                 print(f"[camera] also failed to restore {old.source!r} "
                       f"({e2}); stream dead")

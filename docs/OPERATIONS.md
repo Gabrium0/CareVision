@@ -194,10 +194,12 @@ reload then picks it up).
 
 Two-way voice rides the same peer connection as RTP audio. When an iPad pairs,
 its microphone (`--ipad-audio device`, the default) publishes onto the shared
-16 kHz bus, so `--listen` transcription and cough detection hear the person at
-the iPad instead of whatever the laptop's own mic picks up — no extra flag
-beyond what those features already need. Piper speech routes to the iPad's
-speaker instead of the laptop's; `--ipad-audio both` keeps the laptop audible
+16 kHz bus. `--groq-stt` sends completed speech segments from that bus to Groq
+Whisper and implies listening; `--listen` keeps transcription local. The
+automatic microphone policy opens only the iPad input in this arrangement—two
+microphones are never interleaved into one ASR segment. Use `--mic laptop` to
+override it or `--mic off` to disable live microphone input. Piper speech
+routes to the iPad's speaker instead of the laptop's; `--ipad-audio both` keeps the laptop audible
 too, and `--ipad-audio laptop` opts out entirely (mic included). Only the Piper
 engine produces PCM a remote speaker can carry: if TTS falls back to the system
 voice (`pyttsx3`), speech stays on the laptop and the run prints a one-line
@@ -285,13 +287,18 @@ run controls are:
   microphone or speech-recognition model.
 - `--listen` opts into microphone speech recognition and requires
   `requirements-asr.txt`.
+- `--groq-stt` opts into Groq Whisper, implies listening, and requires
+  `GROQ_API_KEY`. Only completed, locally voice-activated speech segments are
+  uploaded; if Groq cannot initialize, the app attempts local Faster-Whisper.
+- `--mic {auto,laptop,device,off}` selects the single live microphone. `auto`
+  uses the paired iPad for the normal iPad device/both audio routes.
 - `--detect-cough` opts into local microphone audio-event detection and requires
   `requirements-audio-events.txt` for the optional model backend.
 
-`--listen` and `--detect-cough` may share microphone infrastructure, but neither
-is enabled by default. On Windows, Faster-Whisper runs in its established spawned
-worker to isolate native runtime libraries; do not move that import into the
-camera process.
+Speech recognition and `--detect-cough` may share microphone infrastructure,
+but neither is enabled by default. On Windows, Faster-Whisper runs in its
+established spawned worker to isolate native runtime libraries; do not move
+that import into the camera process.
 
 ## Cloud consent
 

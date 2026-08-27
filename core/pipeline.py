@@ -205,6 +205,9 @@ class Pipeline:
             register(self._enqueue_fast_frame)
         else:
             self._fast_modules = []
+        register_reset = getattr(camera, "register_capture_reset_hook", None)
+        if register_reset is not None:
+            register_reset(self.reset_capture_state)
 
     def _start_fast_sampler(self) -> None:
         """Start the bounded full-resolution vitals sampler once."""
@@ -671,7 +674,11 @@ class Pipeline:
             self._capture_reset_done = False
         else:
             reason = state.get("heart_rate_block_reason", state.get("block_reason"))
-            transient = reason in ("motion", "lighting")
+            # A single missed face-analysis frame is as transient as a short
+            # motion or lighting interruption.  Preserve the clean rPPG window
+            # through the configured grace period; multiple-person ambiguity
+            # and other hard failures still reset immediately.
+            transient = reason in ("no_face", "motion", "lighting")
             if self._capture_was_ready and self._capture_blocked_since is None:
                 self._capture_blocked_since = ctx.timestamp
             should_reset = False

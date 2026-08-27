@@ -64,7 +64,7 @@ This is the full showcase invocation — iPad camera and control surface, web
 dashboard, multi-person tracking, spoken listening, and local diagnostics:
 
 ```powershell
-python main.py --source ipad --webui --enable-multi-person --ipad-relay-url https://mercury-upper-processes-seemed.trycloudflare.com --ipad-room an6d-bvdd-rxyr --listen --debug-endpoint
+python main.py --source ipad --webui --enable-multi-person --ipad-relay-url https://mercury-upper-processes-seemed.trycloudflare.com --ipad-room an6d-bvdd-rxyr --groq-stt --debug-endpoint
 ```
 
 What each flag does:
@@ -76,7 +76,7 @@ What each flag does:
 | `--enable-multi-person` | Track a secondary person alongside the primary subject |
 | `--ipad-relay-url` | HTTPS signaling relay for this run; overrides `IPAD_RELAY_URL` from `.env`. Quick-tunnel `trycloudflare.com` URLs change every time `cloudflared` restarts, so pass whatever URL it currently prints |
 | `--ipad-room` | Relay room name; must match the `/r/<room>` URL opened on the iPad |
-| `--listen` | Microphone speech-to-text (`requirements-asr.txt`); once the iPad pairs it hears the person at the iPad instead of the laptop mic |
+| `--groq-stt` | Opt in to fast Groq Whisper transcription (`GROQ_API_KEY`); implies listening and automatically uses only the paired iPad microphone, with local Whisper fallback |
 | `--debug-endpoint` | Private loopback-only diagnostics at `http://127.0.0.1:8771/debug` |
 
 Then on the iPad, open the pairing page — for the example above,
