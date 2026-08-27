@@ -19,6 +19,7 @@ import difflib
 import time
 import uuid
 import re
+from collections import deque
 from dataclasses import replace
 
 from agent.answers import (
@@ -129,6 +130,123 @@ def is_near_duplicate(candidate: str, recent, ratio: float = _DUPLICATE_RATIO) -
     return False
 
 
+# --- Self-echo rejection and reply cadence ------------------------------------
+# Device-routed speech plays centimetres from the paired microphone, so the
+# agent hears itself; whisper garbles that playback into confident-looking
+# "answers". These deterministic guards keep the agent from hearing, answering,
+# or chattering at its own voice. All are pure functions the tests pin directly.
+
+# A genuine answer to a yes/no check-in is short; only utterances this short are
+# exempted from echo filtering when the agent just asked a question.
+_ANSWER_EXEMPT_MAX_WORDS = 4
+# How far back an agent line still counts as something the person could be
+# echoing. Bounded so a stale line never suppresses fresh speech.
+_ECHO_LOOKBACK_SECONDS = 30.0
+# Reply cadence: the smallest gap between two spoken replies, and the most
+# replies allowed inside the rolling window, so the agent cannot rapid-fire at
+# its own echo or chatter over the person.
+_REPLY_MIN_GAP_SECONDS = 4.0
+_REPLY_WINDOW_MAX = 6
+_REPLY_WINDOW_SECONDS = 60.0
+# Shared word-run length that marks a heard line as repeating an agent line.
+_ECHO_PHRASE_RUN = 4
+_ECHO_SIMILARITY = 0.7
+
+
+def _estimate_spoken_seconds(text: str) -> float:
+    """Rough spoken duration of a line, clamped to [1, 10] seconds.
+
+    Drives the microphone mute window (audio/stt.mark_agent_spoke): long enough
+    to cover the line, capped so the person is never muted out for long.
+    """
+    words = len(str(text).split())
+    return max(1.0, min(10.0, words / 2.5))
+
+
+def _words(text: str) -> list[str]:
+    """Punctuation-blind word list (ASR emits none; spoken lines have some)."""
+    return _normalize_spoken(text).split()
+
+
+def _longest_common_run(a: list[str], b: list[str]) -> int:
+    """Length of the longest contiguous word run shared by `a` and `b`.
+
+    Word-order-preserving runs survive ASR garbling, so a shared run catches a
+    self-echo even when overall similarity is only moderate.
+    """
+    best = 0
+    for i in range(len(a)):
+        for j in range(len(b)):
+            k = 0
+            while i + k < len(a) and j + k < len(b) and a[i + k] == b[j + k]:
+                k += 1
+            if k > best:
+                best = k
+    return best
+
+
+def _looks_like_question(text: str) -> bool:
+    """Whether the text is itself a question (ends with a question mark)."""
+    return str(text).strip().endswith("?")
+
+
+def _is_help_request(text: str) -> bool:
+    """Whether the utterance is a call for help (kept unconditionally)."""
+    return "help" in _words(text)
+
+
+def _is_likely_echo(candidate: str, recent) -> bool:
+    """Whether `candidate` is the agent hearing one of its own recent lines.
+
+    Caught either by high overall similarity or by a preserved multi-word run;
+    a too-short candidate, or a recent line too short to swallow it, is never an
+    echo.
+    """
+    c = _words(candidate)
+    if len(c) < 3:
+        return False
+    cj = " ".join(c)
+    for line in recent:
+        r = _words(line)
+        if len(r) < 3:
+            continue
+        if difflib.SequenceMatcher(None, cj, " ".join(r)).ratio() >= _ECHO_SIMILARITY:
+            return True
+        if _longest_common_run(c, r) >= _ECHO_PHRASE_RUN:
+            return True
+    return False
+
+
+def _repeats_agent_phrase(candidate: str, recent) -> bool:
+    """Whether `candidate` repeats a multi-word run from a recent agent line."""
+    c = _words(candidate)
+    return any(_longest_common_run(c, _words(line)) >= _ECHO_PHRASE_RUN
+               for line in recent)
+
+
+def _is_degenerate_repetition(text: str) -> bool:
+    """Whether the text is an ASR repetition loop, not emphatic human speech.
+
+    A short emphatic repeat ("no no no no") stays conversational; a long line
+    that is one phrase repeated three-plus times, or almost no unique words, is
+    a whisper loop and is dropped.
+    """
+    words = _words(text)
+    n = len(words)
+    if n < 8:
+        return False
+    for span in (2, 3, 4, 5):
+        if n >= span * 3:
+            phrase = words[:span]
+            reps, i = 1, span
+            while i + span <= n and words[i:i + span] == phrase:
+                reps += 1
+                i += span
+            if reps >= 3:
+                return True
+    return len(set(words)) <= max(2, n // 4)
+
+
 class VoiceAgent:
     """Orchestrates memory -> policy -> Moondream -> speech (and listening)."""
     def __init__(self, name: str = "there", speak: bool = True,
@@ -184,6 +302,11 @@ class VoiceAgent:
         # surfaced in diagnostics so a reviewer can see repeats being suppressed.
         self._recent_spoken: list[str] = []
         self.suppressed_repeats = 0
+        # Self-echo rejection: heard utterances that were really the agent's own
+        # voice (dropped in _consume_heard); the count is surfaced in diagnostics.
+        self._echo_drops = 0
+        # Timestamps of recent spoken replies, for the reply-cadence limiter.
+        self._reply_spoken_at: deque = deque()
         self._test_requested = False
         self._arm_check_requested = False
         self._arm_check_session_id: str | None = None
@@ -306,6 +429,7 @@ class VoiceAgent:
                 "conversation_latency_ms": self._last_conversation_latency_ms,
                 "fallback_reason": self._last_fallback_reason,
                 "suppressed_repeats": self.suppressed_repeats,
+                "echo_drops": self._echo_drops,
                 "session_turns": len(self.memory.dialogue)}
 
     def request_test(self, test: str = "hold_still") -> None:
@@ -740,6 +864,57 @@ class VoiceAgent:
         self._active_emergencies = active
         return candidates
 
+    def _recent_agent_lines(self, now: float) -> list[str]:
+        """Agent lines spoken within the echo-lookback window."""
+        return [text for who, text, ts in self.memory.dialogue
+                if who == "you" and now - ts <= _ECHO_LOOKBACK_SECONDS]
+
+    def _drop_echoes(self, heard: list, now: float) -> list:
+        """Filter out heard utterances that are really the agent's own voice.
+
+        Help requests and the person's own questions are always kept (a missed
+        call for help costs more than a spurious one). Short answers are kept
+        when the agent just asked a question. Everything else is dropped if it
+        is an ASR repetition loop or repeats a recent agent line.
+        """
+        recent = self._recent_agent_lines(now)
+        agent_asked = any(_looks_like_question(line) for line in recent)
+        kept = []
+        for text, ts in heard:
+            words = str(text).split()
+            if _is_help_request(text) or _looks_like_question(text):
+                kept.append((text, ts))
+                continue
+            if len(words) <= _ANSWER_EXEMPT_MAX_WORDS and agent_asked:
+                kept.append((text, ts))
+                continue
+            if _is_degenerate_repetition(text):
+                self._echo_drops += 1
+                continue
+            if _is_likely_echo(text, recent) or _repeats_agent_phrase(text, recent):
+                self._echo_drops += 1
+                continue
+            kept.append((text, ts))
+        return kept
+
+    def _replies_allowed(self, now: float) -> bool:
+        """Whether a small-talk reply may be spoken now (rate-limited).
+
+        Enforces a minimum gap between replies and a cap per rolling window, so
+        the agent cannot rapid-fire at its own echo or chatter over the person.
+        Records the reply time when it allows one.
+        """
+        while self._reply_spoken_at and \
+                now - self._reply_spoken_at[0] > _REPLY_WINDOW_SECONDS:
+            self._reply_spoken_at.popleft()
+        if self._reply_spoken_at and \
+                now - self._reply_spoken_at[-1] < _REPLY_MIN_GAP_SECONDS:
+            return False
+        if len(self._reply_spoken_at) >= _REPLY_WINDOW_MAX:
+            return False
+        self._reply_spoken_at.append(now)
+        return True
+
     def _consume_heard(self, now: float) -> tuple[list, bool]:
         """Drain the listener into memory/corroboration.
 
@@ -749,7 +924,7 @@ class VoiceAgent:
         if self.listener is None:
             return [], False
         handled = False
-        heard = self.listener.pop_utterances()
+        heard = self._drop_echoes(self.listener.pop_utterances(), now)
         for text, ts in heard:
             self.memory.person_said(text, ts)
             self._last_heard_at = max(self._last_heard_at, float(ts))
@@ -1620,6 +1795,15 @@ class VoiceAgent:
             self.suppressed_repeats += 1
             self.policy.mark_spoken(intent, now)
             return None
+        # Reply-cadence limit: small-talk replies to the person are rate-limited
+        # so the agent cannot chatter or answer its own echo in a tight loop.
+        # Health check-ins, conclusions, workflow prompts, and bound actions are
+        # not "replies" and are never limited here. Checked after the no-repeat
+        # guard so a dropped duplicate does not consume a reply slot.
+        if intent.kind == "reply" and not self._replies_allowed(now):
+            self._last_fallback_reason = "reply_rate_limited"
+            self.policy.mark_spoken(intent, now)
+            return None
         # Small talk and most topic fallbacks end in a question but belong to no
         # lane that tracks an answer. Judge the FINAL text (after the airlocks),
         # since a fallback substitution can turn a question into a statement.
@@ -1645,7 +1829,12 @@ class VoiceAgent:
         self.speaker.say(text)
         mark_spoke = getattr(self.listener, "mark_agent_spoke", None)
         if mark_spoke is not None:
-            mark_spoke(now)
+            # Mute the mic for the line's spoken duration so device-routed
+            # playback is not transcribed back as the person's reply.
+            try:
+                mark_spoke(now, estimated_seconds=_estimate_spoken_seconds(text))
+            except TypeError:
+                mark_spoke(now)          # listener stub without the newer kwarg
         return text
 
     def close(self) -> None:

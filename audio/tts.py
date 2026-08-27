@@ -29,6 +29,11 @@ _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
 _CLAUSE_SPLIT = re.compile(r"(?<=[,;:])\s+")
 _MAX_CHUNK = 280        # characters per synthesis chunk before clause split
 _SENTENCE_PAUSE = 0.28  # calm inter-sentence breathing room (seconds)
+# On the device (remote-sink) route there is no local player to block on, so the
+# speaker holds `speaking` for each chunk's real duration plus this short tail,
+# letting the far-end buffer drain before audio/stt unmutes the microphone —
+# otherwise the agent's own device-played voice is transcribed back as a reply.
+_REMOTE_TAIL_SECONDS = 0.35
 
 
 def _split_chunks(text: str) -> list[str]:
@@ -199,6 +204,7 @@ class Speaker:
         """Speak one utterance through whichever engine survived selection."""
         if self._backend is not None:
             first = True
+            routed_remote = False
             for chunk in _split_chunks(text):
                 samples = None
                 sample_rate = 22050
@@ -211,18 +217,25 @@ class Speaker:
                     try:
                         self.remote_sink(
                             np.asarray(samples, dtype=np.float32), sample_rate)
+                        routed_remote = True
                     except Exception as exc:  # noqa: BLE001 - a dead link mutes
                         print(f"[tts] remote sink failed ({exc}); "
                               "falling back to laptop audio")
                         self.local_playback = True
                 if not self.local_playback:
+                    # No local player blocks here, so hold `speaking` for the
+                    # chunk's real audible duration; the mic stays muted for the
+                    # whole time the device is playing this line.
+                    time.sleep(len(samples) / float(sample_rate))
                     first = False
-                    continue       # device-only: pacing happens at the far end
+                    continue
                 if not first and _SENTENCE_PAUSE > 0:
                     time.sleep(_SENTENCE_PAUSE)
                 first = False
                 player.play(samples, sample_rate)
                 player.wait()
+            if routed_remote and not self.local_playback:
+                time.sleep(_REMOTE_TAIL_SECONDS)   # let the far-end buffer drain
             return
         if self._engine is not None:
             self._engine.say(text)

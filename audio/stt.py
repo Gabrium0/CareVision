@@ -24,6 +24,7 @@ import importlib.util
 import importlib.abc
 import os
 import queue
+import re
 import sys
 import threading
 import time
@@ -34,6 +35,52 @@ from storage.history_store import HistoryStore
 
 _SAMPLE_RATE = 16000
 _BLOCK_SECONDS = 0.1
+
+# The longest a single agent line is allowed to mute the microphone (device
+# audio plays centimetres from the mic; a long line must not deafen the person
+# indefinitely if the spoken-duration estimate overshoots).
+_MAX_AGENT_MUTE_SECONDS = 10.0
+
+# Whisper invents fluent-but-false text on near-silence or noise — almost always
+# canned video-outro phrases. A segment is discarded when its acoustic
+# confidence is poor (the model itself flags likely silence, or the average
+# token log-probability is very low) or when the text is one of these known
+# hallucination artifacts, which a companion's user never actually says.
+_NO_SPEECH_MAX = 0.6            # model's own P(no speech) above this -> discard
+_AVG_LOGPROB_MIN = -1.0        # mean token logprob below this -> discard
+_HALLUCINATION_PHRASES = (
+    "thanks for watching",
+    "thank you for watching",
+    "please subscribe",
+    "like and subscribe",
+    "subtitles by",
+    "amara org",
+)
+
+
+def _normalize_transcript(text: str) -> str:
+    """Lowercase, drop punctuation, collapse whitespace for phrase matching."""
+    return " ".join(re.sub(r"[^\w\s]", " ", str(text).lower()).split())
+
+
+def _segment_is_trustworthy(text: str, avg_logprob: float,
+                            no_speech_prob: float) -> bool:
+    """Whether a transcribed segment is real speech, not a whisper hallucination.
+
+    Pure and deterministic so the same gate can be unit-tested and applied in
+    the worker. Rejects segments the model flags as likely silence, segments
+    whose average token log-probability is very low (garbled/invented text),
+    and the handful of canned video-outro phrases whisper emits on noise even
+    at moderate confidence.
+    """
+    if no_speech_prob is not None and float(no_speech_prob) >= _NO_SPEECH_MAX:
+        return False
+    if avg_logprob is not None and float(avg_logprob) <= _AVG_LOGPROB_MIN:
+        return False
+    normalized = _normalize_transcript(text)
+    if any(phrase in normalized for phrase in _HALLUCINATION_PHRASES):
+        return False
+    return True
 
 
 def _dependency_available() -> bool:
@@ -113,8 +160,20 @@ def _run_whisper_worker(in_q, out_q, model_size: str, language: str) -> None:
         try:
             segments, _info = model.transcribe(
                 audio, language=language, beam_size=1,
-                vad_filter=True, word_timestamps=True)
-            segments = list(segments)
+                vad_filter=True, word_timestamps=True,
+                # Each segment is judged on its own audio; carrying prior text
+                # forward is what lets whisper spiral into repeated hallucinated
+                # lines on a noisy stretch.
+                condition_on_previous_text=False)
+            # Drop hallucinated / low-confidence segments before they become an
+            # utterance. Missing confidence fields (e.g. a stubbed model) default
+            # to trustworthy so real transcripts are never dropped by accident.
+            segments = [
+                segment for segment in segments
+                if _segment_is_trustworthy(
+                    segment.text,
+                    getattr(segment, "avg_logprob", 0.0),
+                    getattr(segment, "no_speech_prob", 0.0))]
             text = " ".join(segment.text.strip() for segment in segments).strip()
             words = [word for segment in segments for word in (segment.words or [])]
             pauses = sum(
@@ -142,8 +201,8 @@ class Listener:
     """Microphone -> parent VAD -> isolated Whisper worker -> text."""
 
     def __init__(self, enabled: bool = True, model_size: str = "base",
-                 energy_threshold: float = 0.01, silence_seconds: float = 0.8,
-                 min_voiced_seconds: float = 0.3, max_segment_seconds: float = 12.0,
+                 energy_threshold: float = 0.02, silence_seconds: float = 0.8,
+                 min_voiced_seconds: float = 0.5, max_segment_seconds: float = 12.0,
                  speech_tail_seconds: float = 0.5, language: str = "en",
                  speaker=None, audio_bus=None):
         self.available = False
@@ -164,6 +223,10 @@ class Listener:
         self._stop = threading.Event()
         self._threads: list[threading.Thread] = []
         self._last_agent_speech = -1e9
+        # Absolute time until which capture stays muted for the current agent
+        # turn (extended by mark_agent_spoke with the line's spoken-duration
+        # estimate, so a long line is not overlapped and heard back as an echo).
+        self._agent_speech_until = -1e9
         self._last_user_end = -1e9
         self._interruption_count = 0
         self._history = HistoryStore.instance()
@@ -224,10 +287,17 @@ class Listener:
 
     def _agent_is_speaking(self) -> bool:
         """True while the agent talks (or just finished — room-echo tail)."""
+        now = time.time()
         if self.speaker is not None and getattr(self.speaker, "speaking", False):
-            self._last_agent_speech = time.time()
+            self._last_agent_speech = now
+            self._agent_speech_until = max(
+                self._agent_speech_until, now + self.speech_tail_seconds)
             return True
-        return time.time() - self._last_agent_speech < self.speech_tail_seconds
+        # Stay muted for the estimated duration of the agent's current line (set
+        # by mark_agent_spoke), then a short room-echo tail after that.
+        if now < self._agent_speech_until:
+            return True
+        return now - self._last_agent_speech < self.speech_tail_seconds
 
     def _segment_loop(self) -> None:
         """Consume shared microphone blocks and close speech segments by energy."""
@@ -446,9 +516,20 @@ class Listener:
         self._segments = None
         self._worker_out = None
 
-    def mark_agent_spoke(self, timestamp: float | None = None) -> None:
-        """Mark the start of an agent turn for response-latency measurement."""
-        self._last_agent_speech = time.time() if timestamp is None else timestamp
+    def mark_agent_spoke(self, timestamp: float | None = None,
+                         estimated_seconds: float | None = None) -> None:
+        """Mark the start of an agent turn for response-latency measurement.
+
+        `estimated_seconds` (the line's spoken duration) extends the capture
+        mute window so a long line playing next to the mic is not transcribed
+        back as the person's speech. Without it only the short echo tail applies.
+        """
+        start = time.time() if timestamp is None else timestamp
+        self._last_agent_speech = start
+        hold = self.speech_tail_seconds
+        if estimated_seconds is not None:
+            hold = max(hold, min(float(estimated_seconds), _MAX_AGENT_MUTE_SECONDS))
+        self._agent_speech_until = start + hold
 
     def pop_metrics(self) -> list[dict]:
         """Drain speech timing summaries; transcript text is intentionally absent."""
