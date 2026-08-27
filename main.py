@@ -304,9 +304,10 @@ def main():
                          "requiring speech recognition")
     ap.add_argument("--whisper-model", default="base",
                     help="faster-whisper model size for --listen (default base)")
-    ap.add_argument("--voice-model", default="nvidia:meta/llama-3.1-8b-instruct",
+    ap.add_argument("--voice-model", default="nvidia:nvidia/nemotron-3-nano-30b-a3b",
                     help="Voice-agent model. 'nvidia:<id>' uses NVIDIA's hosted "
-                         "endpoint (NVIDIA_API_KEY), 'gemini*' uses Gemini "
+                         "endpoint (NVIDIA_API_KEY, default; higher free limits "
+                         "than Gemini), 'gemini*' uses Google's free Gemini "
                          "(GEMINI_API_KEY), else Moondream (e.g. "
                          "'moondream/moondream3-preview').")
     ap.add_argument("--no-moondream", action="store_true",

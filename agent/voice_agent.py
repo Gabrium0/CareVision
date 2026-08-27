@@ -15,6 +15,7 @@ speaking gap so conversation feels responsive.
 """
 from __future__ import annotations
 
+import difflib
 import time
 import uuid
 import re
@@ -97,6 +98,36 @@ _DEMO_STEP_GUIDANCE = {
     "balance": "Please step back so your full body is in view, then we'll try again.",
 }
 
+# How many recently spoken lines the de-dup guard remembers, and how similar a
+# new line may be before it counts as a repeat. 0.86 catches light rewordings
+# ("I'm glad you told me that." vs "I'm really glad you told me.") while still
+# allowing genuinely different check-ins.
+_RECENT_SPOKEN_MEMORY = 8
+_DUPLICATE_RATIO = 0.86
+
+
+def _normalize_spoken(text: str) -> str:
+    """Lowercase, drop punctuation, and collapse whitespace for comparison."""
+    return " ".join(re.sub(r"[^\w\s]", " ", str(text).lower()).split())
+
+
+def is_near_duplicate(candidate: str, recent, ratio: float = _DUPLICATE_RATIO) -> bool:
+    """Whether `candidate` repeats any recent line (normalized similarity).
+
+    Pure and deterministic: the guard the model and templated fallbacks both
+    pass through, so a rate-limited fallback can never re-speak a line the agent
+    just said. An empty or too-short candidate is never treated as a duplicate.
+    """
+    norm = _normalize_spoken(candidate)
+    if len(norm) < 4:
+        return False
+    for prior in recent:
+        if norm == prior:
+            return True
+        if difflib.SequenceMatcher(None, norm, prior).ratio() >= ratio:
+            return True
+    return False
+
 
 class VoiceAgent:
     """Orchestrates memory -> policy -> Moondream -> speech (and listening)."""
@@ -149,6 +180,10 @@ class VoiceAgent:
         self.workflows = WorkflowEngine.instance()
         self.events = EventStore.instance()
         self.last_utterance = ""
+        # Normalized recent spoken lines for the no-repeat guard, plus a counter
+        # surfaced in diagnostics so a reviewer can see repeats being suppressed.
+        self._recent_spoken: list[str] = []
+        self.suppressed_repeats = 0
         self._test_requested = False
         self._arm_check_requested = False
         self._arm_check_session_id: str | None = None
@@ -270,6 +305,7 @@ class VoiceAgent:
                     "superseded": self._classification_superseded},
                 "conversation_latency_ms": self._last_conversation_latency_ms,
                 "fallback_reason": self._last_fallback_reason,
+                "suppressed_repeats": self.suppressed_repeats,
                 "session_turns": len(self.memory.dialogue)}
 
     def request_test(self, test: str = "hold_still") -> None:
@@ -1566,6 +1602,24 @@ class VoiceAgent:
             # LLM-proposes / deterministic-disposes: only speak the generation
             # when it reads like a spoken line, else the hand-authored fallback.
             text = self._clean_spoken_line(generated) or intent.fallback
+        # No-repeat guard: never say a line we just said. A failed or
+        # rate-limited generation falls back to a fixed template, so without
+        # this the same line repeats; being deterministic it also catches the
+        # model lightly rewording a recent line. Emergencies use a separate
+        # path and never reach here; conclusions, physical-test prompts, and any
+        # intent with a bound side effect are exempt so nothing functional is
+        # skipped -- only chatty repeats are dropped (the agent stays silent
+        # this turn, its cadence still advancing so it does not immediately
+        # retry the same line).
+        bound_action = (self._actions.get(intent.signature)
+                        if action is _MISSING_ACTION else action)
+        exempt = (intent.kind == "conclusion"
+                  or intent.kind in _PHYSICAL_PROMPT_KINDS
+                  or bound_action is not None)
+        if not exempt and is_near_duplicate(text, self._recent_spoken):
+            self.suppressed_repeats += 1
+            self.policy.mark_spoken(intent, now)
+            return None
         # Small talk and most topic fallbacks end in a question but belong to no
         # lane that tracks an answer. Judge the FINAL text (after the airlocks),
         # since a fallback substitution can turn a question into a statement.
@@ -1585,6 +1639,9 @@ class VoiceAgent:
                 correlation_id=active_workflow.correlation_id)
         self.memory.agent_said(text, now)
         self.last_utterance = text
+        self._recent_spoken.append(_normalize_spoken(text))
+        if len(self._recent_spoken) > _RECENT_SPOKEN_MEMORY:
+            self._recent_spoken.pop(0)
         self.speaker.say(text)
         mark_spoke = getattr(self.listener, "mark_agent_spoke", None)
         if mark_spoke is not None:

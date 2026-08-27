@@ -16,7 +16,10 @@ from __future__ import annotations
 from agent.env import nvidia_api_key
 from agent.moondream_client import MoondreamClient
 
-DEFAULT_MODEL = "meta/llama-3.3-70b-instruct"
+# NVIDIA retired the whole Llama 3.x hosted line on 2026-08-26 (HTTP 410 Gone).
+# nemotron-3-nano is a live MoE (3B active) that returns a warm one-liner in
+# ~0.7s over the free tier — ideal latency for the spoken companion.
+DEFAULT_MODEL = "nvidia/nemotron-3-nano-30b-a3b"
 
 
 class NvidiaClient(MoondreamClient):
@@ -37,3 +40,9 @@ class NvidiaClient(MoondreamClient):
 
     def _auth_headers(self, key: str) -> dict:
         return {"Authorization": f"Bearer {key}"}
+
+    def _payload_extra(self) -> dict:
+        # nemotron reasons by default and emits its chain-of-thought as the
+        # reply, which swamps a one-line spoken turn. Disable server-side
+        # thinking so a short check-in comes back as just the line to speak.
+        return {"chat_template_kwargs": {"thinking": False}}
