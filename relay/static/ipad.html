@@ -491,6 +491,20 @@
   // ---- state ----------------------------------------------------------
   let ws = null, pc = null, dcFrames = null, dcControl = null, stream = null;
   let micGranted = false;   // audio track present in `stream`
+  // ---- half-duplex Bluetooth audio -------------------------------------
+  // iOS suspends Bluetooth A2DP output whenever the mic is actively capturing,
+  // so agent speech would fall back to the built-in speaker. We release the mic
+  // while the agent talks (A2DP engages -> voice plays on the paired speaker)
+  // and re-acquire it to listen, driven by the laptop's speaking/listening
+  // edges. replaceTrack() swaps the outbound track without renegotiation, which
+  // matters because the signalling WS is closed shortly after setup.
+  let micSender = null;      // RTCRtpSender for the outbound mic track
+  let micTrack = null;       // current live mic track, or null while released
+  let agentSpeaking = false; // latest phase; guards races between turn ops
+  let lastAgentPhase = null; // 'speaking' | 'listening' — edge-trigger dedup
+  let micTurnOp = Promise.resolve();  // serializes release/acquire
+  let listenTailTimer = null;         // pending re-acquire after the speech tail
+  const LISTEN_TAIL_MS = 500;         // let room echo of the last word decay
   let seq = 0, framesSent = 0;
   let nextFrameDueAt = 0;
   let captureGeneration = 0;
@@ -572,6 +586,67 @@
 
   function showMain(){ pairPanel.classList.add('hidden'); appEl.classList.remove('hidden'); }
   function showPairPanel(){ appEl.classList.add('hidden'); pairPanel.classList.remove('hidden'); connectBtn.disabled = false; }
+
+  // ---- half-duplex mic <-> Bluetooth speaker turn-taking ------------------
+  // Echo processing OFF on purpose: it engages iOS's voice-processing audio
+  // unit, which pins output to the receiver and blocks A2DP. The laptop STT
+  // gates the agent's own voice out of the mic in software, and under
+  // half-duplex the mic is closed whenever the agent speaks, so there is no
+  // echo to cancel here anyway.
+  const MIC_CONSTRAINTS = {echoCancellation:false, noiseSuppression:false, autoGainControl:false};
+
+  async function acquireMicTrack(){
+    const s = await navigator.mediaDevices.getUserMedia({audio: MIC_CONSTRAINTS});
+    return s.getAudioTracks()[0] || null;
+  }
+
+  // Drop the mic so iOS leaves record mode and routes agent audio to A2DP. The
+  // camera (video) track is untouched — it rides the data channel and does not
+  // affect the audio session.
+  function releaseMicForPlayback(){
+    micTurnOp = micTurnOp.then(async () => {
+      if(!agentSpeaking) return;              // a listening edge already won
+      try{ if(micSender) await micSender.replaceTrack(null); }catch(_){}
+      if(micTrack){ try{ micTrack.stop(); }catch(_){} micTrack = null; }
+    }).catch(() => {});
+    return micTurnOp;
+  }
+
+  // Re-open the mic for the resident's reply. replaceTrack keeps the same
+  // transceiver, so no renegotiation is needed over the (now-closed) WS.
+  function acquireMicForListening(){
+    micTurnOp = micTurnOp.then(async () => {
+      if(agentSpeaking || !micGranted || !micSender) return;
+      if(micTrack && micTrack.readyState === 'live') return;  // already listening
+      let track = null;
+      try{ track = await acquireMicTrack(); }catch(_){ track = null; }
+      if(!track) return;
+      if(agentSpeaking){ try{ track.stop(); }catch(_){} return; }  // superseded
+      micTrack = track;
+      try{ await micSender.replaceTrack(track); }catch(_){}
+    }).catch(() => {});
+    return micTurnOp;
+  }
+
+  // Edge-triggered: acts only on a speaking<->listening transition, so it is
+  // safe to feed from both the immediate `agent_audio` control message and the
+  // 0.5s polled `state` mirror without thrashing.
+  function onAgentPhase(speaking){
+    const phase = speaking ? 'speaking' : 'listening';
+    if(phase === lastAgentPhase) return;
+    lastAgentPhase = phase;
+    if(speaking){
+      if(listenTailTimer){ clearTimeout(listenTailTimer); listenTailTimer = null; }
+      agentSpeaking = true;
+      releaseMicForPlayback();
+    } else {
+      agentSpeaking = false;
+      if(listenTailTimer) clearTimeout(listenTailTimer);
+      listenTailTimer = setTimeout(() => {
+        listenTailTimer = null; acquireMicForListening();
+      }, LISTEN_TAIL_MS);
+    }
+  }
 
   // ---- view switching + settings drawer --------------------------------
   function applyView(){
@@ -916,7 +991,15 @@
           agentPillEl.classList.toggle('speaking', !!agent.speaking);
           agentStateEl.textContent = agent.speaking ? 'Ada is speaking' :
             (agent.listening ? 'listening' : 'voice idle');
+          // Fallback for the half-duplex mic switch if the edge-triggered
+          // `agent_audio` message is missed; onAgentPhase acts only on changes.
+          onAgentPhase(!!agent.speaking);
         }
+      } else if(msg.type === 'agent_audio'){
+        // Immediate speaking/listening edge from the laptop (audio/tts.py):
+        // release the mic so iOS can put agent audio on the Bluetooth speaker,
+        // then re-acquire it to hear the resident's reply.
+        onAgentPhase(msg.phase === 'speaking');
       } else if(msg.type === 'module_result'){
         const name = (msg.module && msg.module.name) || (msg.target) || null;
         // Reset the demo-circuit button on any circuit result (it carries no target).
@@ -1398,6 +1481,13 @@
     dcFrames = dcControl = pc = null; ws = null;
     lastCaptureProfileKey = null;
     frameFlow.reset();
+    // The sender belongs to the closed peer; drop it and the phase memory so a
+    // reconnect starts clean. Leave micTrack alone: if still live it is reused
+    // by the next establishPeer, and if it was released it is re-acquired there.
+    micSender = null;
+    agentSpeaking = false;
+    lastAgentPhase = null;
+    if(listenTailTimer){ clearTimeout(listenTailTimer); listenTailTimer = null; }
   }
 
   function scheduleReconnect(why){
@@ -1510,10 +1600,19 @@
       // Agent audio rides real RTP tracks in both directions. Our microphone is
       // offered sendonly; a separate recvonly slot receives the companion's
       // voice, which the host merges onto its first audio m-line (sendrecv).
-      if(micGranted && stream && stream.getAudioTracks().length){
-        try{ peer.addTransceiver(stream.getAudioTracks()[0], {direction:'sendonly'}); }
-        catch(_){ /* older Safari: host still answers mic-less */ }
+      // Fresh peer -> fresh listening state. If the mic was released for a prior
+      // agent turn (or a reconnect landed mid-speech), re-acquire it so the
+      // resident can talk the moment we are live. Keep the sender either way so
+      // the half-duplex turn manager can replaceTrack onto it later.
+      agentSpeaking = false;
+      lastAgentPhase = null;
+      if(micGranted && (!micTrack || micTrack.readyState !== 'live')){
+        try{ micTrack = await acquireMicTrack(); }catch(_){ micTrack = null; }
       }
+      try{
+        const micTx = peer.addTransceiver(micTrack || 'audio', {direction:'sendonly'});
+        micSender = micTx.sender;
+      }catch(_){ micSender = null; /* older Safari: host still answers mic-less */ }
       try{ peer.addTransceiver('audio', {direction:'recvonly'}); }catch(_){}
       peer.ontrack = (ev) => {
         if(peer !== pc || !ev.track || ev.track.kind !== 'audio') return;
@@ -1554,11 +1653,13 @@
         stream = await navigator.mediaDevices.getUserMedia({
           video: {width:{ideal:initialConfig.max_width}, height:{ideal:initialConfig.max_height},
             frameRate:{ideal:initialConfig.target_fps}, facingMode:'user'},
-          // Echo cancellation keeps this device's speaker (the agent's voice)
-          // out of the microphone feed; Safari defaults it on, be explicit.
-          audio: {echoCancellation:true, noiseSuppression:true},
+          // Echo processing is deliberately OFF (MIC_CONSTRAINTS): it engages
+          // iOS's voice-processing unit, which blocks Bluetooth A2DP output.
+          // The laptop STT + half-duplex mic release handle self-echo instead.
+          audio: MIC_CONSTRAINTS,
         });
         micGranted = true;
+        micTrack = stream.getAudioTracks()[0] || null;
       }catch(errWithAudio){
         // A denied microphone must not kill the camera-only fallback path:
         // degrade to today's behaviour instead of failing pairing entirely.

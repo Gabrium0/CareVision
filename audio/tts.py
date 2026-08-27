@@ -18,6 +18,7 @@ graceful-degrade pattern of the rest of the runtime.
 """
 from __future__ import annotations
 
+import os
 import queue
 import re
 import threading
@@ -34,6 +35,12 @@ _SENTENCE_PAUSE = 0.28  # calm inter-sentence breathing room (seconds)
 # letting the far-end buffer drain before audio/stt unmutes the microphone —
 # otherwise the agent's own device-played voice is transcribed back as a reply.
 _REMOTE_TAIL_SECONDS = 0.35
+# Pre-speech lead for the device (remote-sink) route. When the paired iPad is
+# releasing its microphone so iOS can switch output to a Bluetooth A2DP speaker
+# (see relay/static/ipad.html), the switch takes ~0.5-2s. A silent pad in front
+# of the first word gives the route time to settle so the opening is not clipped
+# or briefly played on the built-in speaker. 0 disables it (e.g. laptop audio).
+_REMOTE_LEAD_SECONDS = max(0.0, float(os.environ.get("IPAD_AUDIO_LEAD_SECONDS", "0.7")))
 
 
 def _split_chunks(text: str) -> list[str]:
@@ -75,6 +82,11 @@ class Speaker:
         self._backend = None         # audio.tts_piper.PiperBackend when piper
         self.remote_sink = None      # callable(samples float32, rate) — device route
         self.local_playback = True   # False mutes laptop speakers while routed
+        # Optional callable(active: bool) fired at the exact speaking edges, so a
+        # paired device can release/re-acquire its mic in step with the agent's
+        # turn (the iPad half-duplex Bluetooth route). Edge-triggered — faster
+        # than the 0.5s polled state mirror in main.py.
+        self.on_speech_state = None
         self._q: queue.Queue[str | None] = queue.Queue()
         self._thread: threading.Thread | None = None
         if not enabled:
@@ -141,6 +153,24 @@ class Speaker:
             print(f"[tts] engine {self.engine_name!r} cannot route to a remote "
                   "device; keeping laptop speakers on")
 
+    def set_speech_state_callback(self, callback) -> None:
+        """Register ``callback(active: bool)`` fired at each speaking edge.
+
+        Called from the TTS worker thread on the True edge (before any audio is
+        routed) and the False edge (after the line drains). It must not block or
+        raise; a raising callback is caught so it can never take the mouth down.
+        """
+        self.on_speech_state = callback
+
+    def _emit_speech_state(self, active: bool) -> None:
+        cb = self.on_speech_state
+        if cb is None:
+            return
+        try:
+            cb(bool(active))
+        except Exception as exc:  # noqa: BLE001 - a bad listener must not mute us
+            print(f"[tts] speech-state callback failed ({exc})")
+
     # ----------------------------------------------------------------- worker
 
     def _run(self) -> None:
@@ -174,15 +204,28 @@ class Speaker:
             text = self._q.get()
             if text is None:
                 break
-            # Flag flips inside the worker around the blocking call, so it is
-            # exact by construction — the Listener mutes while this is True.
-            self.speaking = True
-            try:
-                self._emit(text, player)
-            except Exception as exc:  # noqa: BLE001
-                print(f"[tts] speak failed: {exc}")
-            finally:
-                self.speaking = False
+            self._speak_one(text, player)
+
+    def _speak_one(self, text: str, player) -> None:
+        """Speak one queued line, flipping `speaking` around the blocking call.
+
+        The flag is exact by construction — the Listener mutes while it is True.
+        The speaking edges are also signalled to `on_speech_state` (True before
+        any audio is routed, False after the line drains) so a paired device can
+        release/re-acquire its mic in step with the turn.
+        """
+        self.speaking = True
+        # Signal the True edge before any audio is routed, so a paired device can
+        # release its mic and let iOS switch to the Bluetooth speaker while the
+        # lead pad in _emit plays out.
+        self._emit_speech_state(True)
+        try:
+            self._emit(text, player)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[tts] speak failed: {exc}")
+        finally:
+            self.speaking = False
+            self._emit_speech_state(False)
 
     def _downgrade_to_pyttsx3(self) -> None:
         self._backend = None
@@ -205,6 +248,23 @@ class Speaker:
         if self._backend is not None:
             first = True
             routed_remote = False
+            # Silent lead pad: only on the device route (no local player to block
+            # on), giving the far end time to move audio onto the Bluetooth A2DP
+            # speaker before the first word. `speaking` is already True, so the
+            # mic stays muted across the pad.
+            if (self.remote_sink is not None and not self.local_playback
+                    and _REMOTE_LEAD_SECONDS > 0):
+                pad_rate = 22050
+                pad = np.zeros(int(_REMOTE_LEAD_SECONDS * pad_rate), dtype=np.float32)
+                try:
+                    self.remote_sink(pad, pad_rate)
+                    routed_remote = True
+                except Exception as exc:  # noqa: BLE001 - a dead link mutes
+                    print(f"[tts] remote sink failed on lead pad ({exc}); "
+                          "falling back to laptop audio")
+                    self.local_playback = True
+                else:
+                    time.sleep(_REMOTE_LEAD_SECONDS)
             for chunk in _split_chunks(text):
                 samples = None
                 sample_rate = 22050

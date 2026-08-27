@@ -782,6 +782,20 @@ def main():
                         voice_agent.speaker.set_remote_sink(
                             _route_speech,
                             local_playback=args.ipad_audio == "both")
+
+                        # Edge-triggered speaking/listening signal so the iPad
+                        # releases its mic while the agent talks (letting iOS
+                        # route the voice to a Bluetooth A2DP speaker) and
+                        # re-acquires it to listen. Rides the same control
+                        # channel as the 0.5s state mirror below, but fires the
+                        # instant speech starts/ends. See relay/static/ipad.html.
+                        def _signal_speech_state(active):
+                            pipeline.camera.ipad_control({
+                                "type": "agent_audio",
+                                "phase": "speaking" if active else "listening"})
+
+                        voice_agent.speaker.set_speech_state_callback(
+                            _signal_speech_state)
                         print("[ipad] agent speech will play on the paired "
                               f"device ({args.ipad_audio}; --ipad-audio laptop "
                               "to keep it local)")

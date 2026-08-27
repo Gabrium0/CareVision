@@ -134,6 +134,9 @@ def _speaker_with_backend(monkeypatch) -> Speaker:
 
 def test_speaker_routes_chunks_to_remote_sink_and_mutes_local(monkeypatch):
     speaker = _speaker_with_backend(monkeypatch)
+    # Isolate chunk routing from the Bluetooth-route lead pad (own test in
+    # tests/echo_turn_taking_test.py).
+    monkeypatch.setattr("audio.tts._REMOTE_LEAD_SECONDS", 0.0)
     routed = []
     speaker.remote_sink = lambda samples, rate: routed.append((samples, rate))
     speaker.local_playback = False

@@ -50,6 +50,7 @@ def _bare_speaker(backend: _StubBackend) -> tts_mod.Speaker:
     speaker._engine = backend.engine
     speaker.remote_sink = None
     speaker.local_playback = True
+    speaker.on_speech_state = None
     return speaker
 
 
@@ -64,6 +65,8 @@ class _Sink:
 def test_device_routed_speech_holds_speaking_for_audible_duration(monkeypatch):
     sleeps: list[float] = []
     monkeypatch.setattr(tts_mod.time, "sleep", lambda s: sleeps.append(s))
+    # Focus on real-chunk pacing; the lead pad has its own test below.
+    monkeypatch.setattr(tts_mod, "_REMOTE_LEAD_SECONDS", 0.0)
     speaker = _bare_speaker(_StubBackend(seconds_per_chunk=2.0))
     sink = _Sink()
     speaker.set_remote_sink(sink, local_playback=False)
@@ -74,6 +77,102 @@ def test_device_routed_speech_holds_speaking_for_audible_duration(monkeypatch):
     assert len(sink.chunks) == 2
     # Each chunk is held for its real duration, plus the remote tail once.
     assert sleeps == [2.0, 2.0, tts_mod._REMOTE_TAIL_SECONDS]
+
+
+def test_device_route_prepends_silent_lead_pad(monkeypatch):
+    """A silent pad precedes the first word so the iPad's Bluetooth (A2DP) route
+    has time to settle after the mic is released — otherwise iOS clips or briefly
+    plays the opening on the built-in speaker."""
+    sleeps: list[float] = []
+    monkeypatch.setattr(tts_mod.time, "sleep", lambda s: sleeps.append(s))
+    monkeypatch.setattr(tts_mod, "_REMOTE_LEAD_SECONDS", 0.5)
+    speaker = _bare_speaker(_StubBackend(seconds_per_chunk=2.0))
+    sink = _Sink()
+    speaker.set_remote_sink(sink, local_playback=False)
+    speaker.speaking = True
+    speaker._emit("One sentence.", None)
+    speaker.speaking = False
+    # First routed block is the silent pad; then the one real chunk.
+    assert len(sink.chunks) == 2
+    pad_len, pad_rate = sink.chunks[0]
+    assert pad_len == int(0.5 * pad_rate)                 # 0.5s of silence
+    # The pad is held for its duration, then the real chunk, then the tail.
+    assert sleeps == [0.5, 2.0, tts_mod._REMOTE_TAIL_SECONDS]
+
+
+def test_lead_pad_is_skipped_on_the_local_playback_path(monkeypatch):
+    """The pad is a device-route affordance; local laptop audio must not get it."""
+    sleeps: list[float] = []
+    monkeypatch.setattr(tts_mod.time, "sleep", lambda s: sleeps.append(s))
+    monkeypatch.setattr(tts_mod, "_REMOTE_LEAD_SECONDS", 0.5)
+    speaker = _bare_speaker(_StubBackend(seconds_per_chunk=1.0))
+
+    class _Player:
+        def play(self, samples, rate):
+            pass
+
+        def wait(self):
+            pass
+
+    speaker._emit("Hello.", _Player())      # local_playback stays True
+    assert sleeps == []
+
+
+class _StateRecorder:
+    def __init__(self):
+        self.events: list[bool] = []
+
+    def __call__(self, active):
+        self.events.append(active)
+
+
+def test_speech_state_callback_fires_on_speaking_edges(monkeypatch):
+    """The True edge must precede audio (mic release first) and the False edge
+    must follow it (mic re-acquire after the line drains)."""
+    monkeypatch.setattr(tts_mod.time, "sleep", lambda s: None)
+    monkeypatch.setattr(tts_mod, "_REMOTE_LEAD_SECONDS", 0.0)
+    speaker = _bare_speaker(_StubBackend(seconds_per_chunk=0.1))
+    order: list[str] = []
+    speaker.set_remote_sink(lambda samples, rate: order.append("audio"),
+                            local_playback=False)
+
+    def _record(active):
+        order.append("speak" if active else "listen")
+        assert speaker.speaking is active     # flag is exact at the edge
+
+    speaker.set_speech_state_callback(_record)
+    speaker._speak_one("One sentence.", None)
+    assert order[0] == "speak"                # released before any audio
+    assert order[-1] == "listen"              # re-acquired after audio
+    assert "audio" in order[1:-1]
+    assert not speaker.speaking
+
+
+def test_speech_state_callback_errors_never_mute_the_agent(monkeypatch):
+    monkeypatch.setattr(tts_mod.time, "sleep", lambda s: None)
+    monkeypatch.setattr(tts_mod, "_REMOTE_LEAD_SECONDS", 0.0)
+    speaker = _bare_speaker(_StubBackend(seconds_per_chunk=0.1))
+    speaker.set_remote_sink(_Sink(), local_playback=False)
+    speaker.set_speech_state_callback(lambda active: (_ for _ in ()).throw(RuntimeError("boom")))
+    speaker._speak_one("Hello.", None)        # must not raise
+    assert not speaker.speaking
+
+
+def test_agent_audio_control_message_shape(monkeypatch):
+    """Mirrors main.py's wiring: each speaking edge produces an `agent_audio`
+    control message the iPad turns into a mic release/acquire."""
+    monkeypatch.setattr(tts_mod.time, "sleep", lambda s: None)
+    monkeypatch.setattr(tts_mod, "_REMOTE_LEAD_SECONDS", 0.0)
+    speaker = _bare_speaker(_StubBackend(seconds_per_chunk=0.1))
+    speaker.set_remote_sink(_Sink(), local_playback=False)
+    sent: list[dict] = []
+    speaker.set_speech_state_callback(lambda active: sent.append(
+        {"type": "agent_audio", "phase": "speaking" if active else "listening"}))
+    speaker._speak_one("Hello there.", None)
+    assert sent == [
+        {"type": "agent_audio", "phase": "speaking"},
+        {"type": "agent_audio", "phase": "listening"},
+    ]
 
 
 def test_local_playback_path_is_unchanged(monkeypatch):
