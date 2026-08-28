@@ -29,3 +29,8 @@ app.log
 # frames of a real person; the repository is public, so they stay on disk and
 # out of history. Point tools at them with an explicit path argument.
 vlmpics/
+
+# Native iPad app (ios/CareVisioniPad) — Xcode build products and per-user state
+ios/build/
+ios/DerivedData/
+**/xcuserdata/

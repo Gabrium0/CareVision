@@ -149,6 +149,9 @@ task summaries.
   topics, alerts, configuration, and dashboards.
 - [AI development workflow](docs/AI_DEVELOPMENT.md) — bounded verification and
   private runtime health checks.
+- [Native iPad app](docs/IPAD_NATIVE_APP.md) — the iPadOS 13.3.1 app in
+  `ios/CareVisioniPad` that connects directly over the hotspot
+  (`--ipad-transport lan`), replacing the browser page.
 - [Multimodal showcase](docs/MULTIMODAL_SHOWCASE.md),
   [RealSense](docs/REALSENSE_D435I.md), and
   [skin screening](docs/SKIN_DETECTION.md) — feature-specific behavior.

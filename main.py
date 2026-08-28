@@ -407,9 +407,20 @@ def main():
                          "(default 20; "
                          "below ~20 the rPPG quality score is scaled down)")
     ap.add_argument("--ipad-transport", default="datachannel",
-                    choices=("datachannel", "video"),
-                    help="datachannel = JPEG frames (no temporal compression, "
-                         "better for rPPG); video is reserved but not implemented")
+                    choices=("datachannel", "video", "lan"),
+                    help="datachannel = JPEG frames over WebRTC via the relay "
+                         "(browser page, no temporal compression, better for "
+                         "rPPG); lan = direct WebSocket from the NATIVE iPad app "
+                         "over the hotspot (no relay/WebRTC); video is reserved "
+                         "but not implemented")
+    ap.add_argument("--ipad-listen-host", default=None,
+                    help="interface the --ipad-transport lan server binds "
+                         "(default 192.168.137.1, the Windows hotspot gateway; "
+                         "use 0.0.0.0 to bind all interfaces)")
+    ap.add_argument("--ipad-listen-port", type=int, default=8788,
+                    help="TCP port the --ipad-transport lan server binds "
+                         "(default 8788; allow it inbound on the Windows Private "
+                         "firewall profile)")
     ap.add_argument("--ipad-stun", default="",
                     help="comma-separated STUN URLs; unused on a laptop hotspot "
                          "where ICE settles on host candidates")
@@ -484,26 +495,43 @@ def main():
             ipad_code = fixed_code
         else:
             ipad_code = f"{secrets.randbelow(1_000_000):06d}"
+        ipad_lan = args.ipad_transport == "lan"
         ipad_relay = args.ipad_relay_url or os.environ.get("IPAD_RELAY_URL")
         ipad_room = args.ipad_room or os.environ.get("IPAD_ROOM")
         ipad_secret = os.environ.get("RELAY_SECRET")
-        missing = [name for name, value in (("IPAD_RELAY_URL", ipad_relay),
-                                            ("IPAD_ROOM", ipad_room),
-                                            ("RELAY_SECRET", ipad_secret))
-                   if not value]
+        # The native LAN app dials the laptop directly, so it needs no relay URL;
+        # room + secret still key the same pairing HMAC. The WebRTC/browser path
+        # needs all three.
+        required = [("IPAD_ROOM", ipad_room), ("RELAY_SECRET", ipad_secret)]
+        if not ipad_lan:
+            required.insert(0, ("IPAD_RELAY_URL", ipad_relay))
+        missing = [name for name, value in required if not value]
         if missing:
+            hint = ("(or pass --ipad-room)" if ipad_lan
+                    else "(or pass --ipad-relay-url/--ipad-room)")
             ap.error(f"--source ipad needs {', '.join(missing)}; set them in .env "
-                     f"(or pass --ipad-relay-url/--ipad-room)")
+                     f"{hint}")
         camera_opts.update({
             "request_fps": args.ipad_fps,
             "ipad_relay_url": ipad_relay, "ipad_room": ipad_room,
             "ipad_secret": ipad_secret, "ipad_code": ipad_code,
             "ipad_stun": tuple(s.strip() for s in args.ipad_stun.split(",") if s.strip()),
-            "ipad_transport": args.ipad_transport})
-        print(f"\n[ipad] open  {ipad_relay.rstrip('/')}/r/{ipad_room}"
-              f"\n[ipad] pairing code: {ipad_code}"
-              f"\n[ipad] start the laptop first — the relay's free tier can take "
-              f"~60s to wake, and whoever connects first waits for it\n")
+            "ipad_transport": args.ipad_transport,
+            "ipad_listen_host": args.ipad_listen_host,
+            "ipad_listen_port": args.ipad_listen_port})
+        if ipad_lan:
+            lan_host = args.ipad_listen_host or "192.168.137.1"
+            print(f"\n[ipad] native app: connect to "
+                  f"ws://{lan_host}:{args.ipad_listen_port}/ws  (room {ipad_room})"
+                  f"\n[ipad] pairing code: {ipad_code}"
+                  f"\n[ipad] the iPad must be on this laptop's Windows hotspot; "
+                  f"allow TCP {args.ipad_listen_port} inbound on the Private "
+                  f"firewall profile\n")
+        else:
+            print(f"\n[ipad] open  {ipad_relay.rstrip('/')}/r/{ipad_room}"
+                  f"\n[ipad] pairing code: {ipad_code}"
+                  f"\n[ipad] start the laptop first — the relay's free tier can take "
+                  f"~60s to wake, and whoever connects first waits for it\n")
 
     config = load_config()
     if args.dev_mode:
@@ -677,6 +705,19 @@ def main():
         voice_agent.listener = typed_listener
         print("[agent] typed input attached — answer from the companion page")
 
+    # The native iPad app (--ipad-transport lan) does speech-to-text on-device and
+    # sends the result as `asr_text`. Feed it through the same TypedListener
+    # polling contract the mic path uses, so the agent's self-echo, reply-cadence,
+    # and no-repeat guards apply identically — the device is the ears, replacing
+    # the laptop microphone listener selected above.
+    native_asr_listener = None
+    if (ipad_source and args.ipad_transport == "lan" and not args.type_input
+            and not is_replay):
+        from audio.typed import TypedListener
+        native_asr_listener = TypedListener()
+        voice_agent.listener = native_asr_listener
+        print("[ipad] native on-device ASR attached — the agent hears the iPad app")
+
     if args.assessment:
         WorkflowEngine.instance().start(args.assessment)
     elif args.showcase:
@@ -810,6 +851,21 @@ def main():
                 target = payload.get("target")
                 scope = payload.get("scope")
 
+                msg_type = str(payload.get("type", ""))
+                # Native-app voice control (LAN transport): the iPad transcribes
+                # on-device and reports its own TTS turn edges. Handle these before
+                # the module path — they need no reply and no worker thread.
+                if msg_type == "asr_text":
+                    if native_asr_listener is not None:
+                        native_asr_listener.push(payload.get("text", ""))
+                    return
+                if msg_type == "speaking":
+                    # The app owns its native-TTS speaking edges; mirror them onto
+                    # the listener's turn-timing hook for parity with the mic path.
+                    if native_asr_listener is not None and payload.get("speaking"):
+                        native_asr_listener.mark_agent_spoke()
+                    return
+
                 def run():
                     # `target` is echoed at the top level of both replies: the
                     # page keys its per-button busy flag off msg.target, so an
@@ -843,7 +899,28 @@ def main():
             if microphone_mode == "device":
                 pipeline.camera.ipad_attach_audio_bus(audio_bus)
             if args.ipad_audio != "laptop":
-                if not args.no_voice:
+                if not args.no_voice and args.ipad_transport == "lan":
+                    # Native app: speak on-device. Forward the guarded line as
+                    # text on the speaking edge (the app's AVSpeechSynthesizer
+                    # voices it) and keep the laptop silent. `public_line()` is the
+                    # only agent-authored, guarded string exposed to the device;
+                    # no PCM is routed. A no-op remote sink plus local_playback off
+                    # keeps the Piper speaker silent while still holding `speaking`
+                    # for the real duration (turn-taking parity).
+                    def _speak_on_device(active):
+                        if not active:
+                            return
+                        line = voice_agent.public_line()
+                        if line:
+                            pipeline.camera.send_control({"type": "speak", "text": line})
+
+                    voice_agent.speaker.set_speech_state_callback(_speak_on_device)
+                    voice_agent.speaker.set_remote_sink(lambda samples, rate: None,
+                                                        local_playback=False)
+                    voice_agent.speaker.local_playback = False
+                    print("[ipad] native app speaks on-device; laptop audio muted "
+                          "(use --tts piper so the laptop stays silent)")
+                elif not args.no_voice:
                     if voice_agent.speaker.engine_name == "piper":
                         def _route_speech(samples, rate):
                             pipeline.camera.ipad_send_agent_audio(samples, rate)

@@ -156,7 +156,10 @@ class IPadLink:
                  stun: tuple = (), transport: str = "datachannel",
                  pair_ttl: float = 600.0,
                  audio_bus=None,
-                 on_control: Optional[Callable[[dict, Callable], None]] = None):
+                 on_control: Optional[Callable[[dict, Callable], None]] = None,
+                 **_unused):
+        # **_unused swallows LAN-transport opts (listen_host/listen_port) so
+        # IPadCamera can pass one _link_opts dict to whichever link it builds.
         if not relay_url or not room or not secret or not code:
             raise RuntimeError(
                 "iPad link needs relay url, room, secret and pairing code "

@@ -207,6 +207,8 @@ class IPadCamera:
                  ipad_secret: Optional[str] = None, ipad_code: Optional[str] = None,
                  ipad_stun: tuple = (), ipad_transport: str = "datachannel",
                  ipad_pair_ttl: float = 600.0, connect_timeout: float = 5.0,
+                 ipad_listen_host: Optional[str] = None,
+                 ipad_listen_port: Optional[int] = None,
                  min_fps: float = 10.0, **_unused):
         # **_unused swallows UVC-only camera_opts (lock/exposure/gain...) so
         # main.py can pass one opts dict to whichever backend gets built.
@@ -219,7 +221,9 @@ class IPadCamera:
         self._link_opts = {"relay_url": ipad_relay_url, "room": ipad_room,
                            "secret": ipad_secret, "code": ipad_code,
                            "stun": tuple(ipad_stun), "transport": ipad_transport,
-                           "pair_ttl": ipad_pair_ttl}
+                           "pair_ttl": ipad_pair_ttl,
+                           "listen_host": ipad_listen_host,
+                           "listen_port": ipad_listen_port}
         self._link = link                  # injected in tests; built lazily in open()
         self._owns_link = link is None
 
@@ -399,7 +403,17 @@ class IPadCamera:
     # ---- internals -------------------------------------------------------
 
     def _build_link(self):
-        """Import the WebRTC stack only when an iPad source is actually used."""
+        """Build the transport for this source, importing its stack lazily.
+
+        ``lan`` is the native-app path: a direct WebSocket to the laptop over the
+        hotspot, no relay/WebRTC. ``datachannel`` (default) keeps the browser
+        WebRTC link. Both present the same duck-typed interface, so nothing else
+        in this class changes between them.
+        """
+        transport = self._link_opts.get("transport", "datachannel")
+        if transport == "lan":
+            from .ipad_lan_link import IPadLanLink   # noqa: PLC0415 - lazy by design
+            return IPadLanLink(**self._link_opts)
         from .ipad_link import IPadLink       # noqa: PLC0415 - lazy by design
         return IPadLink(**self._link_opts)
 
