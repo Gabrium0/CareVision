@@ -53,6 +53,8 @@ final class LinkClient: NSObject {
     private var nextSeq: UInt32 = 0
     private var inFlight: [UInt32: TimeInterval] = [:]   // seq -> sentAt (monotonic)
     private var ackWatchdog: DispatchSourceTimer?
+    private var ackLatencies: [Double] = []              // ms, rolling window
+    private var backpressureCount = 0                    // window-full drops since drain
 
     private(set) var state: LinkState = .idle {
         didSet { emitState() }
@@ -82,6 +84,16 @@ final class LinkClient: NSObject {
             guard let self = self else { return }
             self.running = false
             self.teardown(state: .idle)
+        }
+    }
+
+    /// Force an immediate reconnect (manual "Reconnect"), resetting backoff.
+    func reconnectNow() {
+        queue.async { [weak self] in
+            guard let self = self, self.running else { return }
+            self.reconnectAttempt = 0
+            self.teardown(state: .connecting)
+            self.connect()
         }
     }
 
@@ -182,8 +194,11 @@ final class LinkClient: NSObject {
     /// Send one JPEG as an IPF1 frame. No-op (dropped) if the window is full.
     func sendFrame(jpeg: Data, width: UInt16, height: UInt16, mediaTime: Double) {
         queue.async { [weak self] in
-            guard let self = self, let task = self.task, self.state == .paired,
-                  self.inFlight.count < self.frameWindow else { return }
+            guard let self = self, let task = self.task, self.state == .paired else { return }
+            if self.inFlight.count >= self.frameWindow {
+                self.backpressureCount += 1     // sender window full → shed this frame
+                return
+            }
             let seq = self.nextSeq
             self.nextSeq = self.nextSeq &+ 1
             self.inFlight[seq] = ProcessInfo.processInfo.systemUptime
@@ -197,7 +212,26 @@ final class LinkClient: NSObject {
     }
 
     private func acknowledge(_ seq: UInt32) {
-        inFlight.removeValue(forKey: seq)
+        guard let sentAt = inFlight.removeValue(forKey: seq) else { return }
+        let ms = (ProcessInfo.processInfo.systemUptime - sentAt) * 1000
+        ackLatencies.append(ms)
+        if ackLatencies.count > 60 { ackLatencies.removeFirst(ackLatencies.count - 60) }
+    }
+
+    /// Rolling ACK p90 (ms) and whether the window backed up, then reset the
+    /// window. Drives the adaptive capture ladder. Safe from any thread.
+    func drainFlowStats() -> (ackP90Ms: Double, backpressured: Bool) {
+        queue.sync {
+            var p90 = 0.0
+            if !ackLatencies.isEmpty {
+                let sorted = ackLatencies.sorted()
+                p90 = sorted[min(sorted.count - 1, Int(Double(sorted.count) * 0.9))]
+            }
+            let bp = backpressureCount > 0
+            ackLatencies.removeAll(keepingCapacity: true)
+            backpressureCount = 0
+            return (p90, bp)
+        }
     }
 
     private func startAckWatchdog() {

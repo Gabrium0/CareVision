@@ -746,6 +746,12 @@ class Pipeline:
         with self._vitals_lock:
             self._latest_fast_motion = motion
             self._latest_fast_motion_at = ts
+        # On-device rPPG: drain any iPad-supplied ROI colour samples every tick so
+        # they cannot accumulate, and attach them to the fast context below. They
+        # ride the same face/motion gate as the local pixel path — motion or a
+        # missing anchor drops this tick's samples, exactly as it would drop a
+        # local sample. Empty (and free) for non-iPad sources.
+        device_rppg = self.camera.drain_rppg_samples()
         if not self._fast_capture_ready:
             self._fast_rejection_reason = "capture gate blocked"
             return
@@ -803,6 +809,10 @@ class Pipeline:
         fast_ctx = FrameContext(frame=frame, timestamp=ts, frame_index=-1,
                                 fps=self.camera.current_fps, face=fresh_face,
                                 motion_energy=motion)
+        if device_rppg:
+            # Device-first rPPG: heart_rate/spo2 fast_update use these raw-pixel
+            # ROI colour means instead of sampling the (JPEG-decoded) frame.
+            fast_ctx.extras["rppg_samples"] = device_rppg
         if diag:
             self._diag_fed += 1
             self._maybe_log_diag(ts)

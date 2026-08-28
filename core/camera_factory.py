@@ -225,3 +225,14 @@ class SwitchableCamera:
         """Route agent speech to the paired device; no-op for other sources."""
         if isinstance(self.inner, IPadCamera):
             self.inner.send_agent_audio(samples, rate, channels)
+
+    def ingest_rppg_samples(self, payload: dict) -> None:
+        """Buffer on-device rPPG samples from the app; no-op for other sources."""
+        if isinstance(self.inner, IPadCamera):
+            self.inner.ingest_rppg_samples(payload)
+
+    def drain_rppg_samples(self) -> list:
+        """Drain pending on-device rPPG samples; empty for other sources."""
+        if isinstance(self.inner, IPadCamera):
+            return self.inner.drain_rppg_samples()
+        return []

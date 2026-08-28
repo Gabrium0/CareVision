@@ -1,6 +1,15 @@
 import AVFoundation
 import CoreImage
 import UIKit
+import Vision
+
+/// How well the person is framed, for on-screen coaching.
+enum Framing { case noFace, tooFar, offCenter, good }
+
+protocol CameraControllerDelegate: AnyObject {
+    func camera(_ c: CameraController, framing: Framing)
+    func camera(_ c: CameraController, signals: QuickSignals)
+}
 
 /// AVFoundation capture that feeds the link with IPF1 JPEG frames.
 ///
@@ -13,17 +22,32 @@ import UIKit
 /// Flow control is cooperative: before spending CPU on a JPEG the controller asks
 /// `link.readyForFrame`, so a stalled link sheds work instead of buffering —
 /// mirroring the browser policy's window.
-final class CameraController: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
+final class CameraController: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate,
+                              AVCaptureMetadataOutputObjectsDelegate {
+    weak var delegate: CameraControllerDelegate?
     private weak var link: LinkClient?
     private let session = AVCaptureSession()
     private let sampleQueue = DispatchQueue(label: "carevision.capture")
+    private let metadataQueue = DispatchQueue(label: "carevision.metadata")
     private let ciContext = CIContext(options: [.useSoftwareRenderer: false])
 
-    /// Long edge of the encoded frame and JPEG quality — a small fixed profile for
-    /// v1 (the backend's adaptive ladder can be layered on later).
-    private let targetLongEdge: CGFloat = 960
-    private let jpegQuality: CGFloat = 0.85
-    private let targetFPS: Double = 20
+    // On-device perception. Vision landmarks are throttled well below the capture
+    // rate and run one-at-a-time on their own queue so the A10 never stalls the
+    // capture path — the core anti-lag measure.
+    private let faceVision = FaceVision()
+    private let rppgSampler = RPPGSampler()
+    private let visionInterval: TimeInterval = 1.0 / 12.0
+    private var lastVisionAt: TimeInterval = 0
+    private var lastFramingSent: Framing = .good
+
+    // Capture profile, driven by the ACK-latency ladder + thermal state.
+    private let ladder = AdaptiveLadder()
+    private var targetLongEdge: CGFloat = 960
+    private var jpegQuality: CGFloat = 0.90
+    private var targetFPS: Double = 20
+    private var lastSentTier = -1
+    private var visionThermalPause = false
+    private var configured = false
 
     private var lastSentUptime: TimeInterval = 0
     private var framesSinceStat = 0
@@ -68,6 +92,17 @@ final class CameraController: NSObject, AVCaptureVideoDataOutputSampleBufferDele
         }
     }
 
+    /// Resume the already-configured session (e.g. returning from background).
+    /// A no-op before the first successful `start`.
+    func resume() {
+        sampleQueue.async { [weak self] in
+            guard let self = self, self.configured, !self.session.isRunning else { return }
+            self.session.startRunning()
+        }
+    }
+
+    deinit { NotificationCenter.default.removeObserver(self) }
+
     private func configureAndRun(_ completion: @escaping (Bool) -> Void) {
         sampleQueue.async { [weak self] in
             guard let self = self else { return }
@@ -98,14 +133,29 @@ final class CameraController: NSObject, AVCaptureVideoDataOutputSampleBufferDele
             // The iPad is mounted in landscape; stream upright landscape frames so
             // the backend's pose/face geometry is not rotated 90°.
             self.applyOrientation(self.currentOrientation)
+
+            // Near-free hardware face detection for always-on presence/framing
+            // coaching (separate from the throttled Vision landmark pass).
+            let metadata = AVCaptureMetadataOutput()
+            if self.session.canAddOutput(metadata) {
+                self.session.addOutput(metadata)
+                metadata.setMetadataObjectsDelegate(self, queue: self.metadataQueue)
+                if metadata.availableMetadataObjectTypes.contains(.face) {
+                    metadata.metadataObjectTypes = [.face]
+                }
+            }
             self.session.commitConfiguration()
             self.session.startRunning()
+            self.configured = true
 
             // Tell the laptop which timebase stamps these frames — the analogue of
             // the browser's clock_source report, but a clean hardware PTS.
             self.link?.sendControl(["type": "clock_source",
                                     "clock_source": "avfoundation-pts"])
-            DispatchQueue.main.async { completion(true) }
+            DispatchQueue.main.async {
+                self.startThermalMonitoring()
+                completion(true)
+            }
         }
     }
 
@@ -145,23 +195,74 @@ final class CameraController: NSObject, AVCaptureVideoDataOutputSampleBufferDele
 
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
-        guard let link = link, link.readyForFrame else { return }
-
-        // Pace to the target fps so we never out-run the analysis pipeline.
-        let now = ProcessInfo.processInfo.systemUptime
-        if now - lastSentUptime < (1.0 / targetFPS) { return }
-
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-        let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
-        let mediaTime = CMTimeGetSeconds(pts)
+        let mediaTime = CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(sampleBuffer))
         guard mediaTime.isFinite else { return }
 
+        runVisionIfDue(pixelBuffer: pixelBuffer, mediaTime: mediaTime)
+
+        // Frame send: paced and gated by the link's windowed-ACK flow control.
+        guard let link = link, link.readyForFrame else { return }
+        let now = ProcessInfo.processInfo.systemUptime
+        if now - lastSentUptime < (1.0 / targetFPS) { return }
         guard let (jpeg, size) = encodeJPEG(pixelBuffer) else { return }
         lastSentUptime = now
         link.sendFrame(jpeg: jpeg, width: UInt16(size.width), height: UInt16(size.height),
                        mediaTime: mediaTime)
         reportStats(size: size, bytes: jpeg.count, now: now)
     }
+
+    /// Dispatch a throttled, one-in-flight Vision landmark pass; on a hit, sample
+    /// rPPG ROI colour from the same buffer and stream it, and publish quick
+    /// signals. Runs off the capture queue so it never stalls frame delivery.
+    private func runVisionIfDue(pixelBuffer: CVPixelBuffer, mediaTime: Double) {
+        let now = ProcessInfo.processInfo.systemUptime
+        guard !visionThermalPause else { return }   // shed Vision under thermal pressure
+        guard now - lastVisionAt >= visionInterval, !faceVision.isBusy else { return }
+        lastVisionAt = now
+        faceVision.detect(pixelBuffer: pixelBuffer,
+                          orientation: visionOrientation) { [weak self] buffer, obs in
+            guard let self = self else { return }
+            guard let obs = obs else { return }
+            let (sample, signals) = self.rppgSampler.sample(
+                pixelBuffer: buffer, face: obs, mediaTime: mediaTime)
+            if let s = sample {
+                self.link?.sendControl(["type": "rppg_samples",
+                                        "s": [[s.t, s.r, s.g, s.b, Double(s.n)]]])
+            }
+            DispatchQueue.main.async { self.delegate?.camera(self, signals: signals) }
+        }
+    }
+
+    // MARK: - presence / framing (metadata face detection)
+
+    func metadataOutput(_ output: AVCaptureMetadataOutput,
+                        didOutput objects: [AVMetadataObject],
+                        from connection: AVCaptureConnection) {
+        let faces = objects.compactMap { $0 as? AVMetadataFaceObject }
+        let framing: Framing
+        if let face = faces.max(by: { $0.bounds.width < $1.bounds.width }) {
+            let b = face.bounds                     // normalized in the output space
+            if b.width < 0.16 {
+                framing = .tooFar
+            } else if b.midX < 0.25 || b.midX > 0.75 {
+                framing = .offCenter
+            } else {
+                framing = .good
+            }
+        } else {
+            framing = .noFace
+        }
+        guard framing != lastFramingSent else { return }
+        lastFramingSent = framing
+        DispatchQueue.main.async { self.delegate?.camera(self, framing: framing) }
+    }
+
+    /// Vision orientation for the delivered buffer. The output connection is set
+    /// to a landscape `videoOrientation`, so buffers arrive upright and `.up`
+    /// matches; front-camera mirroring is symmetric for our colour/aspect uses.
+    /// (If landmark detection ever fails on-device, this is the knob to tune.)
+    private var visionOrientation: CGImagePropertyOrientation { .up }
 
     private func encodeJPEG(_ pixelBuffer: CVPixelBuffer) -> (Data, CGSize)? {
         var image = CIImage(cvPixelBuffer: pixelBuffer)
@@ -188,15 +289,63 @@ final class CameraController: NSObject, AVCaptureVideoDataOutputSampleBufferDele
         let dt = now - lastStatAt
         guard dt >= 1.0 else { return }
         let fps = Double(framesSinceStat) / dt
-        link?.sendControl([
+
+        // Adapt the capture profile to the link's ACK latency / backpressure.
+        let flow: (ackP90Ms: Double, backpressured: Bool) =
+            link?.drainFlowStats() ?? (ackP90Ms: 0, backpressured: false)
+        let profile = ladder.update(ackP90ms: flow.ackP90Ms,
+                                    backpressured: flow.backpressured, now: now)
+        applyProfile(profile)
+
+        let stats: [String: Any] = [
             "type": "sender_stats",
-            "sent_fps": round(fps * 100) / 100,
+            "sent_fps": (fps * 100).rounded() / 100,
             "target_fps": targetFPS,
             "width": Int(size.width),
             "height": Int(size.height),
             "jpeg_quality": Double(jpegQuality),
-            "jpeg_bytes": bytes])
+            "jpeg_bytes": bytes,
+            "tier": profile.tier,
+            "quality_tier": profile.tier,
+            "ack_p90_ms": (flow.ackP90Ms * 100).rounded() / 100,
+        ]
+        link?.sendControl(stats)
         framesSinceStat = 0
         lastStatAt = now
+    }
+
+    /// Adopt a capture tier; on a change, announce it as a `capture_profile` so the
+    /// backend resets rPPG buffers before the first frame of the new profile.
+    private func applyProfile(_ p: CaptureProfile) {
+        targetLongEdge = p.longEdge
+        jpegQuality = p.quality
+        targetFPS = p.fps
+        guard p.tier != lastSentTier else { return }
+        lastSentTier = p.tier
+        let h = Int((p.longEdge * 0.75).rounded())
+        link?.sendControl([
+            "type": "capture_profile",
+            "width": Int(p.longEdge), "height": h,
+            "tier": p.tier, "quality_tier": p.tier,
+            "jpeg_quality": Double(p.quality)])
+    }
+
+    // MARK: - thermal
+
+    private func startThermalMonitoring() {
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(thermalChanged),
+            name: ProcessInfo.thermalStateDidChangeNotification, object: nil)
+        thermalChanged()
+    }
+
+    @objc private func thermalChanged() {
+        switch ProcessInfo.processInfo.thermalState {
+        case .nominal:  ladder.thermalFloor = 0; visionThermalPause = false
+        case .fair:     ladder.thermalFloor = 1; visionThermalPause = false
+        case .serious:  ladder.thermalFloor = 3; visionThermalPause = true
+        case .critical: ladder.thermalFloor = 4; visionThermalPause = true
+        @unknown default: ladder.thermalFloor = 1; visionThermalPause = false
+        }
     }
 }

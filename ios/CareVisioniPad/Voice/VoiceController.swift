@@ -31,6 +31,7 @@ final class VoiceController: NSObject, AVSpeechSynthesizerDelegate {
     private var muted = false
     private let echoTail: TimeInterval = 0.6
     private var listening = false
+    private var bargeInHits = 0            // consecutive speech buffers during TTS
 
     override init() {
         super.init()
@@ -63,10 +64,12 @@ final class VoiceController: NSObject, AVSpeechSynthesizerDelegate {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed != lastSpokenText else { return }
         lastSpokenText = trimmed
+        guard !SettingsStore.muted else { return }
         configureSession(forSpeaking: true)
         let utterance = AVSpeechUtterance(string: trimmed)
-        utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
-        utterance.rate = AVSpeechUtteranceDefaultSpeechRate
+        utterance.voice = SettingsStore.voice ?? AVSpeechSynthesisVoice(language: "en-US")
+        utterance.rate = SettingsStore.rate
+        utterance.volume = SettingsStore.volume
         synth.speak(utterance)
     }
 
@@ -105,10 +108,27 @@ final class VoiceController: NSObject, AVSpeechSynthesizerDelegate {
         self.request = request
 
         let node = audioEngine.inputNode
+        // Hardware echo cancellation (iOS 13+) so the mic doesn't hear the agent —
+        // this is what makes barge-in possible without transcribing our own TTS.
+        try? node.setVoiceProcessingEnabled(true)
         let format = node.outputFormat(forBus: 0)
         node.removeTap(onBus: 0)
         node.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
-            guard let self = self, !self.muted else { return }
+            guard let self = self else { return }
+            if self.muted {
+                // Barge-in: while the agent talks, watch the echo-cancelled mic for
+                // real speech; a short sustained burst stops the agent mid-sentence.
+                if Self.isSpeech(buffer) {
+                    self.bargeInHits += 1
+                    if self.bargeInHits >= 3 {
+                        self.bargeInHits = 0
+                        DispatchQueue.main.async { self.synth.stopSpeaking(at: .immediate) }
+                    }
+                } else {
+                    self.bargeInHits = 0
+                }
+                return
+            }
             self.request?.append(buffer)
         }
         audioEngine.prepare()
@@ -144,6 +164,16 @@ final class VoiceController: NSObject, AVSpeechSynthesizerDelegate {
         request?.endAudio(); request = nil
         if audioEngine.isRunning { audioEngine.stop() }
         audioEngine.inputNode.removeTap(onBus: 0)
+    }
+
+    /// Cheap RMS energy VAD on one mic buffer (echo-cancelled), for barge-in.
+    private static func isSpeech(_ buffer: AVAudioPCMBuffer) -> Bool {
+        guard let ch = buffer.floatChannelData?[0] else { return false }
+        let n = Int(buffer.frameLength)
+        guard n > 0 else { return false }
+        var sum: Float = 0
+        for i in 0..<n { let s = ch[i]; sum += s * s }
+        return (sum / Float(n)).squareRoot() > 0.02
     }
 
     private func configureSession(forSpeaking: Bool) {

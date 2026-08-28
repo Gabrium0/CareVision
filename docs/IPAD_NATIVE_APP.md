@@ -102,6 +102,71 @@ and the printed 6-digit code, then Connect.
   developer account (free = 7-day resign; paid = 1 year). Camera, ASR/TTS, and the
   final install are verified on the physical iPad.
 
+## On-device features (round 2)
+
+The app pushes perception onto the iPad where doing so improves accuracy,
+bandwidth, or responsiveness — using **Apple Vision** (`VNDetectFaceLandmarksRequest`,
+hardware-accelerated) plus the near-free `AVCaptureMetadataOutput` face detector,
+chosen over bundling MediaPipe FaceMesh so the A10 (iPad 6th gen) never lags.
+
+- **On-device rPPG colour streaming (flagship).** `Capture/RPPGSampler.swift` samples
+  forehead/cheek skin colour from the **raw** BGRA pixel buffer (no JPEG chroma loss)
+  with the frame's precise PTS, applies the same mouth-motion talk-guard as the
+  backend, and streams a combined RGB mean as `rppg_samples`
+  (`{type:"rppg_samples", s:[[t,r,g,b,n]]}`). The backend feeds these straight into
+  the classical HR / SpO₂ `TimedBuffer`s (`modules/rppg_backends/classical.py`,
+  `modules/spo2.py`) via `ctx.extras["rppg_samples"]`, bypassing `roi_patch` — no
+  change to `compute()`. This removes the two dominant rPPG error sources (JPEG 4:2:0
+  chroma + timestamp jitter) and lets the full frame stay a normal 4:2:0 JPEG for the
+  backend's MediaPipe/appearance detectors. Auto-enabled when the app's
+  `client_version` caps report `ondevice_rppg`; active mode shows in `camera`
+  diagnostics (`ondevice_rppg`, `ondevice_rppg_samples`).
+- **Presence + framing coaching.** `AVCaptureMetadataOutput` drives a centered
+  "move closer / center yourself / no one in view" banner — directly addressing the
+  `showcase.min_face_px` block that otherwise stops HR from ever starting.
+- **On-device quick signals.** Vision landmarks yield EAR (blink), MAR (yawn), and
+  head yaw, shown as an on-screen chip for instant feedback. **UI only** — the
+  backend stays authoritative for the real detections.
+- **ROI-crop bandwidth cut (scoped).** On 13.3.1 the backend still needs full frames
+  for MediaPipe, so crops cannot replace frames; the on-device face ROIs (already
+  computed for rPPG) and the framing gate are the enablers. Full ROI-crop routing to
+  the appearance detectors + full-frame reduction is a backend-compositing follow-on.
+
+**Perf discipline (no lag):** metadata face box is always-on and near-free; the Vision
+landmark pass is throttled to ~12 fps, one request in flight on its own queue, and
+never blocks the capture queue; rPPG averaging touches only a few hundred pixels.
+
+Backend seam: `main.py` `ipad_control` routes `rppg_samples` →
+`IPadCamera.ingest_rppg_samples`; `drain_rppg_samples` maps the app's PTS to the
+capture clock; `core/pipeline.py::_fast_hook` forwards the batch onto `fast_ctx`.
+
+## App polish & experience (round 3)
+
+- **Effortless pairing.** The laptop prints a scannable QR of a
+  `carevision://pair?h=&p=&r=&c=&s=` URL (`build_lan_pairing_url` in `main.py`,
+  rendered with `qrcode` like `scripts/show_qr.py`). The app's "📷 Scan QR to
+  connect" button opens `QRScannerViewController` (`AVCaptureMetadataOutput` `.qr`),
+  parses it (`PairingURL`), and connects — no typing. The shared secret is stored in
+  the **Keychain** (`KeychainStore`), not `UserDefaults` (old values migrate on
+  launch).
+- **Stable on the A10.** An ACK-latency-driven `AdaptiveLadder` steps resolution
+  `[960,800,640]` / quality `[0.90→0.72]` / fps `[20→10]` down as the link's rolling
+  ACK p90 rises or the sender window backs up, and back up on recovery (with
+  hysteresis), announcing each change as a `capture_profile`. `ProcessInfo`
+  thermal state pins a minimum tier and pauses the Vision pass under pressure. The
+  app keeps the screen awake, pauses/resumes camera + mic around backgrounding, and
+  the status pill is tap-to-reconnect.
+- **Voice & alerts.** Barge-in: input voice processing (hardware AEC) plus a light
+  energy VAD lets the person interrupt the agent mid-sentence
+  (`synth.stopSpeaking`). Caregiver alerts get a distinct chime + a dominant red
+  banner (no haptics — iPads have none). A settings sheet controls TTS voice, rate,
+  and volume/mute (`SettingsStore`).
+
+Honest scope: iOS has no clean hardware-JPEG API, so the CPU/heat wins come from the
+adaptive ladder + thermal frame-skip rather than a faster encoder; an H.264 transport
+via VideoToolbox is the larger future lever (now viable since rPPG left the frame).
+Bonjour auto-discovery and battery-bias are noted as optional follow-ons.
+
 ## Verification status
 
 - `tests/ipad_lan_link_test.py` — pairing accept/reject, IPF1 reassembly parity
@@ -112,3 +177,13 @@ and the printed 6-digit code, then Connect.
   matches `core/ipad_camera.unpack_frame_header`.
 - iOS app compiles for the 13.3 target and launches in the simulator (pairing
   screen renders; no crash). On-device camera/voice are the user's device check.
+- `tests/ipad_rppg_samples_test.py` — `rppg_samples` validation, camera
+  ingest/drain (clock-mapped, bounded), and the device-first branch: it bypasses
+  `roi_patch`, and a synthetic 72 bpm colour sinusoid recovers ~72 bpm through the
+  unchanged `compute()`. The Swift BGRA patch-mean and EAR/MAR arithmetic are
+  cross-checked standalone. Vision throughput and rPPG A/B are device-verified.
+- Round 3: the Python `carevision://pair` URL is cross-checked byte-for-byte against
+  the Swift `PairingURL` parser (special chars in the secret included), and the pure
+  `AdaptiveLadder` (degrade / cooldown / recover / thermal-floor) is verified
+  standalone. The app builds for 13.3 and the QR-first pairing screen renders in the
+  simulator. Barge-in, thermal throttling, and alert chime are device-verified.

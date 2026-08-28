@@ -21,7 +21,8 @@ final class PairingViewController: UIViewController {
         hostField.text = defaults.string(forKey: "host") ?? "192.168.137.1"
         portField.text = defaults.string(forKey: "port") ?? "8788"
         roomField.text = defaults.string(forKey: "room") ?? ""
-        secretField.text = defaults.string(forKey: "secret") ?? ""
+        secretField.text = KeychainStore.get("secret")
+            ?? defaults.string(forKey: "secret") ?? ""   // migrate any old value
         portField.keyboardType = .numberPad
         codeField.keyboardType = .numberPad
         secretField.isSecureTextEntry = true
@@ -36,10 +37,25 @@ final class PairingViewController: UIViewController {
         subtitle.textColor = .secondaryLabel
         subtitle.numberOfLines = 0
 
+        let scanButton = UIButton(type: .system)
+        scanButton.setTitle("📷  Scan QR to connect", for: .normal)
+        scanButton.titleLabel?.font = .systemFont(ofSize: 18, weight: .semibold)
+        scanButton.backgroundColor = .systemBlue
+        scanButton.setTitleColor(.white, for: .normal)
+        scanButton.layer.cornerRadius = 12
+        scanButton.addTarget(self, action: #selector(scan), for: .touchUpInside)
+        scanButton.heightAnchor.constraint(equalToConstant: 52).isActive = true
+
+        let orLabel = UILabel()
+        orLabel.text = "or enter the details by hand"
+        orLabel.font = .systemFont(ofSize: 13)
+        orLabel.textColor = .tertiaryLabel
+        orLabel.textAlignment = .center
+
         connectButton.setTitle("Connect", for: .normal)
         connectButton.titleLabel?.font = .systemFont(ofSize: 18, weight: .semibold)
-        connectButton.backgroundColor = .systemBlue
-        connectButton.setTitleColor(.white, for: .normal)
+        connectButton.backgroundColor = .secondarySystemBackground
+        connectButton.setTitleColor(.label, for: .normal)
         connectButton.layer.cornerRadius = 12
         connectButton.addTarget(self, action: #selector(connect), for: .touchUpInside)
         connectButton.heightAnchor.constraint(equalToConstant: 52).isActive = true
@@ -49,7 +65,7 @@ final class PairingViewController: UIViewController {
         statusLabel.numberOfLines = 0
 
         let stack = UIStackView(arrangedSubviews: [
-            heading, subtitle,
+            heading, subtitle, scanButton, orLabel,
             labeled("Laptop address", hostField),
             labeled("Port", portField),
             labeled("Room", roomField),
@@ -89,16 +105,35 @@ final class PairingViewController: UIViewController {
             statusLabel.text = "Fill in every field; the code is 6 digits."
             return
         }
-        let defaults = UserDefaults.standard
-        defaults.set(host, forKey: "host")
-        defaults.set(String(port), forKey: "port")
-        defaults.set(room, forKey: "room")
-        defaults.set(secret, forKey: "secret")
+        launch(LinkClient.Config(host: host, port: port, room: room,
+                                 secret: secret, code: code))
+    }
 
-        let config = LinkClient.Config(host: host, port: port, room: room,
-                                       secret: secret, code: code)
-        let live = LiveViewController(config: config)
-        navigationController?.pushViewController(live, animated: true)
+    @objc private func scan() {
+        let scanner = QRScannerViewController { [weak self] info in
+            self?.launch(LinkClient.Config(host: info.host, port: info.port,
+                                           room: info.room, secret: info.secret,
+                                           code: info.code))
+        }
+        let nav = UINavigationController(rootViewController: scanner)
+        nav.modalPresentationStyle = .fullScreen
+        present(nav, animated: true)
+    }
+
+    private func launch(_ config: LinkClient.Config) {
+        let defaults = UserDefaults.standard
+        defaults.set(config.host, forKey: "host")
+        defaults.set(String(config.port), forKey: "port")
+        defaults.set(config.room, forKey: "room")
+        defaults.removeObject(forKey: "secret")        // the secret lives in Keychain only
+        KeychainStore.set(config.secret, for: "secret")
+        // Reflect the values in the fields so a scanned pairing is transparent.
+        hostField.text = config.host
+        portField.text = String(config.port)
+        roomField.text = config.room
+        secretField.text = config.secret
+        codeField.text = config.code
+        navigationController?.pushViewController(LiveViewController(config: config), animated: true)
     }
 
     private static func makeField(_ placeholder: String) -> UITextField {

@@ -190,6 +190,21 @@ class SpO2(DetectionModule):
 
     def _sample(self, ctx: FrameContext) -> None:
         """Sample the skin ROIs once and push their (R,G,B) mean into the buffer."""
+        device = ctx.extras.get("rppg_samples")
+        if device:
+            # iPad-supplied raw-pixel ROI colour (see modules/rppg_backends/
+            # classical.py). No depth over the iPad link, so this is the
+            # compressed channel-pair regime; the device already talk-guarded it.
+            self._source_mode = "compressed"
+            self._mode_seen = True
+            with self._lock:
+                for ts, rgb, _n in device:
+                    self.buf.push(ts, np.asarray(rgb, dtype=np.float64))
+                    self._brightness = 0.9 * self._brightness + 0.1 * float(
+                        0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2])
+                    self._quality_events.append((ts, True))
+                    self._prune_quality_events(ts)
+            return
         mode = "uncompressed" if ctx.depth is not None else "compressed"
         if self._mode_seen and mode != self._source_mode:
             # Source changed mid-run ('c' hotkey, RealSense unplugged): a window

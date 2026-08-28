@@ -81,6 +81,10 @@ class ClassicalBackend(RPPGBackend):
 
     def update(self, ctx: FrameContext) -> None:
         """Feed one frame's data into the backend's rolling state."""
+        device = ctx.extras.get("rppg_samples")
+        if device:
+            self._ingest_device_samples(device)
+            return
         roi_landmarks = _ROI_LANDMARKS
         mar = mouth_aspect_ratio(ctx)
         if mar is not None:
@@ -112,6 +116,26 @@ class ClassicalBackend(RPPGBackend):
             self._accepted += 1
             self._quality_events.append((ctx.timestamp, True))
             self._prune_quality_events(ctx.timestamp)
+
+    def _ingest_device_samples(self, samples) -> None:
+        """Push iPad-computed ROI colour means straight into the buffer.
+
+        The native app samples forehead/cheek skin colour from the *raw* camera
+        pixels (no JPEG chroma loss) with the frame's precise PTS and applies its
+        own mouth-motion talk-guard, handing us a ready ``(ts, (R,G,B))`` series.
+        ``compute()`` is unchanged — it only reads ``self.buf`` — so this removes
+        the two dominant rPPG error sources (JPEG 4:2:0 chroma + timestamp jitter)
+        without touching the estimation math. See docs/IPAD_NATIVE_APP.md.
+        """
+        with self._lock:
+            for ts, rgb, _n in samples:
+                rgb = np.asarray(rgb, dtype=np.float64)
+                self.buf.push(ts, rgb)
+                bright = float(0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2])
+                self._brightness = 0.9 * self._brightness + 0.1 * bright
+                self._accepted += 1
+                self._quality_events.append((ts, True))
+                self._prune_quality_events(ts)
 
     def _prune_quality_events(self, now: float) -> None:
         while self._quality_events and now - self._quality_events[0][0] > self.window_seconds:

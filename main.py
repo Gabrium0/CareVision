@@ -118,6 +118,43 @@ def _build_ipad_capture_config(request_fps: float,
             "resolution": {"mode": "fixed", "width": width, "height": height}}
 
 
+def build_lan_pairing_url(host: str, port: int, room: str, code: str,
+                          secret: str) -> str:
+    """Compact URL the native app scans to pair over the hotspot in one step.
+
+    Kept short (single-letter keys) so the QR stays low-density and scans from a
+    distance. Everything is percent-encoded. The secret rides in the QR exactly
+    as it rides in the on-screen text — same trust boundary, just less typing.
+    """
+    from urllib.parse import urlencode      # noqa: PLC0415 - stdlib, lazy
+    query = urlencode({"h": host, "p": int(port), "r": room, "c": code, "s": secret})
+    return f"carevision://pair?{query}"
+
+
+def _print_lan_pairing_qr(host: str, port: int, room: str, code: str,
+                          secret: str) -> None:
+    """Render the pairing URL as an ASCII QR (best-effort, like scripts/show_qr.py).
+
+    Degrades to nothing extra when `qrcode` is absent — the plain ws URL and code
+    were already printed above, so pairing always remains possible by hand.
+    """
+    url = build_lan_pairing_url(host, port, room, code, secret)
+    try:
+        import qrcode                       # noqa: PLC0415 - optional dependency
+    except ImportError:
+        print("[ipad] (install 'qrcode' to show a scannable pairing QR)\n")
+        return
+    try:
+        qr = qrcode.QRCode(border=2)
+        qr.add_data(url)
+        qr.make(fit=True)
+        print("[ipad] scan to connect (or enter the fields by hand):")
+        qr.print_ascii(invert=True)
+        print()
+    except Exception as exc:  # noqa: BLE001 - QR is best-effort; the URL/code stand
+        print(f"[ipad] (QR rendering failed: {exc}; pair by hand)\n")
+
+
 def _uses_decoupled_display(display: bool, *sources) -> bool:
     """Whether this run can use non-consuming preview for either live source."""
     def supports_latest_frame(source) -> bool:
@@ -527,6 +564,8 @@ def main():
                   f"\n[ipad] the iPad must be on this laptop's Windows hotspot; "
                   f"allow TCP {args.ipad_listen_port} inbound on the Private "
                   f"firewall profile\n")
+            _print_lan_pairing_qr(lan_host, args.ipad_listen_port, ipad_room,
+                                  ipad_code, ipad_secret)
         else:
             print(f"\n[ipad] open  {ipad_relay.rstrip('/')}/r/{ipad_room}"
                   f"\n[ipad] pairing code: {ipad_code}"
@@ -858,6 +897,12 @@ def main():
                 if msg_type == "asr_text":
                     if native_asr_listener is not None:
                         native_asr_listener.push(payload.get("text", ""))
+                    return
+                if msg_type == "rppg_samples":
+                    # On-device rPPG: raw-pixel ROI colour means the app sampled
+                    # from the uncompressed frame. Buffered on the camera and fed
+                    # to heart_rate/spo2 via the pipeline fast hook.
+                    pipeline.camera.ingest_rppg_samples(payload)
                     return
                 if msg_type == "speaking":
                     # The app owns its native-TTS speaking edges; mirror them onto

@@ -1,14 +1,19 @@
 import UIKit
 import AVFoundation
+import AudioToolbox
 
 /// The paired control surface: camera preview behind a live overlay of vitals,
 /// demo tiles, the signal feed, the agent voice pill, and a module toggle drawer
 /// — all driven by the laptop's `telemetry` and `state` control messages, the
 /// same payloads the old browser page rendered.
-final class LiveViewController: UIViewController, LinkClientDelegate {
+final class LiveViewController: UIViewController, LinkClientDelegate, CameraControllerDelegate {
     private let link: LinkClient
     private lazy var camera = CameraController(link: link)
     private let voice = VoiceController()
+    private let framingBanner = PaddedLabel()
+    private let signalsChip = PaddedLabel()
+    private let alertBanner = PaddedLabel()
+    private var alertActive = false
 
     private let statusPill = PaddedLabel()
     private let headline = UILabel()
@@ -37,7 +42,35 @@ final class LiveViewController: UIViewController, LinkClientDelegate {
             self?.link.sendControl(["type": "speaking", "speaking": speaking])
         }
 
+        // Tap the status pill to force a reconnect when the link is down.
+        statusPill.isUserInteractionEnabled = true
+        statusPill.addGestureRecognizer(
+            UITapGestureRecognizer(target: self, action: #selector(reconnectTapped)))
+
+        // Keep the companion screen awake, and pause/resume camera + mic around
+        // backgrounding (iOS forbids camera use in the background anyway).
+        UIApplication.shared.isIdleTimerDisabled = true
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(appBackground),
+            name: UIApplication.didEnterBackgroundNotification, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(appForeground),
+            name: UIApplication.willEnterForegroundNotification, object: nil)
+
         link.start()
+    }
+
+    @objc private func reconnectTapped() {
+        if case .paired = link.state { return }
+        link.reconnectNow()
+    }
+
+    @objc private func appBackground() {
+        camera.stop(); voice.stop()
+    }
+
+    @objc private func appForeground() {
+        camera.resume(); voice.startListening()
     }
 
     override func viewDidLayoutSubviews() {
@@ -70,6 +103,8 @@ final class LiveViewController: UIViewController, LinkClientDelegate {
         super.viewDidDisappear(animated)
         if isMovingFromParent {
             link.stop(); camera.stop(); voice.stop()
+            UIApplication.shared.isIdleTimerDisabled = false
+            NotificationCenter.default.removeObserver(self)
         }
     }
 
@@ -92,16 +127,12 @@ final class LiveViewController: UIViewController, LinkClientDelegate {
         headline.shadowColor = .black
         headline.shadowOffset = CGSize(width: 0, height: 1)
 
-        let modulesButton = UIButton(type: .system)
-        modulesButton.setTitle("Modules", for: .normal)
-        modulesButton.setTitleColor(.white, for: .normal)
-        modulesButton.titleLabel?.font = .systemFont(ofSize: 14, weight: .semibold)
-        modulesButton.backgroundColor = UIColor.black.withAlphaComponent(0.55)
-        modulesButton.contentEdgeInsets = UIEdgeInsets(top: 6, left: 12, bottom: 6, right: 12)
-        modulesButton.layer.cornerRadius = 12
-        modulesButton.addTarget(self, action: #selector(openModules), for: .touchUpInside)
+        let modulesButton = pillButton("Modules", #selector(openModules))
+        let settingsButton = pillButton("⚙︎", #selector(openSettings))
 
-        let topRow = UIStackView(arrangedSubviews: [statusPill, UIView(), modulesButton])
+        let topRow = UIStackView(arrangedSubviews: [statusPill, UIView(),
+                                                    settingsButton, modulesButton])
+        topRow.spacing = 8
         topRow.alignment = .center
 
         vitalsStack.axis = .horizontal
@@ -123,8 +154,18 @@ final class LiveViewController: UIViewController, LinkClientDelegate {
         agentPill.numberOfLines = 0
         agentPill.text = "voice idle"
 
+        signalsChip.font = .monospacedDigitSystemFont(ofSize: 13, weight: .medium)
+        signalsChip.textColor = .white
+        signalsChip.backgroundColor = UIColor.black.withAlphaComponent(0.55)
+        signalsChip.layer.cornerRadius = 12
+        signalsChip.clipsToBounds = true
+        signalsChip.text = "on-device: —"
+
+        let bottomRow = UIStackView(arrangedSubviews: [agentPill, UIView(), signalsChip])
+        bottomRow.alignment = .center
+
         let column = UIStackView(arrangedSubviews: [
-            topRow, headline, vitalsStack, demoStack, signalsStack, UIView(), agentPill])
+            topRow, headline, vitalsStack, demoStack, signalsStack, UIView(), bottomRow])
         column.axis = .vertical
         column.spacing = 12
         column.translatesAutoresizingMaskIntoConstraints = false
@@ -134,6 +175,79 @@ final class LiveViewController: UIViewController, LinkClientDelegate {
             column.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
             column.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
             column.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16)])
+
+        // Framing coaching banner, centered, shown only when framing is off.
+        framingBanner.font = .systemFont(ofSize: 20, weight: .semibold)
+        framingBanner.textColor = .white
+        framingBanner.backgroundColor = UIColor.systemOrange.withAlphaComponent(0.9)
+        framingBanner.layer.cornerRadius = 16
+        framingBanner.clipsToBounds = true
+        framingBanner.numberOfLines = 0
+        framingBanner.textAlignment = .center
+        framingBanner.isHidden = true
+        framingBanner.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(framingBanner)
+        NSLayoutConstraint.activate([
+            framingBanner.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            framingBanner.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            framingBanner.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 40),
+            framingBanner.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -40)])
+
+        // Alert banner — dominant, full-width, red; distinct from the orange
+        // framing banner. Shown only while a caregiver-alert signal is active.
+        alertBanner.font = .systemFont(ofSize: 22, weight: .bold)
+        alertBanner.textColor = .white
+        alertBanner.backgroundColor = UIColor.systemRed
+        alertBanner.numberOfLines = 0
+        alertBanner.textAlignment = .center
+        alertBanner.isHidden = true
+        alertBanner.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(alertBanner)
+        NSLayoutConstraint.activate([
+            alertBanner.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            alertBanner.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            alertBanner.trailingAnchor.constraint(equalTo: view.trailingAnchor)])
+    }
+
+    private func pillButton(_ title: String, _ action: Selector) -> UIButton {
+        let b = UIButton(type: .system)
+        b.setTitle(title, for: .normal)
+        b.setTitleColor(.white, for: .normal)
+        b.titleLabel?.font = .systemFont(ofSize: 14, weight: .semibold)
+        b.backgroundColor = UIColor.black.withAlphaComponent(0.55)
+        b.contentEdgeInsets = UIEdgeInsets(top: 6, left: 12, bottom: 6, right: 12)
+        b.layer.cornerRadius = 12
+        b.addTarget(self, action: action, for: .touchUpInside)
+        return b
+    }
+
+    @objc private func openSettings() {
+        present(UINavigationController(rootViewController: SettingsViewController()),
+                animated: true)
+    }
+
+    // MARK: - CameraControllerDelegate
+
+    func camera(_ c: CameraController, framing: Framing) {
+        switch framing {
+        case .good:
+            framingBanner.isHidden = true
+        case .noFace:
+            framingBanner.text = "No one in view"; framingBanner.isHidden = false
+        case .tooFar:
+            framingBanner.text = "Move a little closer"; framingBanner.isHidden = false
+        case .offCenter:
+            framingBanner.text = "Center yourself in view"; framingBanner.isHidden = false
+        }
+    }
+
+    func camera(_ c: CameraController, signals: QuickSignals) {
+        guard signals.facePresent else { signalsChip.text = "on-device: no face"; return }
+        var tags: [String] = []
+        if signals.ear > 0 && signals.ear < 0.18 { tags.append("blink") }
+        if signals.mar > 0.55 { tags.append("yawn") }
+        let head = String(format: "yaw %.0f°", signals.yawDegrees)
+        signalsChip.text = "on-device: " + (tags.isEmpty ? head : tags.joined(separator: " · ") + " · " + head)
     }
 
     @objc private func openModules() {
@@ -157,6 +271,7 @@ final class LiveViewController: UIViewController, LinkClientDelegate {
         case .paired:
             statusPill.text = "Paired"
             reportClientVersion()
+            camera.delegate = self
             camera.start { ok in
                 if !ok { self.statusPill.text = "Camera unavailable" }
             }
@@ -180,7 +295,7 @@ final class LiveViewController: UIViewController, LinkClientDelegate {
             "build": "native-ios-1.0",
             "ua": "CareVisioniPad/1.0 (iPadOS 13)",
             "caps": ["native": true, "avfoundation": true, "ondevice_asr": true,
-                     "ondevice_tts": true]])
+                     "ondevice_tts": true, "ondevice_rppg": true]])
     }
 
     // MARK: - rendering
@@ -203,7 +318,25 @@ final class LiveViewController: UIViewController, LinkClientDelegate {
             (view as? DemoTileView)?.apply(t.demoTiles[i])
         }
         renderSignals(Array(t.signals.prefix(4)))
+        updateAlert(t.signals.first { $0.severity == .alert })
         latestModules = t.modules
+    }
+
+    /// Surface a caregiver alert prominently: a red banner that persists while the
+    /// condition holds, plus a distinct chime on the rising edge. (No haptics —
+    /// iPads have no Taptic Engine.)
+    private func updateAlert(_ signal: SignalRow?) {
+        if let s = signal {
+            alertBanner.text = "⚠︎  " + (s.message.isEmpty ? s.label : s.message)
+            alertBanner.isHidden = false
+            if !alertActive {
+                alertActive = true
+                AudioServicesPlaySystemSound(1005)
+            }
+        } else {
+            alertBanner.isHidden = true
+            alertActive = false
+        }
     }
 
     private func applyState(_ payload: [String: Any]) {

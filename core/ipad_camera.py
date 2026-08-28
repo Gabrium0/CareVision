@@ -124,6 +124,32 @@ def jpeg_subsampling(data: bytes) -> Optional[str]:
     return None
 
 
+def parse_rppg_row(row) -> Optional[tuple]:
+    """Validate one on-device rPPG sample ``[t, r, g, b, n]`` from the app.
+
+    Returns ``(media_time, (r, g, b), n)`` with channels bounded to 0-255 and all
+    values finite, or ``None`` for anything malformed. Bounded like the other
+    control-message validators so a hostile peer cannot inject junk into the
+    vitals buffers.
+    """
+    if not isinstance(row, (list, tuple)) or len(row) < 4:
+        return None
+    try:
+        t = float(row[0])
+        r, g, b = float(row[1]), float(row[2]), float(row[3])
+        n = int(row[4]) if len(row) > 4 else 0
+    except (TypeError, ValueError):
+        return None
+    for value in (t, r, g, b):
+        if not (value == value and value not in (float("inf"), float("-inf"))):
+            return None
+    if not (0.0 <= r <= 255.0 and 0.0 <= g <= 255.0 and 0.0 <= b <= 255.0):
+        return None
+    if n < 0:
+        n = 0
+    return (t, (r, g, b), n)
+
+
 class CaptureClock:
     """Map the iPad's monotonic capture clock onto local wall time.
 
@@ -246,6 +272,12 @@ class IPadCamera:
         self._last_frame_at: Optional[float] = None
         self._waiting_since: Optional[float] = None
         self._waiting_notice = 0.0
+        # On-device rPPG: the native app streams raw-pixel ROI colour means as
+        # `rppg_samples`; they are buffered here (control thread) and mapped to the
+        # capture clock on drain (reader thread). See docs/IPAD_NATIVE_APP.md.
+        self._rppg_pending: deque = deque()
+        self._rppg_lock = threading.Lock()
+        self._rppg_rx = 0
 
     # ---- camera contract -------------------------------------------------
 
@@ -343,6 +375,8 @@ class IPadCamera:
                 "jpeg_subsampling": self._subsampling,
                 "clock_source": link.get("clock_source"),
                 "clock": self._clock.diagnostics(),
+                "ondevice_rppg": self._rppg_rx > 0,
+                "ondevice_rppg_samples": self._rppg_rx,
                 "link": link}
 
     def release(self) -> None:
@@ -399,6 +433,44 @@ class IPadCamera:
         """Route one chunk of agent speech to the paired device (no-op unpiped)."""
         if self._link is not None:
             self._link.send_audio(samples, rate, channels)
+
+    def ingest_rppg_samples(self, payload: dict) -> None:
+        """Buffer a batch of on-device rPPG ROI colour samples from the app.
+
+        Called on the link's control thread. Samples are stored raw (with the
+        ingest wall time) and mapped to the capture clock lazily in
+        ``drain_rppg_samples`` on the reader thread, so ``CaptureClock`` stays
+        single-threaded. Bounded so a hostile peer cannot grow memory.
+        """
+        rows = payload.get("s") if isinstance(payload, dict) else None
+        if not isinstance(rows, list):
+            return
+        recv_wall = time.time()
+        with self._rppg_lock:
+            for row in rows[:120]:                  # bound one message
+                parsed = parse_rppg_row(row)
+                if parsed is not None:
+                    media_time, rgb, n = parsed
+                    self._rppg_pending.append((media_time, recv_wall, rgb, n))
+            while len(self._rppg_pending) > 600:    # bound total pending
+                self._rppg_pending.popleft()
+
+    def drain_rppg_samples(self) -> list:
+        """Return and clear pending device rPPG samples, mapped to local time.
+
+        Runs on the reader thread (via the pipeline fast hook), so the
+        ``CaptureClock`` mapping stays consistent with frame decoding — samples
+        and frames share the iPad's PTS timebase.
+        """
+        with self._rppg_lock:
+            if not self._rppg_pending:
+                return []
+            pending = list(self._rppg_pending)
+            self._rppg_pending.clear()
+        out = [(self._clock.map(media_time, recv_wall), rgb, n)
+               for media_time, recv_wall, rgb, n in pending]
+        self._rppg_rx += len(out)
+        return out
 
     # ---- internals -------------------------------------------------------
 
