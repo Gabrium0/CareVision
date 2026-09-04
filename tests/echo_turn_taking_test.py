@@ -7,8 +7,10 @@ plus the silence-over-canned choice when a generated reply lands too late.
 """
 from __future__ import annotations
 
+import re
 import time
 from collections import deque
+from pathlib import Path
 
 import numpy as np
 
@@ -116,6 +118,49 @@ def test_lead_pad_is_skipped_on_the_local_playback_path(monkeypatch):
 
     speaker._emit("Hello.", _Player())      # local_playback stays True
     assert sleeps == []
+
+
+def test_safari_bluetooth_recovery_finishes_inside_silent_lead():
+    """Forced Safari resets must never pause/rebind over spoken PCM."""
+    page = (Path(__file__).parents[1] / "relay" / "static" / "ipad.html").read_text(
+        encoding="utf-8")
+    retry_match = re.search(
+        r"const RESUME_RETRY_MS = \[([^\]]+)\]", page)
+    assert retry_match is not None
+    retries = [int(value.strip()) for value in retry_match.group(1).split(",")]
+    assert max(retries) + 250 < tts_mod._REMOTE_LEAD_SECONDS * 1000
+
+    restart_match = re.search(
+        r"function restartRemoteAudio\(\)\{([\s\S]*?)\n  \}", page)
+    assert restart_match is not None
+    restart = restart_match.group(1)
+    assert restart.index("remoteAudioEl.pause()") < restart.index(
+        "remoteAudioEl.srcObject = null")
+    assert restart.index("remoteAudioEl.srcObject = null") < restart.index(
+        "remoteAudioEl.play()")
+
+    speaking_branch = re.search(
+        r"if\(speaking\)\{([\s\S]*?)\n    \} else \{", page)
+    assert speaking_branch is not None
+    branch = speaking_branch.group(1)
+    assert "releaseMicForPlayback().then(() =>" in branch
+    assert branch.index("releaseMicForPlayback().then") < branch.index(
+        "scheduleResumeRetries()")
+
+    connect_match = re.search(
+        r"async function connect\(\)\{([\s\S]*?)\n  \}", page)
+    assert connect_match is not None
+    connect = connect_match.group(1)
+    assert connect.index("unlockBluetoothAudio()") < connect.index(
+        "navigator.mediaDevices.getUserMedia")
+    assert "window.AudioContext || window.webkitAudioContext" in page
+
+
+def test_remote_lead_reads_environment_after_module_import(monkeypatch):
+    monkeypatch.setenv("IPAD_AUDIO_LEAD_SECONDS", "3.1")
+    assert tts_mod._remote_lead_seconds() == 3.1
+    monkeypatch.setenv("IPAD_AUDIO_LEAD_SECONDS", "not-a-number")
+    assert tts_mod._remote_lead_seconds() == tts_mod._REMOTE_LEAD_SECONDS
 
 
 class _StateRecorder:

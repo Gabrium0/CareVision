@@ -780,11 +780,18 @@ IPAD_PAYLOAD_MAX_BYTES = 60000
 # well under the ceiling no matter how busy the scene gets.
 _IPAD_MAX_SIGNALS = 18
 
+# Value the emotion module emits when a backend has no reading this frame.
+_EMOTION_PLACEHOLDER = "..."
+
+# The iPad is a focused resident/provider view. These modules remain available
+# in the laptop dashboard, but are intentionally not sent to the paired iPad.
+_IPAD_HIDDEN_MODULES = frozenset(("head_nod",))
+
 # Vitals promoted to the iPad's "live vitals" tiles -- the showcase's visual
 # star. Each names the canonical Result its module emits (heart_rate->"bpm",
 # respiration->"breaths_per_min", spo2->"spo2", drowsiness->"blink_rate");
-# emotion has no canonical key, so the best-confidence "emotion_<backend>"
-# wins.
+# emotion has no canonical key, so its most confident real backend reading is
+# used for the single Mood tile.
 # (id, label, unit, module, metric, kind)
 _IPAD_VITALS = [
     ("hr",    "Heart rate", "bpm",  "heart_rate",  "bpm",             "number"),
@@ -797,7 +804,8 @@ _IPAD_VITALS = [
 
 def _best_vital(snapshot, module: str, metric: str):
     """Best Result for one vital: an exact canonical key wins; otherwise the
-    highest-confidence backend-suffixed key (``<metric>_<backend>``)."""
+    highest-confidence meaningful backend-suffixed key (``<metric>_<backend>``).
+    """
     exact = [r for r in snapshot if r.module == module and r.key == metric]
     if exact:
         return max(exact, key=lambda r: r.confidence)
@@ -805,7 +813,8 @@ def _best_vital(snapshot, module: str, metric: str):
     backend = [r for r in snapshot if r.module == module and r.key.startswith(prefix)]
     if not backend:
         return None
-    return max(backend, key=lambda r: r.confidence)
+    meaningful = [r for r in backend if str(r.value) != _EMOTION_PLACEHOLDER]
+    return max(meaningful or backend, key=lambda r: r.confidence)
 
 
 def _ipad_vital(snapshot, spec, now: float) -> dict:
@@ -841,8 +850,6 @@ def _ipad_vital(snapshot, spec, now: float) -> dict:
 _IPAD_DEMO_TILES = [
     ("yawns",   "Yawns",     "🥱", "yawn",       "yawn_count_total",  "count"),
     ("blinks",  "Blinks",    "👁", "drowsiness", "blink_count_total", "count"),
-    ("nods",    "Head nods", "🙂", "head_nod",   "nod_count",         "count"),
-    ("mood",    "Mood",      "😊", "emotion",    "emotion",           "label"),
     ("gesture", "Gesture",   "✋", "gesture",    "gesture",           "label"),
 ]
 
@@ -891,7 +898,10 @@ def ipad_payload(snapshot, fps: float = 0.0, greeting: str | None = None,
     demo_tiles = [_ipad_demo_tile(public, spec, now) for spec in _IPAD_DEMO_TILES]
 
     signals = []
-    for s in full["signals"][:_IPAD_MAX_SIGNALS]:
+    for s in (s for s in full["signals"]
+              if s["module"] not in _IPAD_HIDDEN_MODULES):
+        if len(signals) >= _IPAD_MAX_SIGNALS:
+            break
         rel = _MODULE_RELIABILITY.get(s["module"])
         signals.append({
             "label": s["label"], "message": s["message"],
@@ -903,6 +913,8 @@ def ipad_payload(snapshot, fps: float = 0.0, greeting: str | None = None,
 
     modules = []
     for m in full["modules"]:
+        if m["module"] in _IPAD_HIDDEN_MODULES:
+            continue
         rel = m.get("reliability")
         modules.append({
             "module": m["module"], "label": m["label"], "blurb": m["blurb"],

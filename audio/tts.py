@@ -40,7 +40,21 @@ _REMOTE_TAIL_SECONDS = 0.35
 # (see relay/static/ipad.html), the switch takes ~0.5-2s. A silent pad in front
 # of the first word gives the route time to settle so the opening is not clipped
 # or briefly played on the built-in speaker. 0 disables it (e.g. laptop audio).
-_REMOTE_LEAD_SECONDS = max(0.0, float(os.environ.get("IPAD_AUDIO_LEAD_SECONDS", "0.7")))
+_REMOTE_LEAD_SECONDS = 2.4
+
+
+def _remote_lead_seconds() -> float:
+    """Return the current device-route lead, including values loaded from .env.
+
+    ``audio.tts`` is imported before ``main()`` loads .env, so reading this at
+    module import time silently ignored the documented setting. Resolve it at
+    playback/status time and degrade to the safe default on malformed input.
+    """
+    try:
+        return max(0.0, float(os.environ.get(
+            "IPAD_AUDIO_LEAD_SECONDS", str(_REMOTE_LEAD_SECONDS))))
+    except (TypeError, ValueError):
+        return _REMOTE_LEAD_SECONDS
 
 
 def _split_chunks(text: str) -> list[str]:
@@ -136,7 +150,8 @@ class Speaker:
         return {"engine": self.engine_name, "ready": self.ready,
                 "model": self.model, "error": self.error,
                 "remote_sink": self.remote_sink is not None,
-                "local_playback": bool(self.local_playback)}
+                "local_playback": bool(self.local_playback),
+                "remote_lead_seconds": _remote_lead_seconds()}
 
     def set_remote_sink(self, sink, local_playback: bool = False) -> None:
         """Route synthesized speech to a remote output (e.g. the paired iPad).
@@ -248,14 +263,15 @@ class Speaker:
         if self._backend is not None:
             first = True
             routed_remote = False
+            remote_lead = _remote_lead_seconds()
             # Silent lead pad: only on the device route (no local player to block
             # on), giving the far end time to move audio onto the Bluetooth A2DP
             # speaker before the first word. `speaking` is already True, so the
             # mic stays muted across the pad.
             if (self.remote_sink is not None and not self.local_playback
-                    and _REMOTE_LEAD_SECONDS > 0):
+                    and remote_lead > 0):
                 pad_rate = 22050
-                pad = np.zeros(int(_REMOTE_LEAD_SECONDS * pad_rate), dtype=np.float32)
+                pad = np.zeros(int(remote_lead * pad_rate), dtype=np.float32)
                 try:
                     self.remote_sink(pad, pad_rate)
                     routed_remote = True
@@ -264,7 +280,7 @@ class Speaker:
                           "falling back to laptop audio")
                     self.local_playback = True
                 else:
-                    time.sleep(_REMOTE_LEAD_SECONDS)
+                    time.sleep(remote_lead)
             for chunk in _split_chunks(text):
                 samples = None
                 sample_rate = 22050

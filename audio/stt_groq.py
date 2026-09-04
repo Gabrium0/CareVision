@@ -185,6 +185,7 @@ class GroqListener:
         last_voiced = None
         segment_started = None
         tainted = False
+        _log_started = False
 
         try:
             while not self._stop.is_set():
@@ -192,6 +193,10 @@ class GroqListener:
                     audio, now = self._audio_in.get(timeout=0.5)
                 except queue.Empty:
                     continue
+                if not _log_started:
+                    print(f"[stt-groq] shared audio attached (energy VAD, "
+                          f"threshold={self.energy_threshold}, model={self.model})")
+                    _log_started = True
                 block_seconds = len(audio) / _SAMPLE_RATE
                 if block_seconds <= 0:
                     continue
@@ -222,6 +227,8 @@ class GroqListener:
                         self._interruption_count = 0
                     elif tainted:
                         self._interruption_count += 1
+                        print(f"[stt-groq] dropped tainted segment (agent speaking), "
+                              f"interruptions={self._interruption_count}")
                     buf, voiced_time, last_voiced, segment_started, tainted = [], 0.0, None, None, False
         except Exception as e:
             print(f"[stt-groq] microphone failed ({e}); listener stopped")

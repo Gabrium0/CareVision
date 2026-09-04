@@ -338,6 +338,9 @@ def main():
     ap.add_argument("--groq-model", default="whisper-large-v3-turbo",
                     help="Groq Whisper model for --groq-stt (default whisper-large-v3-turbo, "
                          "free tier)")
+    ap.add_argument("--groq-vad-threshold", type=float, default=0.02,
+                    help="Energy VAD threshold for --groq-stt (default 0.02; "
+                         "lower for iPad/Bluetooth, e.g. 0.01)")
     ap.add_argument("--voice-model", default="nvidia:nvidia/nemotron-3-nano-30b-a3b",
                     help="Voice-agent model. 'nvidia:<id>' uses NVIDIA's hosted "
                          "endpoint (NVIDIA_API_KEY, default; higher free limits "
@@ -608,7 +611,7 @@ def main():
                 from audio.stt_groq import GroqListener
                 groq_listener = GroqListener(
                     model=args.groq_model, speaker=voice_agent.speaker,
-                    audio_bus=audio_bus)
+                    audio_bus=audio_bus, energy_threshold=args.groq_vad_threshold)
                 if groq_listener.available:
                     voice_agent.listener = groq_listener
                     listener_provider = "groq"

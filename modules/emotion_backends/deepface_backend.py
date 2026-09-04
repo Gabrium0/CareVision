@@ -1,4 +1,4 @@
-"""DeepFace emotion (+age/gender) backend (tested; from research.md).
+"""DeepFace emotion (+age/gender) backend (tested).
 
 Uses the `deepface` package. Runs on the MediaPipe face crop with detection
 skipped (we already have the face). Emotion is the headline; age/gender are

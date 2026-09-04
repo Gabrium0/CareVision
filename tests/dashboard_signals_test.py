@@ -15,7 +15,7 @@ import numpy as np
 
 import core.registry as registry
 from core.events import Result, Severity, Visibility
-from output.dashboard import to_payload
+from output.dashboard import ipad_payload, to_payload
 
 
 def test_signals_expose_module_and_key():
@@ -222,3 +222,43 @@ def test_low_confidence_notices_are_still_present_not_suppressed():
     modules_present = {s["module"] for s in payload["signals"]}
     assert "masked_face" in modules_present
     assert "grooming" in modules_present
+
+
+def test_ipad_mood_tile_uses_the_most_accurate_backend():
+    """The iPad exposes one mood, selected from the highest-confidence model."""
+    snapshot = [
+        Result(module="emotion", key="emotion_heuristic", value="happy",
+               confidence=0.95, message="Emotion heuristic"),
+        Result(module="emotion", key="emotion_hsemotion", value="sadness",
+               confidence=0.50, message="Emotion HSEmotion"),
+        Result(module="emotion", key="emotion_deepface", value="anger",
+               confidence=0.80, message="Emotion DeepFace"),
+    ]
+    payload = ipad_payload(snapshot, fps=30.0)
+    vitals = {v["id"]: v for v in payload["vitals"]}
+    assert vitals["mood"]["value"] == "happy"
+    assert "mood" not in {tile["id"] for tile in payload["demo_tiles"]}
+
+
+def test_ipad_mood_tile_uses_best_available_backend():
+    """The highest-confidence available backend populates the one Mood tile."""
+    snapshot = [
+        Result(module="emotion", key="emotion_heuristic", value="happy",
+               confidence=0.60, message="Emotion heuristic"),
+        Result(module="emotion", key="emotion_deepface", value="anger",
+               confidence=0.85, message="Emotion DeepFace"),
+    ]
+    payload = ipad_payload(snapshot, fps=30.0)
+    vitals = {v["id"]: v for v in payload["vitals"]}
+    assert vitals["mood"]["value"] == "anger"   # best-confidence fallback
+
+
+def test_ipad_payload_hides_head_nod_everywhere():
+    snapshot = [
+        Result(module="head_nod", key="nod_count", value=2, confidence=0.9,
+               message="Two head nods"),
+    ]
+    payload = ipad_payload(snapshot, fps=30.0)
+    assert "nods" not in {tile["id"] for tile in payload["demo_tiles"]}
+    assert "head_nod" not in {signal["module"] for signal in payload["signals"]}
+    assert "head_nod" not in {module["module"] for module in payload["modules"]}

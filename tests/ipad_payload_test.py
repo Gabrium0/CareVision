@@ -104,7 +104,8 @@ def test_signal_feed_is_capped():
 
 def test_module_roster_matches_registry():
     payload = _payload()
-    assert {m["module"] for m in payload["modules"]} == set(registry.all_registered())
+    assert {m["module"] for m in payload["modules"]} == (
+        set(registry.all_registered()) - {"head_nod"})
     # Fields the settings drawer's toggle grid needs.
     for m in payload["modules"]:
         assert set(m["enabled"]) == {"primary", "secondary"}

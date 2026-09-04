@@ -511,6 +511,18 @@
   let micTurnOp = Promise.resolve();  // serializes release/acquire
   let listenTailTimer = null;         // pending re-acquire after the speech tail
   const LISTEN_TAIL_MS = 500;         // let room echo of the last word decay
+  // Releasing the mic switches iOS to the Bluetooth (A2DP) route, but that
+  // audio-session interruption can leave the remote <audio> element internally
+  // stopped while `paused` still reports false (WebKit/Safari 13). Keep the live
+  // agent track so we can force a pause/rebind/play reset once the new route
+  // settles. Plain play() retries cannot recover that broken state.
+  let remoteAudioTrack = null;        // live agent-voice track for replay
+  let resumeTimers = [];              // pending resumeRemoteAudio() retries
+  let forcingAudioRestart = false;    // suppress our own pause event
+  let audioUnlockContext = null;      // primed by the Connect tap for Safari
+  // Every forced restart must finish inside audio/tts.py's 2.4s silent lead.
+  // The final attempt follows the slow end of iOS's ~0.5-2s A2DP switch.
+  const RESUME_RETRY_MS = [120, 400, 800, 1250, 1800, 2050];
   let seq = 0, framesSent = 0;
   let nextFrameDueAt = 0;
   let captureGeneration = 0;
@@ -608,6 +620,91 @@
     return s.getAudioTracks()[0] || null;
   }
 
+  // Prime Safari's audio session while the Connect tap still carries user
+  // activation. The zero-gain oscillator is inaudible; retaining its context
+  // also repairs the low/absent output state Safari 13 can enter after a
+  // Bluetooth WebRTC route change.
+  function unlockBluetoothAudio(){
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if(!AudioContextClass) return;
+    try{
+      if(!audioUnlockContext || audioUnlockContext.state === 'closed'){
+        audioUnlockContext = new AudioContextClass();
+        const oscillator = audioUnlockContext.createOscillator();
+        const gain = audioUnlockContext.createGain();
+        gain.gain.value = 0;
+        oscillator.connect(gain);
+        gain.connect(audioUnlockContext.destination);
+        oscillator.start();
+        oscillator.stop(audioUnlockContext.currentTime + 0.02);
+      }
+      if(audioUnlockContext.state === 'suspended'){
+        const resumed = audioUnlockContext.resume();
+        if(resumed && resumed.catch) resumed.catch(() => {});
+      }
+    }catch(_){}
+  }
+
+  // Re-arm playback of the agent's voice. The iOS route switch (mic release ->
+  // A2DP) pauses the <audio> element, so play() must be re-issued once the new
+  // route is up. Re-bind srcObject in case a teardown cleared it.
+  function resumeRemoteAudio(){
+    if(!remoteAudioTrack || remoteAudioTrack.readyState !== 'live') return;
+    try{
+      if(!remoteAudioEl.srcObject){
+        remoteAudioEl.srcObject = new MediaStream([remoteAudioTrack]);
+      }
+      const p = remoteAudioEl.play();
+      if(p && p.catch) p.catch(() => {});
+    }catch(_){}
+  }
+
+  // Safari 13 can stop rendering a live WebRTC track during a Bluetooth route
+  // change without marking the element paused. In that state play() is a no-op;
+  // a real pause plus a fresh MediaStream binding is required before play().
+  function restartRemoteAudio(){
+    if(!agentSpeaking || !remoteAudioTrack || remoteAudioTrack.readyState !== 'live') return;
+    forcingAudioRestart = true;
+    try{
+      unlockBluetoothAudio();
+      remoteAudioEl.pause();
+      remoteAudioEl.srcObject = null;
+      remoteAudioEl.srcObject = new MediaStream([remoteAudioTrack]);
+      remoteAudioEl.muted = false;
+      remoteAudioEl.volume = 1.0;
+      const p = remoteAudioEl.play();
+      if(p && p.catch) p.catch(() => {});
+    }catch(_){}
+    // Safari may dispatch `pause` asynchronously; keep the guard through the
+    // current event-loop turn so that event cannot race the forced rebind.
+    setTimeout(() => { forcingAudioRestart = false; }, 0);
+  }
+
+  function clearResumeTimers(){
+    for(const id of resumeTimers) clearTimeout(id);
+    resumeTimers = [];
+  }
+
+  // Force-restart across the route-switch window. All attempts occur while the
+  // host is still transmitting the silent lead, never over spoken samples.
+  function scheduleResumeRetries(){
+    clearResumeTimers();
+    restartRemoteAudio();
+    for(const ms of RESUME_RETRY_MS){
+      resumeTimers.push(setTimeout(() => {
+        if(agentSpeaking) restartRemoteAudio();
+      }, ms));
+    }
+  }
+
+  // Self-heal: iOS pauses this element on the route-switch interruption. Only
+  // resume during an agent turn (when audio should be playing), so a legitimate
+  // idle pause between turns can't spin a pause<->play loop. play()'s own
+  // rejection is swallowed, so a failed attempt does not re-arm here.
+  remoteAudioEl.addEventListener('pause', () => {
+    if(agentSpeaking && !forcingAudioRestart) resumeRemoteAudio();
+  });
+
   // Drop the mic so iOS leaves record mode and routes agent audio to A2DP. The
   // camera (video) track is untouched — it rides the data channel and does not
   // affect the audio session.
@@ -646,9 +743,15 @@
     if(speaking){
       if(listenTailTimer){ clearTimeout(listenTailTimer); listenTailTimer = null; }
       agentSpeaking = true;
-      releaseMicForPlayback();
+      // Wait until replaceTrack(null) and track.stop() have completed. Starting
+      // recovery before that races the old record route and leaves Safari's
+      // element stuck in its false "playing" state.
+      releaseMicForPlayback().then(() => {
+        if(agentSpeaking) scheduleResumeRetries();
+      });
     } else {
       agentSpeaking = false;
+      clearResumeTimers();
       if(listenTailTimer) clearTimeout(listenTailTimer);
       listenTailTimer = setTimeout(() => {
         listenTailTimer = null; acquireMicForListening();
@@ -1509,6 +1612,8 @@
     micSender = null;
     agentSpeaking = false;
     lastAgentPhase = null;
+    remoteAudioTrack = null;
+    clearResumeTimers();
     if(listenTailTimer){ clearTimeout(listenTailTimer); listenTailTimer = null; }
   }
 
@@ -1687,6 +1792,7 @@
       peer.ontrack = (ev) => {
         if(peer !== pc || !ev.track || ev.track.kind !== 'audio') return;
         try{
+          remoteAudioTrack = ev.track;   // kept so playback can be re-armed
           remoteAudioEl.srcObject = new MediaStream([ev.track]);
           const played = remoteAudioEl.play();
           if(played && played.catch) played.catch(() => {});
@@ -1713,6 +1819,10 @@
       pairMsg.textContent = 'Enter the 6-digit code shown on the laptop.';
       return;
     }
+    // Must run before the first await so Safari associates audio output with
+    // the person's Connect tap rather than treating later WebRTC play() calls
+    // as uninitiated autoplay.
+    unlockBluetoothAudio();
     connectBtn.disabled = true;
     pairMsg.textContent = 'Requesting camera and microphone…';
 

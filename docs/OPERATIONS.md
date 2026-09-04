@@ -290,6 +290,9 @@ run controls are:
 - `--groq-stt` opts into Groq Whisper, implies listening, and requires
   `GROQ_API_KEY`. Only completed, locally voice-activated speech segments are
   uploaded; if Groq cannot initialize, the app attempts local Faster-Whisper.
+- `--groq-vad-threshold` sets the local energy VAD gate that decides which
+  segments Groq hears (default `0.02`). Lower it for a quieter iPad/Bluetooth
+  input, e.g. `0.01`.
 - `--mic {auto,laptop,device,off}` selects the single live microphone. `auto`
   uses the paired iPad for the normal iPad device/both audio routes.
 - `--detect-cough` opts into local microphone audio-event detection and requires
